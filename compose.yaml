@@ -1,0 +1,19 @@
+services:
+  db:
+    image: pgvector/pgvector:pg18
+    environment:
+      POSTGRES_USER: remem
+      POSTGRES_PASSWORD: remem
+      POSTGRES_DB: remem
+    ports:
+      - "5433:5432"
+    volumes:
+      - remem-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U remem"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  remem-pgdata:
