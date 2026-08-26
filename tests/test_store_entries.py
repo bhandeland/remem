@@ -98,3 +98,13 @@ def test_set_superseded_refuses_across_owners(store, owner):
     store.put_entry(old)
     store.put_entry(new)
     assert store.set_superseded(old.id, new.id, other.id) is False
+
+
+def test_set_superseded_refuses_when_new_entry_belongs_to_another_owner(store, owner):
+    other = store.ensure_principal("someone-else")
+    old = Entry(id=new_id(), kind=Kind.MEMORY, title="old", body="b", owner_id=owner.id)
+    foreign_new = Entry(id=new_id(), kind=Kind.MEMORY, title="new", body="b", owner_id=other.id)
+    store.put_entry(old)
+    store.put_entry(foreign_new)
+    assert store.set_superseded(old.id, foreign_new.id, owner.id) is False
+    assert store.get_entry(old.id, owner.id).superseded_by is None

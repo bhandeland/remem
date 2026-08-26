@@ -62,23 +62,22 @@ class PostgresStore:
     # ---------------- principals ----------------
 
     def ensure_principal(self, handle: str) -> Principal:
+        existing = self.get_principal(handle)
+        if existing is not None:
+            return existing
         with self._cur() as cur:
             cur.execute(
                 """
                 insert into principals (id, handle) values (%s, %s)
-                on conflict (handle) do update set handle = excluded.handle
-                returning id, handle, display_name, kind, created_at
+                on conflict (handle) do nothing
                 """,
                 (new_id(), handle),
             )
-            row = cur.fetchone()
-        return Principal(
-            id=row["id"],
-            handle=row["handle"],
-            display_name=row["display_name"],
-            kind=PrincipalKind(row["kind"]),
-            created_at=row["created_at"],
-        )
+        # A concurrent caller may have won the race to create this handle;
+        # re-select rather than trust the insert to have landed our row.
+        created = self.get_principal(handle)
+        assert created is not None
+        return created
 
     def get_principal(self, handle: str) -> Principal | None:
         with self._cur() as cur:
@@ -153,9 +152,17 @@ class PostgresStore:
     def set_superseded(self, old_id: UUID, new_entry_id: UUID, owner_id: UUID) -> bool:
         with self._cur() as cur:
             cur.execute(
-                "update entries set superseded_by = %s, updated_at = clock_timestamp() "
-                "where id = %s and owner_id = %s",
-                (new_entry_id, old_id, owner_id),
+                """
+                update entries
+                   set superseded_by = %(new_entry_id)s, updated_at = clock_timestamp()
+                 where id = %(old_id)s
+                   and owner_id = %(owner_id)s
+                   and exists (
+                         select 1 from entries
+                          where id = %(new_entry_id)s and owner_id = %(owner_id)s
+                       )
+                """,
+                {"new_entry_id": new_entry_id, "old_id": old_id, "owner_id": owner_id},
             )
             return cur.rowcount == 1
 
