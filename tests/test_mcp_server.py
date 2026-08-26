@@ -78,6 +78,32 @@ def test_kb_context_for_an_unknown_slug_returns_a_message_not_an_exception(env):
     assert "core" not in kb_context_tool(slug="nope")
 
 
+def test_kb_pin_reports_a_nonexistent_entry_without_raising(env):
+    from remem.domain import new_id
+    from remem.mcp_server import kb_pin_tool
+    from remem.services import kb
+    from remem.session import open_session
+
+    with open_session() as s:
+        kb.create(s.store, s.owner.id, slug="core", title="Core")
+        s.conn.commit()
+
+    result = kb_pin_tool(slug="core", entry_id=str(new_id()))
+    assert "error" in result
+
+
+def test_remember_reports_an_invalid_kind_without_raising(env):
+    from remem.mcp_server import remember_tool
+    result = remember_tool(title="T", body="B", kind="bogus")
+    assert "error" in result
+
+
+def test_recall_reports_an_invalid_kind_without_raising(env):
+    from remem.mcp_server import recall_tool
+    result = recall_tool(query="anything", kind="bogus")
+    assert "error" in result
+
+
 def test_tools_are_registered_with_the_server(env):
     import asyncio
 

@@ -30,6 +30,11 @@ def _session_id() -> str | None:
     return os.environ.get("CLAUDE_SESSION_ID")
 
 
+def _invalid_kind_message(kind: str) -> str:
+    valid = ", ".join(k.value for k in Kind)
+    return f"invalid kind '{kind}'; expected one of: {valid}"
+
+
 @mcp.tool(name="remember")
 def remember_tool(
     title: str,
@@ -48,9 +53,13 @@ def remember_tool(
     "rule" (a convention that must be followed - these are always injected
     into future sessions).
     """
+    try:
+        parsed_kind = Kind(kind)
+    except ValueError:
+        return {"error": _invalid_kind_message(kind)}
     with open_session() as s:
         entry = write.remember(
-            s.store, s.owner.id, title=title, body=body, kind=Kind(kind),
+            s.store, s.owner.id, title=title, body=body, kind=parsed_kind,
             project=project, tags=list(tags or []), agent=AGENT_NAME,
             session_id=_session_id(), origin=Origin.AGENT,
         )
@@ -64,17 +73,26 @@ def recall_tool(
     project: str | None = None,
     tags: list[str] | None = None,
     limit: int = 10,
-) -> list[dict]:
+) -> list[dict] | dict:
     """Search stored knowledge before assuming something is unknown.
 
     Use at the start of work on an unfamiliar area, when the user refers to
     a past decision, or before re-deriving something. Returns snippets and
     ids; call get_entry for anything worth reading in full.
+
+    kind: optional filter - "memory", "doc", or "rule". Omit to search
+    across all kinds.
     """
+    kinds: list[Kind] = []
+    if kind is not None:
+        try:
+            kinds = [Kind(kind)]
+        except ValueError:
+            return {"error": _invalid_kind_message(kind)}
     with open_session() as s:
         hits = find(
             s.store, s.owner.id,
-            Query(text=query, kinds=[Kind(kind)] if kind else [],
+            Query(text=query, kinds=kinds,
                   project=project, tags=list(tags or []), limit=limit),
         )
         return [
@@ -172,9 +190,15 @@ def kb_pin_tool(slug: str, entry_id: str) -> dict:
     with open_session() as s:
         try:
             collection = kb.get(s.store, s.owner.id, slug)
-            s.store.pin(collection.id, UUID(entry_id), 0)
+            parsed_entry_id = UUID(entry_id)
         except (kb.CollectionNotFound, ValueError):
             return {"error": f"could not pin {entry_id} to '{slug}'"}
+        # Owner-scoped: also refuses to pin another principal's entry into
+        # this collection, which store.pin()'s bare INSERT does not guard.
+        entry = s.store.get_entry(parsed_entry_id, s.owner.id)
+        if entry is None:
+            return {"error": f"no entry {entry_id}"}
+        s.store.pin(collection.id, parsed_entry_id, 0)
         return {"pinned": entry_id, "slug": slug}
 
 
