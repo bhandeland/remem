@@ -12,6 +12,24 @@ class EntryNotFound(Exception):
     """Raised when an entry id does not exist for this owner."""
 
 
+class CannotLinkToSelf(Exception):
+    """Raised when an entry is linked to itself."""
+
+
+class _Clear:
+    """Sentinel meaning "set this nullable field to NULL".
+
+    `None` already means "leave unchanged" in update(), so clearing a field
+    needs a value distinct from both None and any real value.
+    """
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging aid
+        return "CLEAR"
+
+
+CLEAR = _Clear()
+
+
 def remember(
     store: Store,
     owner_id: UUID,
@@ -57,8 +75,9 @@ def update(
     title: str | None = None,
     body: str | None = None,
     tags: list[str] | None = None,
-    project: str | None = None,
+    project: str | None | _Clear = None,
 ) -> Entry:
+    """Change only the fields given. Pass `CLEAR` to null a field out."""
     entry = _require(store, owner_id, entry_id)
     if title is not None:
         entry.title = title
@@ -66,7 +85,9 @@ def update(
         entry.body = body
     if tags is not None:
         entry.tags = list(tags)
-    if project is not None:
+    if project is CLEAR:
+        entry.project = None
+    elif project is not None:
         entry.project = project
     return store.put_entry(entry)
 
@@ -109,6 +130,10 @@ def supersede(
 
 def link(store: Store, owner_id: UUID, a_id: UUID, b_id: UUID) -> None:
     """Link two entries in both directions, without duplicating."""
+    if a_id == b_id:
+        # Silently recording a self-link would make an entry look connected to
+        # something when it is connected to nothing.
+        raise CannotLinkToSelf(str(a_id))
     a = _require(store, owner_id, a_id)
     b = _require(store, owner_id, b_id)
     if b.id not in a.links:

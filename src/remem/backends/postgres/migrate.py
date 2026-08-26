@@ -10,7 +10,7 @@ import psycopg
 _TRACKING_TABLE = """
 create table if not exists schema_migrations (
   version text primary key,
-  applied_at timestamptz not null default now()
+  applied_at timestamptz not null default clock_timestamp()
 )
 """
 
@@ -26,7 +26,14 @@ def _migration_files() -> list[tuple[str, str]]:
 
 
 def applied_versions(conn: psycopg.Connection) -> list[str]:
-    conn.execute(_TRACKING_TABLE)
+    """Versions already applied. Read-only: inspecting a database must not
+    write to it, so an unmigrated database reports [] rather than having the
+    tracking table created as a side effect of asking."""
+    exists = conn.execute(
+        "select to_regclass('public.schema_migrations')"
+    ).fetchone()[0]
+    if exists is None:
+        return []
     rows = conn.execute("select version from schema_migrations order by version")
     return [r[0] for r in rows.fetchall()]
 
@@ -37,7 +44,15 @@ def pending_versions(conn: psycopg.Connection) -> list[str]:
 
 
 def migrate(conn: psycopg.Connection) -> list[str]:
-    """Apply every pending migration. Returns the versions newly applied."""
+    """Apply every pending migration. Returns the versions newly applied.
+
+    The CALLER owns commit and rollback. This runs the whole batch inside the
+    caller's transaction, so an exception partway through leaves nothing
+    applied provided the caller rolls back (or simply does not commit). A
+    caller that swallows the exception and commits anyway would leave
+    schema_migrations disagreeing with the schema.
+    """
+    conn.execute(_TRACKING_TABLE)
     done = set(applied_versions(conn))
     newly = []
     for version, sql in _migration_files():

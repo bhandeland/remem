@@ -375,8 +375,12 @@ class PostgresStore:
 
     def pin(
         self, collection_id: UUID, entry_id: UUID, position: int, owner_id: UUID
-    ) -> None:
-        """Pin an entry into a collection. Both must belong to owner_id."""
+    ) -> bool:
+        """Pin an entry into a collection. Both must belong to owner_id.
+
+        Returns False when the ownership guards match nothing, rather than
+        writing nothing silently — the same contract as set_superseded.
+        """
         with self._cur() as cur:
             cur.execute(
                 """
@@ -398,6 +402,7 @@ class PostgresStore:
                     "owner_id": owner_id,
                 },
             )
+            return cur.rowcount == 1
 
     def pinned_entries(self, collection_id: UUID, owner_id: UUID) -> list[Entry]:
         with self._cur() as cur:
