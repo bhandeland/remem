@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import json
 from uuid import UUID
 
 import psycopg
 from psycopg.rows import dict_row
 
 from remem.domain import (
+    Collection,
+    CollectionQuery,
     Entry,
     Hit,
     Kind,
@@ -47,6 +50,24 @@ def _row_to_entry(row: dict) -> Entry:
         session_id=row["session_id"],
         origin=Origin(row["origin"]),
         superseded_by=row["superseded_by"],
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+    )
+
+
+def _row_to_collection(row: dict) -> Collection:
+    query = row["query"]
+    if isinstance(query, str):
+        query = json.loads(query)
+    return Collection(
+        id=row["id"],
+        slug=row["slug"],
+        title=row["title"],
+        owner_id=row["owner_id"],
+        description=row["description"],
+        project=row["project"],
+        scope=Scope(row["scope"]),
+        query=CollectionQuery.from_dict(query),
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )
@@ -221,3 +242,82 @@ class PostgresStore:
             Hit(entry=_row_to_entry(r), rank=float(r["rank"]), snippet=r["snippet"])
             for r in rows
         ]
+
+    # ---------------- collections ----------------
+
+    def put_collection(self, collection: Collection) -> Collection:
+        with self._cur() as cur:
+            cur.execute(
+                """
+                insert into collections (
+                  id, slug, title, description, project, scope, owner_id, query
+                ) values (
+                  %(id)s, %(slug)s, %(title)s, %(description)s, %(project)s,
+                  %(scope)s, %(owner_id)s, %(query)s
+                )
+                on conflict (slug) do update set
+                  title = excluded.title, description = excluded.description,
+                  project = excluded.project, scope = excluded.scope,
+                  query = excluded.query, updated_at = now()
+                returning id, slug, title, description, project, scope,
+                          owner_id, query, created_at, updated_at
+                """,
+                {
+                    "id": collection.id,
+                    "slug": collection.slug,
+                    "title": collection.title,
+                    "description": collection.description,
+                    "project": collection.project,
+                    "scope": str(collection.scope),
+                    "owner_id": collection.owner_id,
+                    "query": json.dumps(collection.query.to_dict()),
+                },
+            )
+            return _row_to_collection(cur.fetchone())
+
+    def get_collection(self, slug: str, owner_id: UUID) -> Collection | None:
+        with self._cur() as cur:
+            cur.execute(
+                "select id, slug, title, description, project, scope, owner_id,"
+                " query, created_at, updated_at from collections "
+                "where slug = %s and owner_id = %s",
+                (slug, owner_id),
+            )
+            row = cur.fetchone()
+        return _row_to_collection(row) if row else None
+
+    def list_collections(self, owner_id: UUID) -> list[Collection]:
+        with self._cur() as cur:
+            cur.execute(
+                "select id, slug, title, description, project, scope, owner_id,"
+                " query, created_at, updated_at from collections "
+                "where owner_id = %s order by slug",
+                (owner_id,),
+            )
+            return [_row_to_collection(r) for r in cur.fetchall()]
+
+    def pin(self, collection_id: UUID, entry_id: UUID, position: int) -> None:
+        with self._cur() as cur:
+            cur.execute(
+                """
+                insert into collection_members (collection_id, entry_id, position)
+                values (%s, %s, %s)
+                on conflict (collection_id, entry_id)
+                  do update set position = excluded.position
+                """,
+                (collection_id, entry_id, position),
+            )
+
+    def pinned_entries(self, collection_id: UUID, owner_id: UUID) -> list[Entry]:
+        with self._cur() as cur:
+            cur.execute(
+                f"""
+                select {entry_columns("e")}
+                from collection_members m
+                join entries e on e.id = m.entry_id
+                where m.collection_id = %s and e.owner_id = %s
+                order by m.position, e.created_at
+                """,
+                (collection_id, owner_id),
+            )
+            return [_row_to_entry(r) for r in cur.fetchall()]
