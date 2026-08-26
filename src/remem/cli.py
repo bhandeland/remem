@@ -289,5 +289,17 @@ def install(
     typer.echo(f"\nInstalled remem for {report.agent}.")
 
 
+hook_app = typer.Typer(help="Agent hook entry points (not for interactive use).")
+app.add_typer(hook_app, name="hook")
+
+
+@hook_app.command("session-start")
+def hook_session_start():
+    """Print the project's knowledge base. Always exits 0."""
+    from remem.agents.claude_code.hook import main as hook_main
+
+    raise typer.Exit(hook_main())
+
+
 if __name__ == "__main__":
     app()
