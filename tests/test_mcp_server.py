@@ -1,0 +1,90 @@
+import pytest
+
+from remem.backends.postgres.migrate import migrate
+
+pytestmark = pytest.mark.db
+
+
+@pytest.fixture
+def env(live_dsn, monkeypatch, tmp_path):
+    import psycopg
+    with psycopg.connect(live_dsn) as c:
+        migrate(c)
+        c.commit()
+    monkeypatch.setenv("REMEM_DSN", live_dsn)
+    monkeypatch.setenv("REMEM_USER_ID", "brandon")
+    monkeypatch.setenv("REMEM_CONFIG", str(tmp_path / "none.toml"))
+    return live_dsn
+
+
+def test_remember_then_recall(env):
+    from remem.mcp_server import recall_tool, remember_tool
+
+    result = remember_tool(title="Postgres tuning", body="raise work_mem")
+    assert "id" in result
+
+    hits = recall_tool(query="work_mem")
+    assert hits[0]["title"] == "Postgres tuning"
+    assert "snippet" in hits[0]
+
+
+def test_recall_returns_an_empty_list_when_nothing_matches(env):
+    from remem.mcp_server import recall_tool
+    assert recall_tool(query="zzzz-no-match-zzzz") == []
+
+
+def test_get_entry_returns_the_full_body(env):
+    from remem.mcp_server import get_entry_tool, remember_tool
+    created = remember_tool(title="T", body="the complete body")
+    assert get_entry_tool(entry_id=created["id"])["body"] == "the complete body"
+
+
+def test_get_entry_reports_a_missing_id_without_raising(env):
+    from remem.domain import new_id
+    from remem.mcp_server import get_entry_tool
+    assert "error" in get_entry_tool(entry_id=str(new_id()))
+
+
+def test_supersede_hides_the_old_entry_from_recall(env):
+    from remem.mcp_server import recall_tool, remember_tool, supersede_tool
+    old = remember_tool(title="Fridays", body="deploy fridays")
+    supersede_tool(entry_id=old["id"], title="Tuesdays", body="deploy tuesdays")
+    assert [h["title"] for h in recall_tool(query="deploy")] == ["Tuesdays"]
+
+
+def test_kb_list_and_context(env):
+    from remem.mcp_server import (
+        kb_context_tool, kb_list_tool, kb_pin_tool, remember_tool,
+    )
+    from remem.services import kb
+    from remem.session import open_session
+
+    with open_session() as s:
+        kb.create(s.store, s.owner.id, slug="core", title="Core")
+        s.conn.commit()
+
+    assert any(c["slug"] == "core" for c in kb_list_tool())
+
+    entry = remember_tool(title="A rule", body="always lint", kind="rule")
+    kb_pin_tool(slug="core", entry_id=entry["id"])
+
+    block = kb_context_tool(slug="core")
+    assert "always lint" in block
+    assert "## Rules" in block
+
+
+def test_kb_context_for_an_unknown_slug_returns_a_message_not_an_exception(env):
+    from remem.mcp_server import kb_context_tool
+    assert "core" not in kb_context_tool(slug="nope")
+
+
+def test_tools_are_registered_with_the_server(env):
+    import asyncio
+
+    from remem.mcp_server import mcp
+
+    names = {t.name for t in asyncio.run(mcp.list_tools())}
+    assert names == {
+        "remember", "recall", "get_entry", "supersede",
+        "kb_context", "kb_list", "kb_pin",
+    }

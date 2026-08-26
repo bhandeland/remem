@@ -259,5 +259,13 @@ def db_status():
         typer.echo(f"Pending:   {', '.join(pending_versions(s.conn)) or 'none'}")
 
 
+@app.command()
+def serve():
+    """Run the MCP server on stdio (this is what agents launch)."""
+    from remem.mcp_server import main as serve_main
+
+    serve_main()
+
+
 if __name__ == "__main__":
     app()
