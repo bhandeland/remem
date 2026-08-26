@@ -58,10 +58,17 @@ def test_no_notice_when_everything_fits():
 
 
 def test_rules_are_never_truncated_even_over_budget():
-    rules = [entry(f"Rule {i}", "y" * 100, kind=Kind.RULE) for i in range(3)]
-    out = render(collection(), rules, max_chars=100000)
-    for i in range(3):
+    """Rules survive whole while everything else is dropped for space."""
+    rules = [entry(f"Rule {i}", "y" * 300, kind=Kind.RULE) for i in range(4)]
+    others = [entry(f"Doc {i}", "z" * 800) for i in range(10)]
+
+    out = render(collection(), rules + others, max_chars=2000)
+
+    for i in range(4):
         assert f"Rule {i}" in out
+    assert out.count("y" * 300) == 4     # every rule body, in full
+    assert "z" * 800 not in out          # the budget really did bite
+    assert "10 more entries not shown" in out
 
 
 def test_rules_alone_exceeding_the_budget_raises():
