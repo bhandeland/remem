@@ -395,3 +395,44 @@ Controller error (no ruling needed): dispatched Task 6 before generating its bri
   implementer correctly refused to improvise requirements and asked. Brief generated,
   re-dispatched. Cost: one wasted dispatch.
 
+
+---
+
+## Parked items — closed 2026-08-26 (post-merge)
+
+Every item parked above was revisited. Outcome:
+
+FIXED:
+- `update()` could not clear `project` — added a `CLEAR` sentinel (`None` still
+  means "unchanged"), plus `--clear-project` / `--clear-tags` on the CLI.
+- `link()` silently recorded a self-link — now raises `CannotLinkToSelf`.
+- `store.pin` returned `None`, so a failed ownership guard wrote nothing
+  silently — now returns bool, matching `set_superseded`.
+- `db status` created `schema_migrations` as a side effect of reading it —
+  `applied_versions()` is now read-only via a `to_regclass` guard.
+- `schema_migrations.applied_at` used `now()` — now `clock_timestamp()`, matching
+  Ruling 1. Existing databases keep the old default; nothing orders by it.
+- `migrate()` had no docstring saying the CALLER owns commit/rollback — the
+  property that makes the batch all-or-nothing is now written down.
+- `render()` could exceed `max_chars` by the length of the omitted-count notice —
+  the notice is now budgeted, dropping a further entry if needed.
+- `ensure_database` hand-quoted the database name — now `psycopg.sql.Identifier`.
+- No services-layer cross-owner coverage — added for update/supersede/link. The
+  behaviour was already correct; only the proof was missing.
+- `test_find_caps_an_absurd_limit` could not fail (3 rows, cap 200) — rewritten
+  with MAX_LIMIT+25 rows so the cap is observable.
+- `main()`'s outer try/except was never exercised — two tests now make
+  `session_start` raise and make `sys.stdin.read()` raise.
+- `remem kb query` did not exist, so a knowledge base's query was write-once and
+  `kb new`'s silent upsert was the only repair. Added `kb.set_query` plus
+  `remem kb query <slug> [--tag/--project/--kind] [--clear]`. Title, description
+  and pins are preserved.
+
+WON'T FIX (ruling stands):
+- Hook catches `Exception` rather than `BaseException`. Catching BaseException
+  would swallow Ctrl-C, which is worse than the theoretical gap it closes.
+- `services/kb.py` importing `EntryNotFound` from `services/write.py`. The
+  alternative — a second identically-named exception — would force every
+  frontend to catch two types for one condition.
+- Task 1's self-contradicting implementer report is a historical process note,
+  not a code defect.

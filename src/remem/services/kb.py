@@ -20,6 +20,7 @@ __all__ = [
     "pin",
     "render",
     "resolve",
+    "set_query",
 ]
 
 
@@ -90,6 +91,21 @@ def pin(
     if store.get_entry(entry_id, owner_id) is None:
         raise EntryNotFound(str(entry_id))
     store.pin(collection.id, entry_id, position, owner_id)
+
+
+def set_query(
+    store: Store, owner_id: UUID, slug: str, query: CollectionQuery
+) -> Collection:
+    """Replace a knowledge base's query.
+
+    Without this a query is fixed at creation: a knowledge base made with no
+    --project or --tag matches nothing forever, and re-running `kb new` with
+    the same slug is an undocumented upsert rather than a repair.
+    Title, description, and pinned members are untouched.
+    """
+    collection = get(store, owner_id, slug)
+    collection.query = query
+    return store.put_collection(collection)
 
 
 def resolve(store: Store, owner_id: UUID, slug: str) -> list[Entry]:

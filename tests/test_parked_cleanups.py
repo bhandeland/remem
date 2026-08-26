@@ -8,7 +8,7 @@ import pytest
 
 from remem.backends.postgres.migrate import migrate
 from remem.backends.postgres.store import PostgresStore
-from remem.domain import Collection, Entry, Kind, Query, new_id
+from remem.domain import CollectionQuery, Query
 from remem.services import kb, write
 from remem.services.search import MAX_LIMIT, find
 
@@ -126,3 +126,53 @@ def test_applied_versions_does_not_create_the_tracking_table(conn):
         "select to_regclass('public.schema_migrations')"
     ).fetchone()[0]
     assert exists is None
+
+
+# --- a knowledge base's query was write-once --------------------------------
+
+
+def test_set_query_replaces_a_collections_query(store, owner):
+    kb.create(store, owner.id, slug="s", title="T")
+    assert kb.resolve(store, owner.id, "s") == []
+
+    write.remember(store, owner.id, title="Styled", body="B", tags=["style"])
+    kb.set_query(store, owner.id, "s", CollectionQuery(tags=["style"]))
+
+    assert [e.title for e in kb.resolve(store, owner.id, "s")] == ["Styled"]
+
+
+def test_set_query_can_empty_a_query(store, owner):
+    write.remember(store, owner.id, title="Styled", body="B", tags=["style"])
+    kb.create(store, owner.id, slug="s", title="T",
+              query=CollectionQuery(tags=["style"]))
+    assert kb.resolve(store, owner.id, "s")
+
+    kb.set_query(store, owner.id, "s", CollectionQuery())
+    assert kb.resolve(store, owner.id, "s") == []
+
+
+def test_set_query_preserves_title_description_and_pins(store, owner):
+    collection = kb.create(store, owner.id, slug="s", title="Original",
+                           description="keep me")
+    pinned = write.remember(store, owner.id, title="Pinned", body="B")
+    kb.pin(store, owner.id, "s", pinned.id)
+
+    kb.set_query(store, owner.id, "s", CollectionQuery(project="alpha"))
+
+    updated = kb.get(store, owner.id, "s")
+    assert updated.title == "Original"
+    assert updated.description == "keep me"
+    assert updated.query.project == "alpha"
+    assert [e.title for e in kb.resolve(store, owner.id, "s")] == ["Pinned"]
+
+
+def test_set_query_refuses_an_unknown_slug(store, owner):
+    with pytest.raises(kb.CollectionNotFound):
+        kb.set_query(store, owner.id, "nope", CollectionQuery())
+
+
+def test_set_query_is_owner_scoped(store, owner):
+    other = store.ensure_principal("someone-else")
+    kb.create(store, owner.id, slug="s", title="T")
+    with pytest.raises(kb.CollectionNotFound):
+        kb.set_query(store, other.id, "s", CollectionQuery(project="x"))

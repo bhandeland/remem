@@ -182,14 +182,33 @@ def update(
     entry_id: str,
     title: Annotated[Optional[str], typer.Option("--title")] = None,
     body: Annotated[Optional[str], typer.Option("--body")] = None,
+    project: Annotated[Optional[str], typer.Option("--project")] = None,
+    clear_project: Annotated[bool, typer.Option("--clear-project")] = False,
+    tag: Annotated[Optional[list[str]], typer.Option("--tag")] = None,
+    clear_tags: Annotated[bool, typer.Option("--clear-tags")] = False,
 ):
-    """Edit an entry in place (for typos - use supersede for corrections)."""
+    """Edit an entry in place (for typos - use supersede for corrections).
+
+    Only the fields you pass change. --clear-project and --clear-tags empty a
+    field, which passing nothing cannot express.
+    """
     parsed = _entry_id(entry_id)
     text = _read_body(body) if body is not None else None
+    if clear_project and project is not None:
+        typer.echo("Pass either --project or --clear-project, not both", err=True)
+        raise typer.Exit(1)
+    if clear_tags and tag:
+        typer.echo("Pass either --tag or --clear-tags, not both", err=True)
+        raise typer.Exit(1)
+
+    new_project = write.CLEAR if clear_project else project
+    new_tags = [] if clear_tags else (list(tag) if tag else None)
+
     with _session() as s:
         try:
             entry = write.update(s.store, s.owner.id, parsed,
-                                 title=title, body=text)
+                                 title=title, body=text,
+                                 project=new_project, tags=new_tags)
         except write.EntryNotFound:
             typer.echo(f"No entry {entry_id}", err=True)
             raise typer.Exit(1)
@@ -233,6 +252,37 @@ def kb_new(
         typer.echo(c.slug)
         for advisory in kb.advisories(c):
             typer.echo(f"warning: {advisory}", err=True)
+
+
+@kb_app.command("query")
+def kb_query(
+    slug: str,
+    project: Annotated[Optional[str], typer.Option("--project")] = None,
+    tag: Annotated[Optional[list[str]], typer.Option("--tag")] = None,
+    kind: Annotated[Optional[list[Kind]], typer.Option("--kind")] = None,
+    clear: Annotated[bool, typer.Option("--clear")] = False,
+):
+    """Replace which entries a knowledge base selects automatically.
+
+    A query is otherwise fixed at creation. Pinned entries are unaffected.
+    --clear empties the query so the knowledge base holds only its pins.
+    """
+    if clear and (project or tag or kind):
+        typer.echo("Pass either --clear or the filters, not both", err=True)
+        raise typer.Exit(1)
+
+    query = CollectionQuery() if clear else CollectionQuery(
+        tags=list(tag or []), kinds=list(kind or []), project=project
+    )
+    with _session() as s:
+        try:
+            collection = kb.set_query(s.store, s.owner.id, slug, query)
+        except kb.CollectionNotFound:
+            typer.echo(f"No knowledge base '{slug}'", err=True)
+            raise typer.Exit(1)
+        for note in kb.advisories(collection):
+            typer.echo(f"note: {note}", err=True)
+        typer.echo(collection.slug)
 
 
 @kb_app.command("list")

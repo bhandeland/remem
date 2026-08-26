@@ -35,10 +35,14 @@ appear only when there were no exact ones, so they never dilute a good result
 set. `REMEM_FUZZY_THRESHOLD` (default `0.3`) controls how close a match must be.
 
 A knowledge base collects entries two ways: everything matching its query
-(`--project` and `--tag`, fixed at creation) plus anything pinned into it with
+(`--project` and `--tag`) plus anything pinned into it with
 `remem kb pin <slug> <entry-id>`. A knowledge base created with neither
 `--project` nor `--tag` has an empty query and matches nothing until you pin
-something.
+something — `remem kb new` warns when it creates one.
+
+Change a query later with `remem kb query <slug> --tag X --project Y`, or
+`--clear` it so the knowledge base holds only what you pinned. Pinned entries
+are never affected.
 
 ## Install into Claude Code
 
