@@ -267,5 +267,27 @@ def serve():
     serve_main()
 
 
+@app.command()
+def install(
+    agent: str = "claude-code",
+    scope: Annotated[str, typer.Option("--scope")] = "user",
+):
+    """Install remem into an agent (MCP server, hook, and skill)."""
+    from remem.agents.registry import UnknownAgent, get as get_adapter
+
+    try:
+        adapter = get_adapter(agent)()
+    except UnknownAgent as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1)
+
+    report = adapter.install(scope=scope)
+    for action in report.actions:
+        typer.echo(f"  {action}")
+    for warning in report.warnings:
+        typer.echo(f"  warning: {warning}", err=True)
+    typer.echo(f"\nInstalled remem for {report.agent}.")
+
+
 if __name__ == "__main__":
     app()
