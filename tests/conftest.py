@@ -84,3 +84,26 @@ def live_dsn():
                 (name,),
             )
             admin.execute(f'drop database if exists "{name}"')
+
+
+@pytest.fixture(autouse=True)
+def _reset_live_db(request):
+    """Commit-based tests share one database; reset it between them.
+
+    `live_dsn` is session-scoped and never rolled back (see its docstring),
+    so every test that commits through it - CLI, MCP, hook tests - leaves
+    its rows behind for the next one. Two tests that happen to use the same
+    sample data can then see each other's leftovers. Truncate before any
+    test that asked for `live_dsn`, and leave everything else untouched.
+    """
+    if "live_dsn" not in request.fixturenames:
+        yield
+        return
+    dsn = request.getfixturevalue("live_dsn")
+    with psycopg.connect(dsn, autocommit=True) as c:
+        if c.execute("select to_regclass('public.entries')").fetchone()[0] is not None:
+            c.execute(
+                "truncate collection_members, collections, entries, principals "
+                "restart identity cascade"
+            )
+    yield

@@ -12,14 +12,14 @@ from uuid import UUID
 # raises ModuleNotFoundError on import, pointing at this rename). The class's
 # tool-registration and `list_tools()` API is unchanged from v1, so nothing
 # else in this module needed to change - only this import.
-from mcp.server.mcpserver import MCPServer as FastMCP
+from mcp.server.mcpserver import MCPServer
 
 from remem.domain import Kind, Origin, Query
 from remem.services import kb, write
 from remem.services.search import find
 from remem.session import open_session
 
-mcp = FastMCP("remem")
+mcp = MCPServer("remem")
 
 AGENT_NAME = "claude-code"
 
