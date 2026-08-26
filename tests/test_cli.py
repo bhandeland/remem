@@ -195,3 +195,28 @@ def test_db_migrate_on_an_unmigrated_database_applies_it(
 
     again = runner.invoke(app, ["db", "status"])
     assert "Applied:   001_initial" in again.stdout
+
+
+def test_install_with_project_scope_exits_nonzero(monkeypatch, tmp_path):
+    """Never touches the real home: Path.home() is redirected, and the scope
+    is rejected before any file is written anyway."""
+    import pathlib
+
+    monkeypatch.setattr(pathlib.Path, "home", classmethod(lambda cls: tmp_path))
+    r = runner.invoke(app, ["install", "claude-code", "--scope", "project"])
+    assert r.exit_code != 0
+    assert "user" in r.stderr
+    assert "Traceback" not in r.stdout + r.stderr
+
+
+def test_kb_new_without_a_query_warns(env):
+    r = runner.invoke(app, ["kb", "new", "bare", "--title", "Bare"])
+    assert r.exit_code == 0
+    assert "--project" in r.stderr and "--tag" in r.stderr
+
+
+def test_kb_new_with_a_project_does_not_warn(env):
+    r = runner.invoke(app, ["kb", "new", "proj", "--title", "P",
+                            "--project", "myapp"])
+    assert r.exit_code == 0
+    assert r.stderr.strip() == ""

@@ -9,9 +9,14 @@ from importlib import resources
 from pathlib import Path
 from typing import Mapping
 
-from remem.agents.base import Identity, InstallReport
+from remem.agents.base import Identity, InstallReport, UnsupportedScope
 
 HOOK_COMMAND = "remem hook session-start"
+
+SLUG_CONVENTION = (
+    "The SessionStart hook injects the knowledge base whose slug matches the "
+    "session's directory name - create one with `remem kb new <dirname>`."
+)
 
 
 def _backup(path: Path) -> Path:
@@ -59,6 +64,12 @@ class ClaudeCodeAdapter:
     name = "claude-code"
 
     def install(self, scope: str = "user", home: Path | None = None) -> InstallReport:
+        if scope != "user":
+            # Project scope would mean .mcp.json and .claude/settings.json in
+            # the repository; v1 only writes the user-level files.
+            raise UnsupportedScope(
+                f"scope '{scope}' is not supported; only 'user' is implemented"
+            )
         home = home or Path.home()
         report = InstallReport(agent=self.name)
         backed_up: set[Path] = set()
@@ -66,6 +77,7 @@ class ClaudeCodeAdapter:
         self._install_mcp(home, report, backed_up)
         self._install_hook(home, report, backed_up)
         self._install_skill(home, report)
+        report.notes.append(SLUG_CONVENTION)
         return report
 
     def _install_mcp(self, home: Path, report: InstallReport, backed_up: set[Path]) -> None:

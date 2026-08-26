@@ -14,6 +14,7 @@ __all__ = [
     "CollectionNotFound",
     "EntryNotFound",
     "RulesExceedBudget",
+    "advisories",
     "create",
     "get",
     "pin",
@@ -47,6 +48,21 @@ def create(
             query=query or CollectionQuery(),
         )
     )
+
+
+def advisories(collection: Collection) -> list[str]:
+    """Things worth telling the user about a knowledge base they just made.
+
+    A knowledge base with an empty query matches nothing, forever. Saying so
+    at creation is the only moment the user is looking.
+    """
+    if collection.query.is_empty():
+        return [
+            f"knowledge base '{collection.slug}' has no query, so it will "
+            "match no entries. Pass --project or --tag to select entries "
+            "automatically, or pin entries into it with `remem kb pin`."
+        ]
+    return []
 
 
 def get(store: Store, owner_id: UUID, slug: str) -> Collection:

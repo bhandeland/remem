@@ -1,5 +1,8 @@
 import json
 
+import pytest
+
+from remem.agents.base import UnsupportedScope
 from remem.agents.claude_code.adapter import ClaudeCodeAdapter
 
 
@@ -124,3 +127,16 @@ def test_identity_tolerates_an_empty_payload():
     assert ident.agent == "claude-code"
     assert ident.session_id is None
     assert ident.project is None
+
+
+def test_install_rejects_project_scope(tmp_path):
+    with pytest.raises(UnsupportedScope):
+        ClaudeCodeAdapter().install(scope="project", home=tmp_path)
+    assert not (tmp_path / ".claude.json").exists()
+
+
+def test_install_states_the_hook_slug_convention(tmp_path):
+    report = ClaudeCodeAdapter().install(scope="user", home=tmp_path)
+    text = "\n".join(report.notes)
+    assert "slug" in text and "directory name" in text
+    assert "remem kb new" in text

@@ -216,6 +216,8 @@ def kb_new(
             query=CollectionQuery(tags=list(tag or []), project=project),
         )
         typer.echo(c.slug)
+        for advisory in kb.advisories(c):
+            typer.echo(f"warning: {advisory}", err=True)
 
 
 @kb_app.command("list")
@@ -318,10 +320,11 @@ def serve():
 
 @app.command()
 def install(
-    agent: str = "claude-code",
+    agent: Annotated[str, typer.Argument()] = "claude-code",
     scope: Annotated[str, typer.Option("--scope")] = "user",
 ):
     """Install remem into an agent (MCP server, hook, and skill)."""
+    from remem.agents.base import UnsupportedScope
     from remem.agents.registry import UnknownAgent, get as get_adapter
 
     try:
@@ -330,12 +333,18 @@ def install(
         typer.echo(str(exc), err=True)
         raise typer.Exit(1)
 
-    report = adapter.install(scope=scope)
+    try:
+        report = adapter.install(scope=scope)
+    except UnsupportedScope as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1)
     for action in report.actions:
         typer.echo(f"  {action}")
     for warning in report.warnings:
         typer.echo(f"  warning: {warning}", err=True)
     typer.echo(f"\nInstalled remem for {report.agent}.")
+    for note in report.notes:
+        typer.echo(note)
 
 
 hook_app = typer.Typer(help="Agent hook entry points (not for interactive use).")
