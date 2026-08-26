@@ -112,3 +112,14 @@ def test_search_filters_by_kind(env):
     runner.invoke(app, ["remember", "M", "--body", "shared"])
     s = runner.invoke(app, ["search", "shared", "--kind", "rule", "--json"])
     assert [x["title"] for x in json.loads(s.stdout)] == ["R"]
+
+
+def test_kb_pin_with_an_unknown_entry_exits_cleanly(env):
+    from remem.domain import new_id
+
+    runner.invoke(app, ["kb", "new", "core", "--title", "Core"])
+    r = runner.invoke(app, ["kb", "pin", "core", str(new_id())])
+    assert r.exit_code != 0
+    assert "No entry" in r.stderr
+    assert "Traceback" not in r.stdout + r.stderr
+    assert r.exception is None or isinstance(r.exception, SystemExit)

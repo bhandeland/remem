@@ -5,9 +5,21 @@ from __future__ import annotations
 from uuid import UUID
 
 from remem.domain import Collection, CollectionQuery, Entry, Kind, Query, new_id
+from remem.services.write import EntryNotFound
 from remem.store import Store
 
 RESOLVE_LIMIT = 200
+
+__all__ = [
+    "CollectionNotFound",
+    "EntryNotFound",
+    "RulesExceedBudget",
+    "create",
+    "get",
+    "pin",
+    "render",
+    "resolve",
+]
 
 
 class CollectionNotFound(Exception):
@@ -42,6 +54,26 @@ def get(store: Store, owner_id: UUID, slug: str) -> Collection:
     if collection is None:
         raise CollectionNotFound(slug)
     return collection
+
+
+def pin(
+    store: Store,
+    owner_id: UUID,
+    slug: str,
+    entry_id: UUID,
+    position: int = 0,
+) -> None:
+    """Pin an entry into a knowledge base so it is always included.
+
+    Both the knowledge base and the entry must belong to this owner. Pinning
+    something the owner cannot see would write a member row that
+    `pinned_entries` correctly refuses to render - a pin that appears to
+    succeed and then silently never shows up.
+    """
+    collection = get(store, owner_id, slug)
+    if store.get_entry(entry_id, owner_id) is None:
+        raise EntryNotFound(str(entry_id))
+    store.pin(collection.id, entry_id, position, owner_id)
 
 
 def resolve(store: Store, owner_id: UUID, slug: str) -> list[Entry]:

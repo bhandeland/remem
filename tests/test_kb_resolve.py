@@ -2,7 +2,7 @@ import pytest
 
 from remem.backends.postgres.migrate import migrate
 from remem.backends.postgres.store import PostgresStore
-from remem.domain import CollectionQuery, Kind
+from remem.domain import CollectionQuery, Kind, new_id
 from remem.services import kb
 from remem.services.write import remember, supersede
 
@@ -93,3 +93,31 @@ def test_a_pinned_entry_that_is_later_superseded_does_not_resurface(store, owner
     supersede(store, owner.id, e.id, title="New", body="b")
     titles = [x.title for x in kb.resolve(store, owner.id, "s")]
     assert "Old" not in titles
+
+
+def test_pin_adds_an_entry_to_the_collection(store, owner):
+    kb.create(store, owner.id, slug="s", title="T")
+    e = remember(store, owner.id, title="Pinned", body="b")
+    kb.pin(store, owner.id, "s", e.id)
+    assert [x.title for x in kb.resolve(store, owner.id, "s")] == ["Pinned"]
+
+
+def test_pin_rejects_an_unknown_collection(store, owner):
+    e = remember(store, owner.id, title="E", body="b")
+    with pytest.raises(kb.CollectionNotFound):
+        kb.pin(store, owner.id, "nope", e.id)
+
+
+def test_pin_rejects_an_unknown_entry(store, owner):
+    kb.create(store, owner.id, slug="s", title="T")
+    with pytest.raises(kb.EntryNotFound):
+        kb.pin(store, owner.id, "s", new_id())
+
+
+def test_pin_rejects_another_owners_entry(store, owner):
+    other = store.ensure_principal("mallory")
+    kb.create(store, owner.id, slug="s", title="T")
+    theirs = remember(store, other.id, title="Theirs", body="b")
+    with pytest.raises(kb.EntryNotFound):
+        kb.pin(store, owner.id, "s", theirs.id)
+    assert kb.resolve(store, owner.id, "s") == []

@@ -187,11 +187,13 @@ def kb_pin(slug: str, entry_id: str,
     """Pin an entry into a knowledge base."""
     with open_session() as s:
         try:
-            c = kb.get(s.store, s.owner.id, slug)
+            kb.pin(s.store, s.owner.id, slug, UUID(entry_id), position)
         except kb.CollectionNotFound:
             typer.echo(f"No knowledge base '{slug}'", err=True)
             raise typer.Exit(1)
-        s.store.pin(c.id, UUID(entry_id), position, s.owner.id)
+        except kb.EntryNotFound:
+            typer.echo(f"No entry {entry_id}", err=True)
+            raise typer.Exit(1)
         typer.echo("pinned")
 
 

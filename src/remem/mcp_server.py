@@ -189,16 +189,11 @@ def kb_pin_tool(slug: str, entry_id: str) -> dict:
     """
     with open_session() as s:
         try:
-            collection = kb.get(s.store, s.owner.id, slug)
-            parsed_entry_id = UUID(entry_id)
+            kb.pin(s.store, s.owner.id, slug, UUID(entry_id))
         except (kb.CollectionNotFound, ValueError):
             return {"error": f"could not pin {entry_id} to '{slug}'"}
-        # Owner-scoped: also refuses to pin another principal's entry into
-        # this collection, which store.pin()'s bare INSERT does not guard.
-        entry = s.store.get_entry(parsed_entry_id, s.owner.id)
-        if entry is None:
+        except kb.EntryNotFound:
             return {"error": f"no entry {entry_id}"}
-        s.store.pin(collection.id, parsed_entry_id, 0, s.owner.id)
         return {"pinned": entry_id, "slug": slug}
 
 
