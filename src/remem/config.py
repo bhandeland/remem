@@ -13,6 +13,7 @@ from platformdirs import user_config_path
 DEFAULT_DSN = "postgresql://remem:remem@localhost:5433/remem"
 DEFAULT_HANDLE = "brandon"
 DEFAULT_MAX_CHARS = 6000
+DEFAULT_FUZZY_THRESHOLD = 0.3
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,6 +21,7 @@ class Config:
     dsn: str
     user_handle: str
     max_chars: int
+    fuzzy_threshold: float
 
 
 def default_config_path() -> Path:
@@ -56,7 +58,19 @@ def load(
     except (TypeError, ValueError):
         max_chars = DEFAULT_MAX_CHARS
 
+    threshold = pick("REMEM_FUZZY_THRESHOLD", "fuzzy_threshold",
+                     DEFAULT_FUZZY_THRESHOLD)
+    try:
+        threshold = float(threshold)
+    except (TypeError, ValueError):
+        threshold = DEFAULT_FUZZY_THRESHOLD
+    if not 0.0 < threshold <= 1.0:
+        # Outside this range the setting is meaningless: 0 matches everything,
+        # above 1 matches nothing. Fall back rather than silently disable search.
+        threshold = DEFAULT_FUZZY_THRESHOLD
+
     return Config(
+        fuzzy_threshold=threshold,
         dsn=str(pick("REMEM_DSN", "dsn", DEFAULT_DSN)),
         user_handle=str(pick("REMEM_USER_ID", "user_handle", DEFAULT_HANDLE)),
         max_chars=max_chars,

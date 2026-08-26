@@ -82,6 +82,11 @@ def recall_tool(
 
     kind: optional filter - "memory", "doc", or "rule". Omit to search
     across all kinds.
+
+    If nothing matches exactly, this falls back to typo-tolerant matching and
+    every result carries "fuzzy": true. Treat those as approximate: they may
+    be what you meant, but do not cite them as certain without reading the
+    entry in full via get_entry.
     """
     kinds: list[Kind] = []
     if kind is not None:
@@ -94,6 +99,7 @@ def recall_tool(
             s.store, s.owner.id,
             Query(text=query, kinds=kinds,
                   project=project, tags=list(tags or []), limit=limit),
+            fuzzy_threshold=s.config.fuzzy_threshold,
         )
         return [
             {
@@ -103,6 +109,7 @@ def recall_tool(
                 "project": h.entry.project,
                 "tags": list(h.entry.tags),
                 "snippet": h.snippet,
+                "fuzzy": h.fuzzy,
             }
             for h in hits
         ]

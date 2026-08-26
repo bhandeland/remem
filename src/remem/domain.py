@@ -125,6 +125,14 @@ class Query:
 
 @dataclass(slots=True)
 class Hit:
+    """A search result.
+
+    `fuzzy` is True when this came from typo-tolerant fallback rather than an
+    exact match. Callers must be able to tell the difference: an agent handed
+    an approximate match with no marker would cite it as certain.
+    """
+
     entry: Entry
     rank: float
     snippet: str
+    fuzzy: bool = False

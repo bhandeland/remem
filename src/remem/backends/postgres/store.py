@@ -256,6 +256,70 @@ class PostgresStore:
             for r in rows
         ]
 
+    def fuzzy_search(
+        self, query: Query, owner_id: UUID, threshold: float
+    ) -> list[Hit]:
+        """Typo-tolerant search, for when exact search found nothing.
+
+        Two operators, because they behave differently on the two columns:
+        `similarity` compares whole strings, which works on a short title but
+        dissolves into noise on a long body; `word_similarity` compares the
+        query against the best-matching word sequence, which is what makes a
+        misspelled word inside a body findable. The score is the better of the
+        two, so an entry can match on either.
+        """
+        text = (query.text or "").strip()
+        if not text:
+            return []
+
+        params: dict = {
+            "owner_id": owner_id,
+            "limit": query.limit,
+            "text": text,
+            "threshold": threshold,
+        }
+        where = ["e.owner_id = %(owner_id)s"]
+        if not query.include_superseded:
+            where.append("e.superseded_by is null")
+        if query.kinds:
+            where.append("e.kind = any(%(kinds)s::entry_kind[])")
+            params["kinds"] = [str(k) for k in query.kinds]
+        if query.project is not None:
+            where.append("e.project = %(project)s")
+            params["project"] = query.project
+        if query.tags:
+            where.append("e.tags && %(tags)s")
+            params["tags"] = list(query.tags)
+        if query.since is not None:
+            where.append("e.created_at >= %(since)s")
+            params["since"] = query.since
+
+        score = ("greatest(similarity(e.title, %(text)s), "
+                 "word_similarity(%(text)s, e.body))")
+        where.append(f"{score} >= %(threshold)s")
+
+        sql = f"""
+            select {entry_columns("e")},
+                   {score} as rank,
+                   left(e.body, 200) as snippet
+            from entries e
+            where {" and ".join(where)}
+            order by rank desc, e.created_at desc
+            limit %(limit)s
+        """
+        with self._cur() as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
+        return [
+            Hit(
+                entry=_row_to_entry(r),
+                rank=float(r["rank"]),
+                snippet=r["snippet"],
+                fuzzy=True,
+            )
+            for r in rows
+        ]
+
     # ---------------- collections ----------------
 
     def put_collection(self, collection: Collection) -> Collection:

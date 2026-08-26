@@ -28,6 +28,12 @@ remem kb new myapp --title "myapp knowledge" --project myapp
 remem kb show myapp
 ```
 
+Search is exact by default. When a query matches nothing, remem retries with
+typo-tolerant matching and marks those results — `~` in terminal output,
+`"fuzzy": true` in `--json` and in the MCP `recall` response. Fuzzy results
+appear only when there were no exact ones, so they never dilute a good result
+set. `REMEM_FUZZY_THRESHOLD` (default `0.3`) controls how close a match must be.
+
 A knowledge base collects entries two ways: everything matching its query
 (`--project` and `--tag`, fixed at creation) plus anything pinned into it with
 `remem kb pin <slug> <entry-id>`. A knowledge base created with neither
@@ -72,6 +78,7 @@ Environment variable, then config file, then default.
 | principal handle | `REMEM_USER_ID` | `brandon` |
 | config file | `REMEM_CONFIG` | platform config dir, `remem/config.toml` |
 | context budget | `REMEM_MAX_CHARS` | `6000` |
+| fuzzy match threshold | `REMEM_FUZZY_THRESHOLD` | `0.3` |
 | hook diagnostics | `REMEM_HOOK_DEBUG` | unset (silent) |
 
 ## Development

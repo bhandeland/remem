@@ -125,21 +125,36 @@ def search(
     limit: Annotated[int, typer.Option("--limit")] = 20,
     as_json: Annotated[bool, typer.Option("--json")] = False,
 ):
-    """Search stored knowledge."""
+    """Search stored knowledge.
+
+    Falls back to typo-tolerant matching when an exact search finds nothing;
+    those results are marked with a leading ~ (and "fuzzy": true in --json).
+    """
     with _session() as s:
         hits = find(
             s.store, s.owner.id,
             Query(text=query, kinds=list(kind or []), project=project,
                   tags=list(tag or []), limit=limit),
+            fuzzy_threshold=s.config.fuzzy_threshold,
         )
     if as_json:
-        typer.echo(json.dumps([_entry_dict(h.entry, h.snippet) for h in hits], indent=2))
+        payload = []
+        for h in hits:
+            data = _entry_dict(h.entry, h.snippet)
+            data["fuzzy"] = h.fuzzy
+            payload.append(data)
+        typer.echo(json.dumps(payload, indent=2))
         return
     if not hits:
         typer.echo("No matches.")
         return
+    if hits[0].fuzzy:
+        # Say it once, up front: these are approximate, and the caller should
+        # know that before reading any of them.
+        typer.echo(f"No exact matches for {query!r}. Showing similar entries:\n")
     for h in hits:
-        typer.echo(f"{h.entry.id}  [{h.entry.kind}] {h.entry.title}")
+        marker = "~ " if h.fuzzy else ""
+        typer.echo(f"{marker}{h.entry.id}  [{h.entry.kind}] {h.entry.title}")
         typer.echo(f"    {h.snippet}")
 
 
