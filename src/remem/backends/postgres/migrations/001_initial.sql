@@ -47,7 +47,7 @@ create index entries_owner_idx  on entries (owner_id, project);
 
 create table collections (
   id uuid primary key,
-  slug text not null unique,
+  slug text not null,
   title text not null,
   description text,
   project text,
@@ -55,7 +55,8 @@ create table collections (
   owner_id uuid not null references principals(id),
   query jsonb not null default '{}',
   created_at timestamptz not null default clock_timestamp(),
-  updated_at timestamptz not null default clock_timestamp()
+  updated_at timestamptz not null default clock_timestamp(),
+  unique (owner_id, slug)
 );
 
 create table collection_members (

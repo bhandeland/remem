@@ -84,3 +84,12 @@ def test_an_empty_query_matches_nothing_rather_than_everything(store, owner):
     kb.create(store, owner.id, slug="s", title="T")
     remember(store, owner.id, title="Loose", body="b")
     assert kb.resolve(store, owner.id, "s") == []
+
+
+def test_a_pinned_entry_that_is_later_superseded_does_not_resurface(store, owner):
+    c = kb.create(store, owner.id, slug="s", title="T")
+    e = remember(store, owner.id, title="Old", body="b")
+    store.pin(c.id, e.id, position=0)
+    supersede(store, owner.id, e.id, title="New", body="b")
+    titles = [x.title for x in kb.resolve(store, owner.id, "s")]
+    assert "Old" not in titles

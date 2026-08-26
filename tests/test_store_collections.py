@@ -66,3 +66,24 @@ def test_pinning_twice_updates_position_instead_of_erroring(store, owner):
     store.pin(c.id, e.id, position=0)
     store.pin(c.id, e.id, position=5)
     assert len(store.pinned_entries(c.id, owner.id)) == 1
+
+
+def test_slug_uniqueness_is_scoped_per_owner_not_global(store, owner):
+    other = store.ensure_principal("someone-else")
+    store.put_collection(
+        Collection(id=new_id(), slug="core", title="Alice's KB", owner_id=owner.id)
+    )
+    store.put_collection(
+        Collection(id=new_id(), slug="core", title="Bob's KB", owner_id=other.id)
+    )
+
+    mine = store.get_collection("core", owner.id)
+    theirs = store.get_collection("core", other.id)
+
+    assert mine is not None
+    assert theirs is not None
+    assert mine.title == "Alice's KB"
+    assert theirs.title == "Bob's KB"
+    assert mine.id != theirs.id
+    assert [c.slug for c in store.list_collections(owner.id)] == ["core"]
+    assert [c.slug for c in store.list_collections(other.id)] == ["core"]

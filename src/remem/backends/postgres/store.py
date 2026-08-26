@@ -255,7 +255,7 @@ class PostgresStore:
                   %(id)s, %(slug)s, %(title)s, %(description)s, %(project)s,
                   %(scope)s, %(owner_id)s, %(query)s
                 )
-                on conflict (slug) do update set
+                on conflict (owner_id, slug) do update set
                   title = excluded.title, description = excluded.description,
                   project = excluded.project, scope = excluded.scope,
                   query = excluded.query, updated_at = now()
