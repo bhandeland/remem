@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from importlib.metadata import entry_points
 
 GROUP = "remem.agents"
@@ -14,7 +15,12 @@ def discover() -> dict[str, type]:
     for ep in entry_points(group=GROUP):
         try:
             found[ep.name] = ep.load()
-        except Exception:  # a broken third-party adapter must not break remem
+        except Exception as exc:  # a broken third-party adapter must not break remem
+            warnings.warn(
+                f"remem agent adapter '{ep.name}' ({ep.value}) failed to load: "
+                f"{exc!r}",
+                stacklevel=2,
+            )
             continue
     return found
 

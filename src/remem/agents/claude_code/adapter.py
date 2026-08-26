@@ -15,19 +15,33 @@ HOOK_COMMAND = "remem hook session-start"
 
 
 def _backup(path: Path) -> Path:
-    target = path.with_suffix(path.suffix + f".bak{int(time.time())}")
+    ts = int(time.time())
+    target = path.with_suffix(path.suffix + f".bak{ts}")
+    counter = 0
+    while target.exists():
+        counter += 1
+        target = path.with_suffix(path.suffix + f".bak{ts}-{counter}")
     shutil.copy2(path, target)
     return target
 
 
-def _read_json(path: Path, report: InstallReport) -> dict:
+def _backup_once(path: Path, backed_up: set[Path]) -> None:
+    """Back up path if it exists on disk and hasn't already been backed up
+    during this install run (avoids a redundant second backup of a file
+    _read_json already snapshotted because it was corrupt)."""
+    if path.exists() and path not in backed_up:
+        _backup(path)
+        backed_up.add(path)
+
+
+def _read_json(path: Path, report: InstallReport, backed_up: set[Path]) -> dict:
     if not path.exists():
         return {}
     raw = path.read_text()
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
-        _backup(path)
+        _backup_once(path, backed_up)
         report.warnings.append(
             f"{path} was not valid JSON. It has been backed up and replaced; "
             "check the backup for anything you need."
@@ -35,7 +49,8 @@ def _read_json(path: Path, report: InstallReport) -> dict:
         return {}
 
 
-def _write_json(path: Path, data: dict) -> None:
+def _write_json(path: Path, data: dict, backed_up: set[Path]) -> None:
+    _backup_once(path, backed_up)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2) + "\n")
 
@@ -46,27 +61,24 @@ class ClaudeCodeAdapter:
     def install(self, scope: str = "user", home: Path | None = None) -> InstallReport:
         home = home or Path.home()
         report = InstallReport(agent=self.name)
+        backed_up: set[Path] = set()
 
-        self._install_mcp(home, report)
-        self._install_hook(home, report)
+        self._install_mcp(home, report, backed_up)
+        self._install_hook(home, report, backed_up)
         self._install_skill(home, report)
         return report
 
-    def _install_mcp(self, home: Path, report: InstallReport) -> None:
+    def _install_mcp(self, home: Path, report: InstallReport, backed_up: set[Path]) -> None:
         path = home / ".claude.json"
-        config = _read_json(path, report)
-        if path.exists() and not any(
-            p.name.startswith(".claude.json.bak") for p in home.glob(".claude.json.bak*")
-        ):
-            _backup(path)
+        config = _read_json(path, report, backed_up)
         servers = config.setdefault("mcpServers", {})
         servers["remem"] = {"command": "remem", "args": ["serve"]}
-        _write_json(path, config)
+        _write_json(path, config, backed_up)
         report.actions.append(f"Registered the remem MCP server in {path}")
 
-    def _install_hook(self, home: Path, report: InstallReport) -> None:
+    def _install_hook(self, home: Path, report: InstallReport, backed_up: set[Path]) -> None:
         path = home / ".claude" / "settings.json"
-        settings = _read_json(path, report)
+        settings = _read_json(path, report, backed_up)
         hooks = settings.setdefault("hooks", {})
         session_start = hooks.setdefault("SessionStart", [])
 
@@ -84,7 +96,7 @@ class ClaudeCodeAdapter:
                     ],
                 }
             )
-            _write_json(path, settings)
+            _write_json(path, settings, backed_up)
             report.actions.append(f"Registered the SessionStart hook in {path}")
         else:
             report.actions.append("SessionStart hook already registered")

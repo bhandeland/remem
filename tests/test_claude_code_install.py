@@ -52,6 +52,55 @@ def test_install_is_idempotent(tmp_path):
     assert len(settings["hooks"]["SessionStart"]) == 1
     config = json.loads((tmp_path / ".claude.json").read_text())
     assert list(config["mcpServers"]) == ["remem"]
+    # .claude.json is rewritten on every install (it already exists after the
+    # first run), so the second run must back it up again.
+    assert len(list(tmp_path.glob(".claude.json.bak*"))) == 1
+    # settings.json is untouched on the second run (the hook is already
+    # registered), so no second backup should be made.
+    assert len(list((tmp_path / ".claude").glob("settings.json.bak*"))) == 0
+
+
+def test_install_backs_up_hand_edits_made_between_installs(tmp_path):
+    (tmp_path / ".claude.json").write_text(json.dumps({"theme": "dark"}))
+    ClaudeCodeAdapter().install(scope="user", home=tmp_path)
+
+    hand_edited = {"theme": "light", "custom": "value-added-by-hand"}
+    (tmp_path / ".claude.json").write_text(json.dumps(hand_edited))
+    ClaudeCodeAdapter().install(scope="user", home=tmp_path)
+
+    backups = list(tmp_path.glob(".claude.json.bak*"))
+    assert len(backups) == 2
+    contents = [json.loads(b.read_text()) for b in backups]
+    assert hand_edited in contents
+
+
+def test_install_backs_up_settings_before_overwriting(tmp_path):
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
+    existing = {"model": "opus", "permissions": {"allow": ["Bash"]}}
+    (claude_dir / "settings.json").write_text(json.dumps(existing))
+
+    ClaudeCodeAdapter().install(scope="user", home=tmp_path)
+
+    backups = list(claude_dir.glob("settings.json.bak*"))
+    assert len(backups) == 1
+    assert json.loads(backups[0].read_text()) == existing
+
+    settings = json.loads((claude_dir / "settings.json").read_text())
+    assert settings["model"] == "opus"
+    assert settings["permissions"] == {"allow": ["Bash"]}
+
+
+def test_backup_filenames_are_collision_safe(tmp_path):
+    from remem.agents.claude_code.adapter import _backup
+
+    path = tmp_path / ".claude.json"
+    path.write_text("{}")
+    first = _backup(path)
+    second = _backup(path)
+    assert first != second
+    assert first.exists()
+    assert second.exists()
 
 
 def test_corrupt_existing_config_is_reported_not_silently_replaced(tmp_path):
