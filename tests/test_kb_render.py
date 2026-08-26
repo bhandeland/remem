@@ -81,3 +81,22 @@ def test_empty_collection_renders_without_crashing():
     out = render(collection(), [], max_chars=1000)
     assert isinstance(out, str)
     assert "My KB" in out
+
+
+def test_total_output_never_exceeds_the_budget():
+    """The omitted-count notice is part of the block, so it must be budgeted.
+
+    Previously the notice was appended after the packing loop, so the returned
+    string could exceed max_chars by the notice's own length.
+    """
+    entries = [entry(f"Entry {i}", "x" * 200) for i in range(20)]
+    for budget in (400, 600, 800, 1500):
+        out = render(collection(slug="my-kb"), entries, max_chars=budget)
+        assert len(out) <= budget, (budget, len(out))
+
+
+def test_notice_still_appears_when_it_forces_dropping_another_entry():
+    entries = [entry(f"Entry {i}", "x" * 200) for i in range(20)]
+    out = render(collection(slug="my-kb"), entries, max_chars=600)
+    assert "more entries not shown" in out
+    assert len(out) <= 600

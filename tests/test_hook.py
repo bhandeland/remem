@@ -146,3 +146,35 @@ def test_debug_names_the_missing_knowledge_base(live_dsn, tmp_path, capsys):
     err = capsys.readouterr().err
     assert out == ""
     assert "unknown-proj" in err
+
+
+def test_main_guard_survives_a_failure_inside_session_start(monkeypatch, capsys):
+    """main() has its own try/except as a second layer. Prove it works.
+
+    Both other main() tests pass even if this guard is deleted, because
+    session_start's own guard already covers them. This one bypasses that by
+    making session_start itself raise.
+    """
+    import remem.agents.claude_code.hook as hook
+
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("session_start exploded")
+
+    monkeypatch.setattr(hook, "session_start", boom)
+    monkeypatch.setattr("sys.stdin", io.StringIO('{"cwd": "/tmp/x"}'))
+
+    assert hook.main() == 0
+    assert capsys.readouterr().out == ""
+
+
+def test_main_returns_zero_when_stdin_itself_raises(monkeypatch, capsys):
+    """A hook must exit 0 even if reading stdin fails."""
+    import remem.agents.claude_code.hook as hook
+
+    class ExplodingStdin:
+        def read(self):
+            raise OSError("stdin is gone")
+
+    monkeypatch.setattr("sys.stdin", ExplodingStdin())
+    assert hook.main() == 0
+    assert capsys.readouterr().out == ""

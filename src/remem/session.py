@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from urllib.parse import urlparse, urlunparse
 
 import psycopg
+from psycopg import sql
 
 from remem.backends.postgres.migrate import migrate
 from remem.backends.postgres.store import PostgresStore
@@ -34,7 +35,11 @@ def ensure_database(dsn: str) -> bool:
         ).fetchone()
         if exists:
             return False
-        admin.execute(f'create database "{dbname}"')
+        # Postgres cannot parameterise an identifier, so quote it properly
+        # rather than interpolating the raw string into the statement.
+        admin.execute(
+            sql.SQL("create database {}").format(sql.Identifier(dbname))
+        )
         return True
 
 

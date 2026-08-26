@@ -157,27 +157,42 @@ def render(collection: Collection, entries: list[Entry], max_chars: int) -> str:
             "prune the knowledge base or raise the budget"
         )
 
+    def _notice(count: int) -> str:
+        return (
+            f"\n- {count} more entries not shown "
+            f"(remem kb show {collection.slug} --full)\n"
+        )
+
+    heading = "\n## Knowledge\n"
     included = 0
     body_parts: list[str] = []
     for e in others:
         chunk = _render_entry(e)
-        if used + len(chunk) > max_chars:
+        extra = len(chunk) + (len(heading) if not body_parts else 0)
+        if used + extra > max_chars:
             break
         body_parts.append(chunk)
-        used += len(chunk)
+        used += extra
         included += 1
 
+    # The notice is part of the block, so it has to fit inside the budget too.
+    # Drop further entries until it does, rather than overshooting by its length.
+    while included < len(others) and used + len(_notice(len(others) - included)) > max_chars:
+        if not body_parts:
+            break
+        used -= len(body_parts.pop())
+        included -= 1
+        if not body_parts:
+            used -= len(heading)
+
     if body_parts:
-        parts.append("\n## Knowledge\n")
+        parts.append(heading)
         parts.extend(body_parts)
 
     omitted = len(others) - included
     if omitted:
         # Never truncate silently: a shortened block reads to an agent as
         # the complete picture.
-        parts.append(
-            f"\n- {omitted} more entries not shown "
-            f"(remem kb show {collection.slug} --full)\n"
-        )
+        parts.append(_notice(omitted))
 
     return "".join(parts)
