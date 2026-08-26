@@ -198,7 +198,7 @@ def kb_pin_tool(slug: str, entry_id: str) -> dict:
         entry = s.store.get_entry(parsed_entry_id, s.owner.id)
         if entry is None:
             return {"error": f"no entry {entry_id}"}
-        s.store.pin(collection.id, parsed_entry_id, 0)
+        s.store.pin(collection.id, parsed_entry_id, 0, s.owner.id)
         return {"pinned": entry_id, "slug": slug}
 
 

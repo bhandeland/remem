@@ -108,3 +108,22 @@ def test_set_superseded_refuses_when_new_entry_belongs_to_another_owner(store, o
     store.put_entry(foreign_new)
     assert store.set_superseded(old.id, foreign_new.id, owner.id) is False
     assert store.get_entry(old.id, owner.id).superseded_by is None
+
+
+def test_put_entry_cannot_overwrite_another_owners_entry(store, owner):
+    other = store.ensure_principal("mallory")
+    mine = store.put_entry(
+        Entry(id=new_id(), kind=Kind.MEMORY, title="Mine",
+              body="my body", owner_id=owner.id)
+    )
+
+    with pytest.raises(PermissionError):
+        store.put_entry(
+            Entry(id=mine.id, kind=Kind.MEMORY, title="PWNED",
+                  body="pwned body", owner_id=other.id)
+        )
+
+    unchanged = store.get_entry(mine.id, owner.id)
+    assert unchanged.title == "Mine"
+    assert unchanged.body == "my body"
+    assert unchanged.owner_id == owner.id

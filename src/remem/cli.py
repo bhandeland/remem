@@ -191,7 +191,7 @@ def kb_pin(slug: str, entry_id: str,
         except kb.CollectionNotFound:
             typer.echo(f"No knowledge base '{slug}'", err=True)
             raise typer.Exit(1)
-        s.store.pin(c.id, UUID(entry_id), position)
+        s.store.pin(c.id, UUID(entry_id), position, s.owner.id)
         typer.echo("pinned")
 
 

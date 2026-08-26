@@ -54,8 +54,8 @@ def test_pin_and_read_back_in_position_order(store, owner):
     store.put_collection(c)
     first = remember(store, owner.id, title="First", body="b")
     second = remember(store, owner.id, title="Second", body="b")
-    store.pin(c.id, second.id, position=0)
-    store.pin(c.id, first.id, position=1)
+    store.pin(c.id, second.id, position=0, owner_id=owner.id)
+    store.pin(c.id, first.id, position=1, owner_id=owner.id)
     assert [e.title for e in store.pinned_entries(c.id, owner.id)] == ["Second", "First"]
 
 
@@ -63,8 +63,8 @@ def test_pinning_twice_updates_position_instead_of_erroring(store, owner):
     c = Collection(id=new_id(), slug="s", title="T", owner_id=owner.id)
     store.put_collection(c)
     e = remember(store, owner.id, title="E", body="b")
-    store.pin(c.id, e.id, position=0)
-    store.pin(c.id, e.id, position=5)
+    store.pin(c.id, e.id, position=0, owner_id=owner.id)
+    store.pin(c.id, e.id, position=5, owner_id=owner.id)
     assert len(store.pinned_entries(c.id, owner.id)) == 1
 
 
@@ -87,3 +87,26 @@ def test_slug_uniqueness_is_scoped_per_owner_not_global(store, owner):
     assert mine.id != theirs.id
     assert [c.slug for c in store.list_collections(owner.id)] == ["core"]
     assert [c.slug for c in store.list_collections(other.id)] == ["core"]
+
+
+def test_pin_refuses_another_owners_entry(store, owner):
+    other = store.ensure_principal("mallory")
+    c = Collection(id=new_id(), slug="s", title="T", owner_id=owner.id)
+    store.put_collection(c)
+    theirs = remember(store, other.id, title="Theirs", body="b")
+
+    store.pin(c.id, theirs.id, position=0, owner_id=owner.id)
+
+    assert store.pinned_entries(c.id, owner.id) == []
+    assert store.pinned_entries(c.id, other.id) == []
+
+
+def test_pin_refuses_another_owners_collection(store, owner):
+    other = store.ensure_principal("mallory")
+    theirs = Collection(id=new_id(), slug="s", title="T", owner_id=other.id)
+    store.put_collection(theirs)
+    mine = remember(store, owner.id, title="Mine", body="b")
+
+    store.pin(theirs.id, mine.id, position=0, owner_id=owner.id)
+
+    assert store.pinned_entries(theirs.id, other.id) == []

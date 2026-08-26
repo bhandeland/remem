@@ -21,6 +21,7 @@ from remem.domain import (
     Scope,
     new_id,
 )
+from remem.store import NotOwner
 
 ENTRY_FIELDS = [
     "id", "kind", "title", "body", "project", "scope", "owner_id", "tags",
@@ -140,6 +141,7 @@ class PostgresStore:
                   session_id = excluded.session_id, origin = excluded.origin,
                   superseded_by = excluded.superseded_by,
                   updated_at = clock_timestamp()
+                where entries.owner_id = %(owner_id)s
                 returning {entry_columns()}
                 """,
                 {
@@ -158,7 +160,14 @@ class PostgresStore:
                     "superseded_by": entry.superseded_by,
                 },
             )
-            return _row_to_entry(cur.fetchone())
+            row = cur.fetchone()
+        if row is None:
+            # The id exists but belongs to someone else, so the ON CONFLICT
+            # update matched no row. Never silently drop the write.
+            raise NotOwner(
+                f"entry {entry.id} exists and is owned by another principal"
+            )
+        return _row_to_entry(row)
 
     def get_entry(self, entry_id: UUID, owner_id: UUID) -> Entry | None:
         with self._cur() as cur:
@@ -213,11 +222,15 @@ class PostgresStore:
             # type, and never raises a syntax error on odd input.
             params["text"] = text
             where.append("e.search @@ q")
+            # Empty StartSel/StopSel: the snippet feeds --json output and
+            # agent context, where ts_headline's default <b> tags are markup
+            # nobody renders and tokens everybody pays for.
             sql = f"""
                 select {entry_columns("e")},
                        ts_rank_cd(e.search, q) as rank,
                        ts_headline('english', e.body, q,
-                                   'MaxWords=32,MinWords=8,ShortWord=2') as snippet
+                                   'MaxWords=32,MinWords=8,ShortWord=2,'
+                                   'StartSel="",StopSel=""') as snippet
                 from entries e,
                      websearch_to_tsquery('english', %(text)s) q
                 where {" and ".join(where)}
@@ -296,16 +309,30 @@ class PostgresStore:
             )
             return [_row_to_collection(r) for r in cur.fetchall()]
 
-    def pin(self, collection_id: UUID, entry_id: UUID, position: int) -> None:
+    def pin(
+        self, collection_id: UUID, entry_id: UUID, position: int, owner_id: UUID
+    ) -> None:
+        """Pin an entry into a collection. Both must belong to owner_id."""
         with self._cur() as cur:
             cur.execute(
                 """
                 insert into collection_members (collection_id, entry_id, position)
-                values (%s, %s, %s)
+                select %(collection_id)s, %(entry_id)s, %(position)s
+                 where exists (select 1 from collections
+                                where id = %(collection_id)s
+                                  and owner_id = %(owner_id)s)
+                   and exists (select 1 from entries
+                                where id = %(entry_id)s
+                                  and owner_id = %(owner_id)s)
                 on conflict (collection_id, entry_id)
                   do update set position = excluded.position
                 """,
-                (collection_id, entry_id, position),
+                {
+                    "collection_id": collection_id,
+                    "entry_id": entry_id,
+                    "position": position,
+                    "owner_id": owner_id,
+                },
             )
 
     def pinned_entries(self, collection_id: UUID, owner_id: UUID) -> list[Entry]:

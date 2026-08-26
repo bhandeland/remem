@@ -28,7 +28,7 @@ def test_create_then_resolve_an_empty_collection(store, owner):
 def test_resolve_returns_pinned_entries(store, owner):
     c = kb.create(store, owner.id, slug="s", title="T")
     e = remember(store, owner.id, title="Pinned", body="b")
-    store.pin(c.id, e.id, position=0)
+    store.pin(c.id, e.id, position=0, owner_id=owner.id)
     assert [x.title for x in kb.resolve(store, owner.id, "s")] == ["Pinned"]
 
 
@@ -44,7 +44,7 @@ def test_resolve_dedupes_when_an_entry_is_both_pinned_and_matched(store, owner):
     c = kb.create(store, owner.id, slug="s", title="T",
                   query=CollectionQuery(tags=["style"]))
     e = remember(store, owner.id, title="Both", body="b", tags=["style"])
-    store.pin(c.id, e.id, position=0)
+    store.pin(c.id, e.id, position=0, owner_id=owner.id)
     assert [x.title for x in kb.resolve(store, owner.id, "s")] == ["Both"]
 
 
@@ -53,7 +53,7 @@ def test_pinned_entries_come_before_query_matches(store, owner):
                   query=CollectionQuery(tags=["style"]))
     matched = remember(store, owner.id, title="Matched", body="b", tags=["style"])
     pinned = remember(store, owner.id, title="Pinned", body="b")
-    store.pin(c.id, pinned.id, position=0)
+    store.pin(c.id, pinned.id, position=0, owner_id=owner.id)
     titles = [x.title for x in kb.resolve(store, owner.id, "s")]
     assert titles.index("Pinned") < titles.index("Matched")
 
@@ -89,7 +89,7 @@ def test_an_empty_query_matches_nothing_rather_than_everything(store, owner):
 def test_a_pinned_entry_that_is_later_superseded_does_not_resurface(store, owner):
     c = kb.create(store, owner.id, slug="s", title="T")
     e = remember(store, owner.id, title="Old", body="b")
-    store.pin(c.id, e.id, position=0)
+    store.pin(c.id, e.id, position=0, owner_id=owner.id)
     supersede(store, owner.id, e.id, title="New", body="b")
     titles = [x.title for x in kb.resolve(store, owner.id, "s")]
     assert "Old" not in titles

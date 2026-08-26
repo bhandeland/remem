@@ -124,3 +124,11 @@ def test_tags_are_searchable_text(store, owner):
     add(store, owner, "Untitled", "nothing relevant here", tags=["kubernetes"])
     hits = store.search(Query(text="kubernetes"), owner.id)
     assert [h.entry.title for h in hits] == ["Untitled"]
+
+
+def test_snippet_is_plain_text_without_markup(store, owner):
+    add(store, owner, "Deploys", "Run migrations before restarting workers.")
+    hits = store.search(Query(text="migrations"), owner.id)
+    assert "<b>" not in hits[0].snippet
+    assert "</b>" not in hits[0].snippet
+    assert "migrations" in hits[0].snippet
