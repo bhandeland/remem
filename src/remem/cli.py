@@ -5,9 +5,11 @@ from __future__ import annotations
 
 import json
 import sys
+from contextlib import contextmanager
 from typing import Annotated, Optional
 from uuid import UUID
 
+import psycopg
 import typer
 
 from remem.backends.postgres.migrate import applied_versions, migrate, pending_versions
@@ -22,6 +24,46 @@ db_app = typer.Typer(help="Database setup and status.")
 kb_app = typer.Typer(help="Knowledge bases.")
 app.add_typer(db_app, name="db")
 app.add_typer(kb_app, name="kb")
+
+
+def _unreachable(dsn: str) -> None:
+    """Docker not running is this tool's expected failure mode; say so."""
+    typer.echo(
+        f"Cannot reach Postgres at {dsn}. Start it with `docker compose up -d` "
+        "(and make sure Docker itself is running).",
+        err=True,
+    )
+    raise typer.Exit(1)
+
+
+@contextmanager
+def _session():
+    """open_session() with the one failure every command shares handled once."""
+    cfg = load()
+    try:
+        with open_session(cfg) as s:
+            yield s
+    except psycopg.OperationalError:
+        _unreachable(cfg.dsn)
+
+
+@contextmanager
+def _connect(dsn: str):
+    """A bare connection, for the db commands that run before the schema
+    exists: open_session() seeds the principal, which needs its table."""
+    try:
+        with psycopg.connect(dsn) as conn:
+            yield conn
+    except psycopg.OperationalError:
+        _unreachable(dsn)
+
+
+def _entry_id(value: str) -> UUID:
+    try:
+        return UUID(value)
+    except ValueError:
+        typer.echo(f"'{value}' is not a valid entry id", err=True)
+        raise typer.Exit(1)
 
 
 def _entry_dict(entry: Entry, snippet: str | None = None) -> dict:
@@ -51,7 +93,7 @@ def _read_body(body: str | None) -> str:
 @app.command()
 def whoami():
     """Show the active principal and database."""
-    with open_session() as s:
+    with _session() as s:
         typer.echo(f"{s.owner.handle}  ({s.owner.id})")
         typer.echo(s.config.dsn)
 
@@ -66,7 +108,7 @@ def remember(
 ):
     """Store a memory, doc, or rule."""
     text = _read_body(body)
-    with open_session() as s:
+    with _session() as s:
         entry = write.remember(
             s.store, s.owner.id, title=title, body=text, kind=kind,
             project=project, tags=list(tag or []), origin=Origin.HUMAN,
@@ -84,7 +126,7 @@ def search(
     as_json: Annotated[bool, typer.Option("--json")] = False,
 ):
     """Search stored knowledge."""
-    with open_session() as s:
+    with _session() as s:
         hits = find(
             s.store, s.owner.id,
             Query(text=query, kinds=list(kind or []), project=project,
@@ -107,8 +149,9 @@ def get(
     as_json: Annotated[bool, typer.Option("--json")] = False,
 ):
     """Print one entry in full."""
-    with open_session() as s:
-        entry = s.store.get_entry(UUID(entry_id), s.owner.id)
+    parsed = _entry_id(entry_id)
+    with _session() as s:
+        entry = s.store.get_entry(parsed, s.owner.id)
     if entry is None:
         typer.echo(f"No entry {entry_id}", err=True)
         raise typer.Exit(1)
@@ -126,10 +169,11 @@ def update(
     body: Annotated[Optional[str], typer.Option("--body")] = None,
 ):
     """Edit an entry in place (for typos - use supersede for corrections)."""
+    parsed = _entry_id(entry_id)
     text = _read_body(body) if body is not None else None
-    with open_session() as s:
+    with _session() as s:
         try:
-            entry = write.update(s.store, s.owner.id, UUID(entry_id),
+            entry = write.update(s.store, s.owner.id, parsed,
                                  title=title, body=text)
         except write.EntryNotFound:
             typer.echo(f"No entry {entry_id}", err=True)
@@ -144,10 +188,11 @@ def supersede(
     body: Annotated[Optional[str], typer.Option("--body")] = None,
 ):
     """Replace knowledge that stopped being true. The old entry is kept."""
+    parsed = _entry_id(entry_id)
     text = _read_body(body)
-    with open_session() as s:
+    with _session() as s:
         try:
-            entry = write.supersede(s.store, s.owner.id, UUID(entry_id),
+            entry = write.supersede(s.store, s.owner.id, parsed,
                                     title=title, body=text)
         except write.EntryNotFound:
             typer.echo(f"No entry {entry_id}", err=True)
@@ -164,7 +209,7 @@ def kb_new(
     tag: Annotated[Optional[list[str]], typer.Option("--tag")] = None,
 ):
     """Create a knowledge base."""
-    with open_session() as s:
+    with _session() as s:
         c = kb.create(
             s.store, s.owner.id, slug=slug, title=title,
             description=description, project=project,
@@ -176,7 +221,7 @@ def kb_new(
 @kb_app.command("list")
 def kb_list():
     """List knowledge bases."""
-    with open_session() as s:
+    with _session() as s:
         for c in s.store.list_collections(s.owner.id):
             typer.echo(f"{c.slug}\t{c.title}")
 
@@ -185,9 +230,10 @@ def kb_list():
 def kb_pin(slug: str, entry_id: str,
            position: Annotated[int, typer.Option("--position")] = 0):
     """Pin an entry into a knowledge base."""
-    with open_session() as s:
+    parsed = _entry_id(entry_id)
+    with _session() as s:
         try:
-            kb.pin(s.store, s.owner.id, slug, UUID(entry_id), position)
+            kb.pin(s.store, s.owner.id, slug, parsed, position)
         except kb.CollectionNotFound:
             typer.echo(f"No knowledge base '{slug}'", err=True)
             raise typer.Exit(1)
@@ -204,7 +250,7 @@ def kb_show(
     full: Annotated[bool, typer.Option("--full")] = False,
 ):
     """Render a knowledge base as a context block."""
-    with open_session() as s:
+    with _session() as s:
         try:
             collection = kb.get(s.store, s.owner.id, slug)
             entries = kb.resolve(s.store, s.owner.id, slug)
@@ -222,18 +268,17 @@ def kb_show(
 @db_app.command("up")
 def db_up():
     """Create the database, apply migrations, and seed the principal."""
-    import psycopg
-
     from remem.backends.postgres.store import PostgresStore
 
     cfg = load()
-    created = ensure_database(cfg.dsn)
+    try:
+        created = ensure_database(cfg.dsn)
+    except psycopg.OperationalError:
+        _unreachable(cfg.dsn)
     if created:
         typer.echo(f"Created database at {cfg.dsn}")
 
-    # Migrations must run on a bare connection: open_session() seeds the
-    # principal, which needs the principals table to already exist.
-    with psycopg.connect(cfg.dsn) as conn:
+    with _connect(cfg.dsn) as conn:
         applied = migrate(conn)
         conn.commit()
         owner = PostgresStore(conn).ensure_principal(cfg.user_handle)
@@ -246,19 +291,21 @@ def db_up():
 @db_app.command("migrate")
 def db_migrate():
     """Apply pending migrations."""
-    with open_session() as s:
-        applied = migrate(s.conn)
-        s.conn.commit()
+    cfg = load()
+    with _connect(cfg.dsn) as conn:
+        applied = migrate(conn)
+        conn.commit()
     typer.echo(", ".join(applied) if applied else "nothing pending")
 
 
 @db_app.command("status")
 def db_status():
     """Show connectivity and migration state."""
-    with open_session() as s:
-        typer.echo(f"Connected: {s.config.dsn}")
-        typer.echo(f"Applied:   {', '.join(applied_versions(s.conn)) or 'none'}")
-        typer.echo(f"Pending:   {', '.join(pending_versions(s.conn)) or 'none'}")
+    cfg = load()
+    with _connect(cfg.dsn) as conn:
+        typer.echo(f"Connected: {cfg.dsn}")
+        typer.echo(f"Applied:   {', '.join(applied_versions(conn)) or 'none'}")
+        typer.echo(f"Pending:   {', '.join(pending_versions(conn)) or 'none'}")
 
 
 @app.command()

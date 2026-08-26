@@ -123,3 +123,75 @@ def test_kb_pin_with_an_unknown_entry_exits_cleanly(env):
     assert "No entry" in r.stderr
     assert "Traceback" not in r.stdout + r.stderr
     assert r.exception is None or isinstance(r.exception, SystemExit)
+
+
+def test_get_with_a_malformed_id_exits_cleanly(env):
+    r = runner.invoke(app, ["get", "abc"])
+    assert r.exit_code != 0
+    assert "not a valid entry id" in r.stderr
+    assert "Traceback" not in r.stdout + r.stderr
+
+
+def test_supersede_with_a_malformed_id_exits_cleanly(env):
+    r = runner.invoke(app, ["supersede", "abc", "--title", "T", "--body", "b"])
+    assert r.exit_code != 0
+    assert "not a valid entry id" in r.stderr
+
+
+def test_commands_report_an_unreachable_postgres_without_a_traceback(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setenv("REMEM_DSN", "postgresql://remem@127.0.0.1:1/remem")
+    monkeypatch.setenv("REMEM_CONFIG", str(tmp_path / "none.toml"))
+    r = runner.invoke(app, ["search", "anything"])
+    assert r.exit_code != 0
+    assert "Cannot reach Postgres at postgresql://remem@127.0.0.1:1/remem" in r.stderr
+    assert "docker compose up -d" in r.stderr
+    assert "Traceback" not in r.stdout + r.stderr
+
+
+@pytest.fixture
+def unmigrated_dsn():
+    """A freshly created database with no migrations applied."""
+    import uuid
+
+    import psycopg
+
+    from tests.conftest import ADMIN_DSN, SKIP_REASON, _server_is_up
+
+    if not _server_is_up():
+        pytest.skip(SKIP_REASON)
+    name = f"remem_bare_{uuid.uuid4().hex[:12]}"
+    with psycopg.connect(ADMIN_DSN, autocommit=True) as admin:
+        admin.execute(f'create database "{name}"')
+    try:
+        yield ADMIN_DSN.rsplit("/", 1)[0] + "/" + name
+    finally:
+        with psycopg.connect(ADMIN_DSN, autocommit=True) as admin:
+            admin.execute(f'drop database if exists "{name}"')
+
+
+def test_db_status_on_an_unmigrated_database_reports_pending(
+    unmigrated_dsn, monkeypatch, tmp_path
+):
+    monkeypatch.setenv("REMEM_DSN", unmigrated_dsn)
+    monkeypatch.setenv("REMEM_CONFIG", str(tmp_path / "none.toml"))
+    r = runner.invoke(app, ["db", "status"])
+    assert r.exit_code == 0, r.stdout + r.stderr
+    assert "Applied:   none" in r.stdout
+    assert "001_initial" in r.stdout
+    assert "Traceback" not in r.stdout + r.stderr
+
+
+def test_db_migrate_on_an_unmigrated_database_applies_it(
+    unmigrated_dsn, monkeypatch, tmp_path
+):
+    monkeypatch.setenv("REMEM_DSN", unmigrated_dsn)
+    monkeypatch.setenv("REMEM_CONFIG", str(tmp_path / "none.toml"))
+    r = runner.invoke(app, ["db", "migrate"])
+    assert r.exit_code == 0, r.stdout + r.stderr
+    assert "001_initial" in r.stdout
+    assert "Traceback" not in r.stdout + r.stderr
+
+    again = runner.invoke(app, ["db", "status"])
+    assert "Applied:   001_initial" in again.stdout
