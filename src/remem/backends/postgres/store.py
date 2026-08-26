@@ -9,10 +9,12 @@ from psycopg.rows import dict_row
 
 from remem.domain import (
     Entry,
+    Hit,
     Kind,
     Origin,
     Principal,
     PrincipalKind,
+    Query,
     Scope,
     new_id,
 )
@@ -156,3 +158,59 @@ class PostgresStore:
                 (new_entry_id, old_id, owner_id),
             )
             return cur.rowcount == 1
+
+    def search(self, query: Query, owner_id: UUID) -> list[Hit]:
+        """Ranked search. Owner and superseded filters are always applied."""
+        text = (query.text or "").strip()
+        params: dict = {"owner_id": owner_id, "limit": query.limit}
+        where = ["e.owner_id = %(owner_id)s"]
+
+        if not query.include_superseded:
+            where.append("e.superseded_by is null")
+        if query.kinds:
+            where.append("e.kind = any(%(kinds)s::entry_kind[])")
+            params["kinds"] = [str(k) for k in query.kinds]
+        if query.project is not None:
+            where.append("e.project = %(project)s")
+            params["project"] = query.project
+        if query.tags:
+            where.append("e.tags && %(tags)s")
+            params["tags"] = list(query.tags)
+        if query.since is not None:
+            where.append("e.created_at >= %(since)s")
+            params["since"] = query.since
+
+        if text:
+            # websearch_to_tsquery accepts what people and agents actually
+            # type, and never raises a syntax error on odd input.
+            params["text"] = text
+            where.append("e.search @@ q")
+            sql = f"""
+                select {entry_columns("e")},
+                       ts_rank_cd(e.search, q) as rank,
+                       ts_headline('english', e.body, q,
+                                   'MaxWords=32,MinWords=8,ShortWord=2') as snippet
+                from entries e,
+                     websearch_to_tsquery('english', %(text)s) q
+                where {" and ".join(where)}
+                order by rank desc, e.created_at desc
+                limit %(limit)s
+            """
+        else:
+            sql = f"""
+                select {entry_columns("e")},
+                       0::float4 as rank,
+                       left(e.body, 200) as snippet
+                from entries e
+                where {" and ".join(where)}
+                order by e.created_at desc
+                limit %(limit)s
+            """
+
+        with self._cur() as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
+        return [
+            Hit(entry=_row_to_entry(r), rank=float(r["rank"]), snippet=r["snippet"])
+            for r in rows
+        ]
