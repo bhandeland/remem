@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from remem.domain import Collection, CollectionQuery, Entry, Query, new_id
+from remem.domain import Collection, CollectionQuery, Entry, Kind, Query, new_id
 from remem.store import Store
 
 RESOLVE_LIMIT = 200
@@ -68,3 +68,68 @@ def resolve(store: Store, owner_id: UUID, slug: str) -> list[Entry]:
 
     # A pinned entry that was later superseded should not resurface.
     return [e for e in entries if e.superseded_by is None]
+
+
+class RulesExceedBudget(Exception):
+    """Rules alone do not fit the character budget.
+
+    Raised rather than truncating: an agent given a partial rule proceeds
+    believing it has the conventions, which is worse than having none.
+    """
+
+
+def _render_entry(entry: Entry) -> str:
+    tags = ", ".join(entry.tags)
+    meta = f"_id: {entry.id}_" + (f" _tags: {tags}_" if tags else "")
+    return f"### {entry.title}\n\n{entry.body}\n\n{meta}\n"
+
+
+def render(collection: Collection, entries: list[Entry], max_chars: int) -> str:
+    """Render a knowledge base as a context block.
+
+    Rules first and never truncated; then other entries, whole ones only,
+    until the budget runs out; then an explicit count of what was dropped.
+    """
+    header = f"# {collection.title}\n"
+    if collection.description:
+        header += f"\n{collection.description}\n"
+
+    rules = [e for e in entries if e.kind == Kind.RULE]
+    others = [e for e in entries if e.kind != Kind.RULE]
+
+    parts = [header]
+    if rules:
+        parts.append("\n## Rules\n")
+        parts.extend(_render_entry(e) for e in rules)
+
+    used = sum(len(p) for p in parts)
+    if used > max_chars:
+        raise RulesExceedBudget(
+            f"rules and header need {used} chars, budget is {max_chars}; "
+            "prune the knowledge base or raise the budget"
+        )
+
+    included = 0
+    body_parts: list[str] = []
+    for e in others:
+        chunk = _render_entry(e)
+        if used + len(chunk) > max_chars:
+            break
+        body_parts.append(chunk)
+        used += len(chunk)
+        included += 1
+
+    if body_parts:
+        parts.append("\n## Knowledge\n")
+        parts.extend(body_parts)
+
+    omitted = len(others) - included
+    if omitted:
+        # Never truncate silently: a shortened block reads to an agent as
+        # the complete picture.
+        parts.append(
+            f"\n- {omitted} more entries not shown "
+            f"(remem kb show {collection.slug} --full)\n"
+        )
+
+    return "".join(parts)
