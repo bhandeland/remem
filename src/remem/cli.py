@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import sys
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Annotated, Optional
 from uuid import UUID
 
@@ -24,6 +25,13 @@ db_app = typer.Typer(help="Database setup and status.")
 kb_app = typer.Typer(help="Knowledge bases.")
 app.add_typer(db_app, name="db")
 app.add_typer(kb_app, name="kb")
+
+capture_app = typer.Typer(help="Automatic capture of session knowledge.")
+app.add_typer(capture_app, name="capture")
+
+
+def _default_project() -> str:
+    return Path.cwd().name
 
 
 def _unreachable(dsn: str) -> None:
@@ -422,6 +430,92 @@ def hook_session_start():
     from remem.agents.claude_code.hook import main as hook_main
 
     raise typer.Exit(hook_main())
+
+
+@hook_app.command("session-end")
+def hook_session_end():
+    """Queue this session for capture. Always exits 0."""
+    from remem.agents.claude_code.hook import main_session_end
+
+    raise typer.Exit(main_session_end())
+
+
+@capture_app.command("enable")
+def capture_enable(
+    project: Annotated[Optional[str], typer.Option("--project")] = None,
+):
+    """Turn on automatic capture for a project (defaults to this directory)."""
+    from remem.services import capture
+
+    name = project or _default_project()
+    with _session() as s:
+        capture.enable(s.store, s.owner.id, name)
+    typer.echo(f"capture enabled for '{name}'")
+
+
+@capture_app.command("disable")
+def capture_disable(
+    project: Annotated[Optional[str], typer.Option("--project")] = None,
+):
+    """Turn off automatic capture for a project."""
+    from remem.services import capture
+
+    name = project or _default_project()
+    with _session() as s:
+        capture.disable(s.store, s.owner.id, name)
+    typer.echo(f"capture disabled for '{name}'")
+
+
+@capture_app.command("status")
+def capture_status(
+    as_json: Annotated[bool, typer.Option("--json")] = False,
+):
+    """Show what capture has queued, done, and failed."""
+    with _session() as s:
+        counts = s.store.capture_job_counts(s.owner.id)
+        failures = s.store.recent_failed_capture_jobs(s.owner.id)
+        rows = s.conn.execute(
+            "select project from capture_settings "
+            "where owner_id = %s and enabled order by project",
+            (s.owner.id,),
+        ).fetchall()
+        projects = [r[0] for r in rows]
+
+    if as_json:
+        typer.echo(json.dumps({
+            "enabled_projects": projects,
+            "counts": counts,
+            "failures": [
+                {"id": str(f.id), "project": f.project, "error": f.error}
+                for f in failures
+            ],
+        }, indent=2))
+        return
+
+    typer.echo(f"Capture enabled for: {', '.join(projects) or 'no projects'}")
+    if counts:
+        typer.echo("Jobs: " + ", ".join(f"{k}={v}" for k, v in sorted(counts.items())))
+    else:
+        typer.echo("Jobs: none yet")
+    for f in failures:
+        typer.echo(f"  failed {f.id} [{f.project}]: {f.error}")
+
+
+@capture_app.command("drain")
+def capture_drain(
+    limit: Annotated[int, typer.Option("--limit")] = 10,
+):
+    """Distil queued sessions into entries."""
+    from remem.distill.claude_cli import ClaudeCliDistiller
+    from remem.services import capture
+
+    with _session() as s:
+        report = capture.drain(s.store, s.owner.id, ClaudeCliDistiller(),
+                               limit=limit)
+    typer.echo(
+        f"claimed {report.claimed}, succeeded {report.succeeded}, "
+        f"failed {report.failed}, entries written {report.entries_written}"
+    )
 
 
 if __name__ == "__main__":

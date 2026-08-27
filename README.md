@@ -34,6 +34,25 @@ typo-tolerant matching and marks those results — `~` in terminal output,
 appear only when there were no exact ones, so they never dilute a good result
 set. `REMEM_FUZZY_THRESHOLD` (default `0.3`) controls how close a match must be.
 
+## Automatic capture
+
+remem can distil finished sessions into entries by itself. It is **off** until
+you turn it on for a project:
+
+```bash
+remem capture enable          # this directory
+remem capture status
+```
+
+When a session ends, a hook records it in a queue. Distillation happens later —
+on your next session, or when you run `remem capture drain` — by asking
+`claude -p` to extract at most five durable facts. Captured entries have
+`origin='capture'`, appear in `remem search` and the MCP `recall` tool, and are
+deliberately **excluded from knowledge base context blocks** so machine-written
+text never crowds out rules you wrote. Promote a good one with `remem kb pin`.
+
+Nothing is captured from a project you have not enabled.
+
 A knowledge base collects entries two ways: everything matching its query
 (`--project` and `--tag`) plus anything pinned into it with
 `remem kb pin <slug> <entry-id>`. A knowledge base created with neither

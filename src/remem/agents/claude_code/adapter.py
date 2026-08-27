@@ -12,10 +12,17 @@ from typing import Mapping
 from remem.agents.base import Identity, InstallReport, UnsupportedScope
 
 HOOK_COMMAND = "remem hook session-start"
+SESSION_END_COMMAND = "remem hook session-end"
 
 SLUG_CONVENTION = (
     "The SessionStart hook injects the knowledge base whose slug matches the "
     "session's directory name - create one with `remem kb new <dirname>`."
+)
+
+CAPTURE_NOTE = (
+    "Automatic capture is OFF until you enable it per project: "
+    "`remem capture enable --project <name>`. Nothing is recorded from a "
+    "project you did not choose."
 )
 
 
@@ -78,6 +85,7 @@ class ClaudeCodeAdapter:
         self._install_hook(home, report, backed_up)
         self._install_skill(home, report)
         report.notes.append(SLUG_CONVENTION)
+        report.notes.append(CAPTURE_NOTE)
         return report
 
     def _install_mcp(self, home: Path, report: InstallReport, backed_up: set[Path]) -> None:
@@ -92,26 +100,34 @@ class ClaudeCodeAdapter:
         path = home / ".claude" / "settings.json"
         settings = _read_json(path, report, backed_up)
         hooks = settings.setdefault("hooks", {})
-        session_start = hooks.setdefault("SessionStart", [])
 
-        already = any(
-            HOOK_COMMAND in h.get("command", "")
-            for group in session_start
-            for h in group.get("hooks", [])
-        )
-        if not already:
-            session_start.append(
+        changed = False
+        for event, command, timeout in (
+            ("SessionStart", HOOK_COMMAND, 10),
+            ("SessionEnd", SESSION_END_COMMAND, 10),
+        ):
+            groups = hooks.setdefault(event, [])
+            already = any(
+                command in h.get("command", "")
+                for group in groups
+                for h in group.get("hooks", [])
+            )
+            if already:
+                report.actions.append(f"{event} hook already registered")
+                continue
+            groups.append(
                 {
                     "matcher": "",
                     "hooks": [
-                        {"type": "command", "command": HOOK_COMMAND, "timeout": 10}
+                        {"type": "command", "command": command, "timeout": timeout}
                     ],
                 }
             )
+            changed = True
+            report.actions.append(f"Registered the {event} hook in {path}")
+
+        if changed:
             _write_json(path, settings, backed_up)
-            report.actions.append(f"Registered the SessionStart hook in {path}")
-        else:
-            report.actions.append("SessionStart hook already registered")
 
     def _install_skill(self, home: Path, report: InstallReport) -> None:
         target = home / ".claude" / "skills" / "remem"
