@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-import json
 import os
 import shutil
-import time
 from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
 from typing import Mapping
 
+from remem import jsonfile
 from remem.agents.base import Identity, InstallReport, UnsupportedScope
 from remem.project import resolve_project
 
@@ -81,47 +80,6 @@ def resolve_paths(home: Path, env: Mapping[str, str]) -> ClaudePaths:
     return ClaudePaths(home / ".claude", home / ".claude.json", relocated=False)
 
 
-def _backup(path: Path) -> Path:
-    ts = int(time.time())
-    target = path.with_suffix(path.suffix + f".bak{ts}")
-    counter = 0
-    while target.exists():
-        counter += 1
-        target = path.with_suffix(path.suffix + f".bak{ts}-{counter}")
-    shutil.copy2(path, target)
-    return target
-
-
-def _backup_once(path: Path, backed_up: set[Path]) -> None:
-    """Back up path if it exists on disk and hasn't already been backed up
-    during this install run (avoids a redundant second backup of a file
-    _read_json already snapshotted because it was corrupt)."""
-    if path.exists() and path not in backed_up:
-        _backup(path)
-        backed_up.add(path)
-
-
-def _read_json(path: Path, report: InstallReport, backed_up: set[Path]) -> dict:
-    if not path.exists():
-        return {}
-    raw = path.read_text()
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError:
-        _backup_once(path, backed_up)
-        report.warnings.append(
-            f"{path} was not valid JSON. It has been backed up and replaced; "
-            "check the backup for anything you need."
-        )
-        return {}
-
-
-def _write_json(path: Path, data: dict, backed_up: set[Path]) -> None:
-    _backup_once(path, backed_up)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, indent=2) + "\n")
-
-
 class ClaudeCodeAdapter:
     name = "claude-code"
 
@@ -161,17 +119,19 @@ class ClaudeCodeAdapter:
         self, paths: ClaudePaths, report: InstallReport, backed_up: set[Path]
     ) -> None:
         path = paths.global_json
-        config = _read_json(path, report, backed_up)
+        config, warnings = jsonfile.read_json(path, backed_up)
+        report.warnings.extend(warnings)
         servers = config.setdefault("mcpServers", {})
         servers["remem"] = {"command": "remem", "args": ["serve"]}
-        _write_json(path, config, backed_up)
+        jsonfile.write_json(path, config, backed_up)
         report.actions.append(f"Registered the remem MCP server in {path}")
 
     def _install_hook(
         self, paths: ClaudePaths, report: InstallReport, backed_up: set[Path]
     ) -> None:
         path = paths.settings
-        settings = _read_json(path, report, backed_up)
+        settings, warnings = jsonfile.read_json(path, backed_up)
+        report.warnings.extend(warnings)
         hooks = settings.setdefault("hooks", {})
 
         changed = False
@@ -203,7 +163,7 @@ class ClaudeCodeAdapter:
             report.actions.append(f"Registered the {event} hook in {path}")
 
         if changed:
-            _write_json(path, settings, backed_up)
+            jsonfile.write_json(path, settings, backed_up)
 
     def _install_skill(self, paths: ClaudePaths, report: InstallReport) -> None:
         """Install every bundled skill directory.

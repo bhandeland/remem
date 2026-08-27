@@ -4,6 +4,7 @@ import pytest
 
 from remem.agents.base import UnsupportedScope
 from remem.agents.claude_code.adapter import ClaudeCodeAdapter
+from remem.jsonfile import backup
 
 
 def test_install_writes_the_mcp_server_entry(tmp_path):
@@ -98,12 +99,10 @@ def test_install_backs_up_settings_before_overwriting(tmp_path):
 
 
 def test_backup_filenames_are_collision_safe(tmp_path):
-    from remem.agents.claude_code.adapter import _backup
-
     path = tmp_path / ".claude.json"
     path.write_text("{}")
-    first = _backup(path)
-    second = _backup(path)
+    first = backup(path)
+    second = backup(path)
     assert first != second
     assert first.exists()
     assert second.exists()
