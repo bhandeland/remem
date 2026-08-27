@@ -5,6 +5,7 @@ import psycopg
 import pytest
 
 from remem.agents.claude_code import hook
+from remem.agents.claude_code.adapter import ClaudeCodeAdapter
 from remem.backends.postgres.migrate import migrate
 from remem.backends.postgres.store import PostgresStore
 from remem.services import capture
@@ -51,7 +52,18 @@ def test_main_session_end_exits_zero_when_stdin_raises(monkeypatch, capsys):
 
 def test_the_recursion_guard_stops_the_hook_before_any_work(monkeypatch, tmp_path):
     """claude -p starts a session whose SessionEnd hook would enqueue another
-    job, spawning another claude, without bound."""
+    job, spawning another claude, without bound.
+
+    Asserting on `identity` rather than on `enqueue`: with the guard removed,
+    an unreachable database would ALSO prevent an enqueue, so an enqueue-based
+    assertion passes for the wrong reason and the deleted guard goes unnoticed.
+    `identity` is reached immediately after the guard and touches no I/O.
+    """
+    reached = []
+    monkeypatch.setattr(
+        ClaudeCodeAdapter, "identity",
+        lambda self, env, payload: reached.append(1),
+    )
     called = []
     monkeypatch.setattr(
         capture, "enqueue", lambda *a, **k: called.append(1)
@@ -61,6 +73,7 @@ def test_the_recursion_guard_stops_the_hook_before_any_work(monkeypatch, tmp_pat
     hook.session_end(
         _payload(str(tmp_path), str(t)), env={"REMEM_CAPTURE_CHILD": "1"}
     )
+    assert reached == []
     assert called == []
 
 
