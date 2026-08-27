@@ -53,6 +53,9 @@ def test_install_is_idempotent(tmp_path):
     ClaudeCodeAdapter().install(scope="user", home=tmp_path)
     settings = json.loads((tmp_path / ".claude" / "settings.json").read_text())
     assert len(settings["hooks"]["SessionStart"]) == 1
+    # SessionEnd is what enqueues capture jobs; a duplicate block would
+    # enqueue the same session twice on every exit.
+    assert len(settings["hooks"]["SessionEnd"]) == 1
     config = json.loads((tmp_path / ".claude.json").read_text())
     assert list(config["mcpServers"]) == ["remem"]
     # .claude.json is rewritten on every install (it already exists after the
