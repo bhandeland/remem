@@ -14,6 +14,7 @@ from remem.project import resolve_project
 
 HOOK_COMMAND = "remem hook session-start"
 SESSION_END_COMMAND = "remem hook session-end"
+SESSION_SIZE_COMMAND = "remem hook session-size"
 
 SLUG_CONVENTION = (
     "The SessionStart hook injects the knowledge base whose slug matches the "
@@ -24,6 +25,11 @@ CAPTURE_NOTE = (
     "Automatic capture is OFF until you enable it per project: "
     "`remem capture enable --project <name>`. Nothing is recorded from a "
     "project you did not choose."
+)
+
+HANDOFF_NOTE = (
+    "Long sessions get a handoff reminder at 150 turns, then every 50 - "
+    "tune it with REMEM_TURN_WARN_AT and REMEM_TURN_WARN_EVERY."
 )
 
 
@@ -87,6 +93,7 @@ class ClaudeCodeAdapter:
         self._install_skill(home, report)
         report.notes.append(SLUG_CONVENTION)
         report.notes.append(CAPTURE_NOTE)
+        report.notes.append(HANDOFF_NOTE)
         return report
 
     def _install_mcp(self, home: Path, report: InstallReport, backed_up: set[Path]) -> None:
@@ -106,6 +113,9 @@ class ClaudeCodeAdapter:
         for event, command, timeout in (
             ("SessionStart", HOOK_COMMAND, 10),
             ("SessionEnd", SESSION_END_COMMAND, 10),
+            # Runs on every prompt, so it gets the shortest timeout of the
+            # three; it reads one file and never opens Postgres.
+            ("UserPromptSubmit", SESSION_SIZE_COMMAND, 5),
         ):
             groups = hooks.setdefault(event, [])
             already = any(
@@ -131,11 +141,22 @@ class ClaudeCodeAdapter:
             _write_json(path, settings, backed_up)
 
     def _install_skill(self, home: Path, report: InstallReport) -> None:
-        target = home / ".claude" / "skills" / "remem"
-        target.mkdir(parents=True, exist_ok=True)
-        source = resources.files("remem.agents.claude_code") / "skill" / "SKILL.md"
-        (target / "SKILL.md").write_text(source.read_text())
-        report.actions.append(f"Installed the remem skill in {target}")
+        """Install every bundled skill directory.
+
+        Iterating rather than naming one file: a later skill is a new
+        directory under skills/ and nothing else.
+        """
+        root = home / ".claude" / "skills"
+        source_root = resources.files("remem.agents.claude_code") / "skills"
+        for skill_dir in sorted(source_root.iterdir(), key=lambda p: p.name):
+            if not skill_dir.is_dir():
+                continue
+            target = root / skill_dir.name
+            target.mkdir(parents=True, exist_ok=True)
+            for item in skill_dir.iterdir():
+                if item.is_file():
+                    (target / item.name).write_text(item.read_text())
+            report.actions.append(f"Installed the {skill_dir.name} skill in {target}")
 
     def identity(self, env: Mapping[str, str], payload: dict) -> Identity:
         cwd = payload.get("cwd")

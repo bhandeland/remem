@@ -116,6 +116,42 @@ def test_corrupt_existing_config_is_reported_not_silently_replaced(tmp_path):
     assert list((tmp_path).glob(".claude.json.bak*"))
 
 
+def test_install_registers_the_session_size_hook(tmp_path):
+    ClaudeCodeAdapter().install(scope="user", home=tmp_path)
+    settings = json.loads((tmp_path / ".claude" / "settings.json").read_text())
+    command = settings["hooks"]["UserPromptSubmit"][0]["hooks"][0]["command"]
+    assert "remem hook session-size" in command
+
+
+def test_the_session_size_hook_is_registered_once(tmp_path):
+    ClaudeCodeAdapter().install(scope="user", home=tmp_path)
+    ClaudeCodeAdapter().install(scope="user", home=tmp_path)
+    settings = json.loads((tmp_path / ".claude" / "settings.json").read_text())
+    # A duplicate block means two warnings on every prompt, which is how a
+    # warning gets ignored.
+    assert len(settings["hooks"]["UserPromptSubmit"]) == 1
+
+
+def test_install_copies_every_bundled_skill(tmp_path):
+    ClaudeCodeAdapter().install(scope="user", home=tmp_path)
+    skills = tmp_path / ".claude" / "skills"
+    assert (skills / "remem" / "SKILL.md").exists()
+    assert (skills / "remem-handoff" / "SKILL.md").exists()
+    assert (skills / "remem-prime" / "SKILL.md").exists()
+
+
+def test_the_handoff_skill_drives_the_cli(tmp_path):
+    ClaudeCodeAdapter().install(scope="user", home=tmp_path)
+    text = (tmp_path / ".claude" / "skills" / "remem-handoff" / "SKILL.md").read_text()
+    assert "remem handoff write" in text
+
+
+def test_the_prime_skill_reads_the_latest_handoff(tmp_path):
+    ClaudeCodeAdapter().install(scope="user", home=tmp_path)
+    text = (tmp_path / ".claude" / "skills" / "remem-prime" / "SKILL.md").read_text()
+    assert "remem handoff latest" in text
+
+
 def test_identity_reads_the_hook_payload():
     ident = ClaudeCodeAdapter().identity(
         env={}, payload={"session_id": "abc", "cwd": "/x/y/remem"}
