@@ -125,6 +125,9 @@ Code environment variables lands in the `env` block of `settings.json`.
   Protocol rather than declared on it. They go together: an adapter with only
   one of them reports "no settable env vars" rather than falling back to
   another agent's file. The frontend resolves `--agent` and nothing else.
+  A capability that *raises* lands where a missing one lands - warn, degrade to
+  the remem half, and keep going. Same contract as `agents/registry.discover`:
+  a broken third-party adapter must never be why `remem config` will not run.
 - **No credential and no endpoint variable is ever settable.** Their absence
   from the table is the enforcement; `tests/test_env_vars.py` asserts it.
   Neither is `CLAUDE_CONFIG_DIR` or `REMEM_CONFIG` - each names the file that

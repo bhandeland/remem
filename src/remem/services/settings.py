@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import re
 import tomllib
+import warnings
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -451,7 +452,26 @@ def resolve_targets(
     path_of = getattr(adapter, "settings_path", None)
     if table_of is None or path_of is None:
         return Targets(remem_path, None, {})
-    return Targets(remem_path, path_of(home, env), table_of())
+    try:
+        return Targets(remem_path, path_of(home, env), table_of())
+    except Exception:
+        # A capability that *raises* has to land where a missing capability
+        # lands. This repo's registry contract is that a broken third-party
+        # adapter warns rather than breaking remem - agents/registry.discover
+        # already swallows a failed entry point load for the same reason - and
+        # an adapter is exactly the kind of code that fails here: settings_path
+        # is where it reads its own environment, so `Path(env["MY_CONFIG_DIR"])`
+        # with the variable unexported is the obvious way to blow up.
+        #
+        # Degrading rather than raising costs the user only the agent half.
+        # remem's own settings do not come from the adapter, so `remem config`
+        # keeps working for them.
+        warnings.warn(
+            f"agent adapter {getattr(adapter, 'name', adapter)!r} failed to "
+            "report its settings; its environment variables are not available",
+            stacklevel=2,
+        )
+        return Targets(remem_path, None, {})
 
 
 def _agent_env(path: Path | None) -> dict:
