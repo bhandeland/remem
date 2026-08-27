@@ -38,5 +38,13 @@ class InstallReport:
 class AgentAdapter(Protocol):
     name: str
 
-    def install(self, scope: str, home: Path) -> InstallReport: ...
+    # env is injected rather than read from os.environ inside the adapter so
+    # that tests can relocate an install without mutating the real process
+    # environment - the same reason config.load() takes it.
+    def install(
+        self,
+        scope: str,
+        home: Path,
+        env: Mapping[str, str] | None = None,
+    ) -> InstallReport: ...
     def identity(self, env: Mapping[str, str], payload: dict) -> Identity: ...

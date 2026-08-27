@@ -182,3 +182,53 @@ def test_install_states_the_hook_slug_convention(tmp_path):
     # The convention people get wrong: a subdirectory or worktree is the same
     # project, so the note has to say so rather than just naming the rule.
     assert "worktree" in text or "subdirectory" in text
+
+
+# CLAUDE_CONFIG_DIR relocation. Verified against the shipped Claude Code binary
+# (2.1.247), which resolves both targets from the same variable:
+#
+#   .claude.json  ->  join(process.env.CLAUDE_CONFIG_DIR || homedir(), ".claude.json")
+#   the directory ->  process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude")
+#
+# Note the asymmetry: when the variable is set, .claude.json moves *inside* the
+# config directory rather than staying beside it. Getting this wrong fails
+# silently - the hooks are fail-soft and the MCP server simply never starts.
+
+
+def test_install_honours_claude_config_dir(tmp_path):
+    alt = tmp_path / "elsewhere"
+    ClaudeCodeAdapter().install(
+        scope="user", home=tmp_path, env={"CLAUDE_CONFIG_DIR": str(alt)}
+    )
+    assert json.loads((alt / ".claude.json").read_text())["mcpServers"]["remem"]
+    assert (alt / "settings.json").exists()
+    assert (alt / "skills" / "remem" / "SKILL.md").exists()
+
+
+def test_install_writes_nothing_to_home_when_relocated(tmp_path):
+    alt = tmp_path / "elsewhere"
+    ClaudeCodeAdapter().install(
+        scope="user", home=tmp_path, env={"CLAUDE_CONFIG_DIR": str(alt)}
+    )
+    assert not (tmp_path / ".claude.json").exists()
+    assert not (tmp_path / ".claude").exists()
+
+
+def test_install_falls_back_when_claude_config_dir_is_empty(tmp_path):
+    # An empty value is an unset value, not a request to write to the current
+    # working directory, which is where Path("") would land.
+    ClaudeCodeAdapter().install(
+        scope="user", home=tmp_path, env={"CLAUDE_CONFIG_DIR": ""}
+    )
+    assert (tmp_path / ".claude.json").exists()
+    assert (tmp_path / ".claude" / "settings.json").exists()
+
+
+def test_install_reports_the_relocated_directory(tmp_path):
+    alt = tmp_path / "elsewhere"
+    report = ClaudeCodeAdapter().install(
+        scope="user", home=tmp_path, env={"CLAUDE_CONFIG_DIR": str(alt)}
+    )
+    # Without this the user sees a successful install with no hint that it
+    # landed somewhere other than ~/.claude.
+    assert any("CLAUDE_CONFIG_DIR" in n for n in report.notes)

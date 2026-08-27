@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import time
+from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
 from typing import Mapping
@@ -31,6 +33,52 @@ HANDOFF_NOTE = (
     "Long sessions get a handoff reminder at 150 turns, then every 50 - "
     "tune it with REMEM_TURN_WARN_AT and REMEM_TURN_WARN_EVERY."
 )
+
+
+CONFIG_DIR_VAR = "CLAUDE_CONFIG_DIR"
+
+
+@dataclass(frozen=True, slots=True)
+class ClaudePaths:
+    """The three files an install writes, and where CLAUDE_CONFIG_DIR moves them.
+
+    Transcribed from the Claude Code binary (checked against 2.1.247), which
+    resolves the two roots from the same variable but not in the same way:
+
+        settings/skills  ->  CLAUDE_CONFIG_DIR || join(home, ".claude")
+        .claude.json     ->  join(CLAUDE_CONFIG_DIR || home, ".claude.json")
+
+    Set the variable and all three collapse into it. Leave it unset and
+    .claude.json sits *beside* ~/.claude rather than inside it. Deriving
+    global_json from config_dir would therefore be wrong in the common case,
+    which is why both roots are kept.
+
+    Getting any of this wrong fails silently: the hooks are fail-soft by
+    contract and an unregistered MCP server just never starts.
+    """
+
+    config_dir: Path
+    global_json: Path
+    relocated: bool
+
+    @property
+    def settings(self) -> Path:
+        return self.config_dir / "settings.json"
+
+    @property
+    def skills(self) -> Path:
+        return self.config_dir / "skills"
+
+
+def resolve_paths(home: Path, env: Mapping[str, str]) -> ClaudePaths:
+    # An empty value counts as unset. Path("") is the current working
+    # directory, so honouring it would scatter an install wherever the user
+    # happened to be standing.
+    configured = env.get(CONFIG_DIR_VAR, "").strip()
+    if configured:
+        root = Path(configured)
+        return ClaudePaths(root, root / ".claude.json", relocated=True)
+    return ClaudePaths(home / ".claude", home / ".claude.json", relocated=False)
 
 
 def _backup(path: Path) -> Path:
@@ -77,7 +125,12 @@ def _write_json(path: Path, data: dict, backed_up: set[Path]) -> None:
 class ClaudeCodeAdapter:
     name = "claude-code"
 
-    def install(self, scope: str = "user", home: Path | None = None) -> InstallReport:
+    def install(
+        self,
+        scope: str = "user",
+        home: Path | None = None,
+        env: Mapping[str, str] | None = None,
+    ) -> InstallReport:
         if scope != "user":
             # Project scope would mean .mcp.json and .claude/settings.json in
             # the repository; v1 only writes the user-level files.
@@ -85,27 +138,39 @@ class ClaudeCodeAdapter:
                 f"scope '{scope}' is not supported; only 'user' is implemented"
             )
         home = home or Path.home()
+        paths = resolve_paths(home, os.environ if env is None else env)
         report = InstallReport(agent=self.name)
         backed_up: set[Path] = set()
 
-        self._install_mcp(home, report, backed_up)
-        self._install_hook(home, report, backed_up)
-        self._install_skill(home, report)
+        self._install_mcp(paths, report, backed_up)
+        self._install_hook(paths, report, backed_up)
+        self._install_skill(paths, report)
+        if paths.relocated:
+            # Otherwise a relocated install looks identical to a normal one and
+            # the user has no way to tell where their config actually went.
+            report.notes.append(
+                f"{CONFIG_DIR_VAR} is set, so everything above was written "
+                f"under {paths.config_dir} rather than ~/.claude."
+            )
         report.notes.append(SLUG_CONVENTION)
         report.notes.append(CAPTURE_NOTE)
         report.notes.append(HANDOFF_NOTE)
         return report
 
-    def _install_mcp(self, home: Path, report: InstallReport, backed_up: set[Path]) -> None:
-        path = home / ".claude.json"
+    def _install_mcp(
+        self, paths: ClaudePaths, report: InstallReport, backed_up: set[Path]
+    ) -> None:
+        path = paths.global_json
         config = _read_json(path, report, backed_up)
         servers = config.setdefault("mcpServers", {})
         servers["remem"] = {"command": "remem", "args": ["serve"]}
         _write_json(path, config, backed_up)
         report.actions.append(f"Registered the remem MCP server in {path}")
 
-    def _install_hook(self, home: Path, report: InstallReport, backed_up: set[Path]) -> None:
-        path = home / ".claude" / "settings.json"
+    def _install_hook(
+        self, paths: ClaudePaths, report: InstallReport, backed_up: set[Path]
+    ) -> None:
+        path = paths.settings
         settings = _read_json(path, report, backed_up)
         hooks = settings.setdefault("hooks", {})
 
@@ -140,13 +205,13 @@ class ClaudeCodeAdapter:
         if changed:
             _write_json(path, settings, backed_up)
 
-    def _install_skill(self, home: Path, report: InstallReport) -> None:
+    def _install_skill(self, paths: ClaudePaths, report: InstallReport) -> None:
         """Install every bundled skill directory.
 
         Iterating rather than naming one file: a later skill is a new
         directory under skills/ and nothing else.
         """
-        root = home / ".claude" / "skills"
+        root = paths.skills
         source_root = resources.files("remem.agents.claude_code") / "skills"
         for skill_dir in sorted(source_root.iterdir(), key=lambda p: p.name):
             if not skill_dir.is_dir():
