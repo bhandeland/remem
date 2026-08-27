@@ -45,6 +45,15 @@ def test_an_int_above_the_maximum_is_refused():
         coerce(var, "150001")
 
 
+def test_a_non_duration_int_strips_whitespace_before_the_isdigit_check():
+    # Same bug as parse_duration's fast path (raw.isdigit() is False on
+    # whitespace-padded input), just in the plain-integer branch of coerce.
+    # Left unfixed, a duration key would tolerate " 600000 " while a
+    # non-duration key like this one rejected the identical-looking value.
+    var = CLAUDE_CODE_ENV_VARS["BASH_MAX_OUTPUT_LENGTH"]
+    assert coerce(var, " 30000 ") == "30000"
+
+
 def test_a_presence_key_refuses_zero_and_points_at_unset():
     # The trap: any non-empty value enables the disabling, so "0" would
     # disable telemetry rather than re-enable it.
