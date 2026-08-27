@@ -18,7 +18,7 @@ SESSION_SIZE_COMMAND = "remem hook session-size"
 
 SLUG_CONVENTION = (
     "The SessionStart hook injects the knowledge base whose slug matches the "
-    "session's directory name - create one with `remem kb new <dirname>`."
+    "session's repository name - create one with `remem kb new <repo-name>`. A subdirectory or a worktree resolves to the same name."
 )
 
 CAPTURE_NOTE = (

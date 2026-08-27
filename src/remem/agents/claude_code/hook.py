@@ -61,7 +61,7 @@ def session_start(stdin_text: str, env: Mapping[str, str]) -> str:
                     env,
                     f"no knowledge base with slug '{identity.project}' for "
                     f"principal '{s.owner.handle}'. The hook injects the "
-                    "knowledge base whose slug matches the directory name - "
+                    "knowledge base whose slug matches the repository name - "
                     f"create one with `remem kb new {identity.project}`.",
                 )
             else:

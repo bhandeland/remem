@@ -143,11 +143,12 @@ all - the hooks are fail-soft and say nothing, and the MCP server simply never
 starts. See Setup.
 
 **The hook injects the knowledge base whose slug is exactly the session
-directory's name.** Working in `~/code/myapp` gets you the knowledge base with
-slug `myapp`, and nothing else - so create it as:
+repository's name.** Working anywhere in `~/code/myapp` - including a
+subdirectory or a git worktree of it - gets you the knowledge base with slug
+`myapp`, and nothing else. Create it as:
 
 ```bash
-cd ~/code/myapp && remem kb new "$(basename "$PWD")" --title "myapp" --project myapp
+cd ~/code/myapp && remem kb new myapp --title "myapp" --project myapp
 ```
 
 The hook is fail-soft: any problem at all - Postgres down, no matching
