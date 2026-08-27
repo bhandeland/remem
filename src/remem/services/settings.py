@@ -40,9 +40,14 @@ _TRUTHY = {"1", "true", "yes", "on"}
 
 def parse_duration(raw: str) -> int:
     """Milliseconds from 10m / 30s / 500ms, or from a plain integer."""
+    # Strip before the fast path, not just before the regex: CLI input can
+    # carry incidental whitespace (a copy-pasted value, a quoted shell
+    # argument) that `str.isdigit()` treats as non-digit, sending a plain
+    # " 600000 " into the suffix regex below, where it is rejected outright.
+    raw = raw.strip()
     if raw.isdigit():
         return int(raw)
-    match = _DURATION.match(raw.strip().lower())
+    match = _DURATION.match(raw.lower())
     if not match:
         raise InvalidValue(
             f"{raw!r} is not a duration. Use milliseconds, or a suffix: "

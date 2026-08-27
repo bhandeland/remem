@@ -36,6 +36,9 @@ app.add_typer(capture_app, name="capture")
 handoff_app = typer.Typer(help="Session handoffs.")
 app.add_typer(handoff_app, name="handoff")
 
+config_app = typer.Typer(help="remem and agent settings.")
+app.add_typer(config_app, name="config")
+
 
 def _default_project() -> str | None:
     """The repository's name, not the current directory's.
@@ -517,6 +520,123 @@ def install(
     typer.echo(f"\nInstalled remem for {report.agent}.")
     for note in report.notes:
         typer.echo(note)
+
+
+def _config_targets(agent: str):
+    """The two files `remem config` reads and writes, plus the agent's table.
+
+    CLAUDE_CONFIG_DIR is honoured through the adapter's own resolver, so this
+    command lands in the same place `remem install` did.
+    """
+    import os
+    from pathlib import Path
+
+    from remem.agents.claude_code.adapter import resolve_paths
+    from remem.agents.registry import UnknownAgent, get as get_adapter
+    from remem.config import default_config_path
+
+    env = os.environ
+    try:
+        adapter = get_adapter(agent)()
+    except UnknownAgent as exc:
+        # registry.get already lists what is registered, so echo it as-is.
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1)
+    paths = resolve_paths(Path.home(), env)
+    remem_path = Path(env.get("REMEM_CONFIG", default_config_path()))
+    table = getattr(adapter, "env_settings", lambda: {})()
+    return env, remem_path, paths.settings, table
+
+
+@config_app.command("set")
+def config_set(
+    key: str,
+    value: str,
+    agent: Annotated[str, typer.Option("--agent")] = "claude-code",
+):
+    """Set one setting, in remem's config or the agent's environment."""
+    from remem.services import settings as svc
+
+    env, remem_path, agent_path, table = _config_targets(agent)
+    try:
+        target, var = svc.route(key, table)
+        resolved = svc.coerce(var, value)
+    except (svc.UnknownSetting, svc.NotSettable, svc.InvalidValue) as exc:
+        # KeyError stringifies with quotes around it; strip them so the
+        # message reads like a sentence rather than a repr.
+        typer.echo(str(exc).strip("\"'"), err=True)
+        raise typer.Exit(1)
+
+    if target is svc.Target.REMEM:
+        svc.write_remem(remem_path, var.name, resolved)
+        where = remem_path
+    else:
+        svc.write_agent(agent_path, var.name, resolved)
+        where = agent_path
+
+    typer.echo(f"{var.name} = {resolved!r} in {where}")
+    warning = svc.shadow_warning(target, var.name, env)
+    if warning:
+        typer.echo(warning, err=True)
+
+
+@config_app.command("unset")
+def config_unset(
+    key: str,
+    agent: Annotated[str, typer.Option("--agent")] = "claude-code",
+):
+    """Remove one setting, restoring its default."""
+    from remem.services import settings as svc
+
+    _, remem_path, agent_path, table = _config_targets(agent)
+    try:
+        target, var = svc.route(key, table)
+    except (svc.UnknownSetting, svc.NotSettable) as exc:
+        typer.echo(str(exc).strip("\"'"), err=True)
+        raise typer.Exit(1)
+
+    if target is svc.Target.REMEM:
+        svc.write_remem(remem_path, var.name, None)
+    else:
+        svc.write_agent(agent_path, var.name, None)
+    typer.echo(f"Unset {var.name}.")
+
+
+@config_app.command("get")
+def config_get(
+    key: str,
+    agent: Annotated[str, typer.Option("--agent")] = "claude-code",
+):
+    """Print one setting's effective value and where it came from."""
+    from remem.services import settings as svc
+
+    env, remem_path, agent_path, table = _config_targets(agent)
+    try:
+        _, var = svc.route(key, table)
+    except (svc.UnknownSetting, svc.NotSettable) as exc:
+        typer.echo(str(exc).strip("\"'"), err=True)
+        raise typer.Exit(1)
+
+    rows = svc.list_settings(remem_path, agent_path, table, env)
+    row = next(r for r in rows if r.key == var.name)
+    typer.echo(f"{row.value if row.value is not None else '(unset)'}\t{row.source}")
+
+
+@config_app.command("list")
+def config_list(
+    agent: Annotated[str, typer.Option("--agent")] = "claude-code",
+):
+    """Show every settable key, its value, and where that value came from."""
+    from remem.services import settings as svc
+
+    env, remem_path, agent_path, table = _config_targets(agent)
+    if not table:
+        typer.echo(f"{agent} has no settable environment variables.")
+    for row in svc.list_settings(remem_path, agent_path, table, env):
+        value = row.value if row.value is not None else "(unset)"
+        typer.echo(f"{row.key}\t{value}\t{row.source}\t{row.var.help}")
+        if row.var.note:
+            typer.echo(f"\t{row.var.note}")
 
 
 hook_app = typer.Typer(help="Agent hook entry points (not for interactive use).")
