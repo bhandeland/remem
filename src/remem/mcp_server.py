@@ -24,6 +24,19 @@ mcp = MCPServer("remem")
 AGENT_NAME = "claude-code"
 
 
+def _default_project() -> str | None:
+    """The project an agent is working in, from the server's own directory.
+
+    Claude Code starts the MCP server in the session's directory, so this
+    matches the knowledge base the SessionStart hook injects. Without it, an
+    agent that omits `project` writes an entry with none - which the project's
+    knowledge base will never surface, even though the write succeeded.
+    """
+    from pathlib import Path
+
+    return Path.cwd().name or None
+
+
 def _session_id() -> str | None:
     # MCP tool calls carry no session id; use one only if the environment
     # supplies it. Recording null is better than fabricating a value.
@@ -49,6 +62,10 @@ def remember_tool(
     convention that should be followed, or capture reference material. Do
     NOT use for transient details of the current task.
 
+    project: omit it and this session's project is used, which is what the
+    knowledge base injected at session start queries on. Only pass it to file
+    something under a different project.
+
     kind: "memory" (something learned), "doc" (reference material), or
     "rule" (a convention that must be followed - these are always injected
     into future sessions).
@@ -60,7 +77,8 @@ def remember_tool(
     with open_session() as s:
         entry = write.remember(
             s.store, s.owner.id, title=title, body=body, kind=parsed_kind,
-            project=project, tags=list(tags or []), agent=AGENT_NAME,
+            project=project or _default_project(),
+            tags=list(tags or []), agent=AGENT_NAME,
             session_id=_session_id(), origin=Origin.AGENT,
         )
         return {"id": str(entry.id), "title": entry.title}

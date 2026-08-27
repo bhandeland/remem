@@ -4,7 +4,10 @@ No decisions about knowledge belong in this file."""
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 import sys
+import tempfile
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Annotated, Optional
@@ -98,6 +101,49 @@ def _entry_dict(entry: Entry, snippet: str | None = None) -> dict:
     return data
 
 
+def _body_from_editor(initial: str = "") -> str:
+    """Compose a body in $EDITOR.
+
+    A rule worth keeping is usually a paragraph, and shell quoting is a poor
+    place to write prose. An empty result aborts: storing a blank entry because
+    the editor was closed without writing is worse than doing nothing.
+    """
+    editor = os.environ.get("EDITOR") or os.environ.get("VISUAL") or "vi"
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".md", delete=False, encoding="utf-8"
+    ) as fh:
+        fh.write(initial)
+        path = fh.name
+    try:
+        subprocess.call([editor, path])
+        with open(path, encoding="utf-8") as fh:
+            text = fh.read().strip()
+    finally:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+    if not text:
+        typer.echo("Nothing written - not storing an empty entry.", err=True)
+        raise typer.Exit(1)
+    return text
+
+
+def _resolve_project(project: str | None, is_global: bool) -> str | None:
+    """Project defaults to the directory; --global opts out deliberately.
+
+    Before this defaulted, forgetting --project stored an entry with no
+    project - a silent orphan, since a project's knowledge base queries on it.
+    The write succeeded and the entry simply never appeared.
+    """
+    if is_global and project is not None:
+        typer.echo("Pass either --project or --global, not both", err=True)
+        raise typer.Exit(1)
+    if is_global:
+        return None
+    return project or _default_project()
+
+
 def _read_body(body: str | None) -> str:
     if body == "-":
         return sys.stdin.read()
@@ -118,16 +164,49 @@ def whoami():
 def remember(
     title: str,
     body: Annotated[Optional[str], typer.Option("--body")] = None,
+    edit: Annotated[bool, typer.Option("--edit")] = False,
     kind: Annotated[Kind, typer.Option("--kind")] = Kind.MEMORY,
     project: Annotated[Optional[str], typer.Option("--project")] = None,
+    is_global: Annotated[bool, typer.Option("--global")] = False,
     tag: Annotated[Optional[list[str]], typer.Option("--tag")] = None,
 ):
-    """Store a memory, doc, or rule."""
-    text = _read_body(body)
+    """Store a memory, doc, or rule.
+
+    The project defaults to this directory's name, which is what the knowledge
+    base injected at session start queries on. Pass --global for knowledge that
+    is not tied to one project.
+    """
+    resolved = _resolve_project(project, is_global)
+    text = _body_from_editor() if edit else _read_body(body)
     with _session() as s:
         entry = write.remember(
             s.store, s.owner.id, title=title, body=text, kind=kind,
-            project=project, tags=list(tag or []), origin=Origin.HUMAN,
+            project=resolved, tags=list(tag or []), origin=Origin.HUMAN,
+        )
+        typer.echo(entry.id)
+
+
+@app.command()
+def rule(
+    title: str,
+    body: Annotated[Optional[str], typer.Option("--body")] = None,
+    edit: Annotated[bool, typer.Option("--edit")] = False,
+    project: Annotated[Optional[str], typer.Option("--project")] = None,
+    is_global: Annotated[bool, typer.Option("--global")] = False,
+    tag: Annotated[Optional[list[str]], typer.Option("--tag")] = None,
+):
+    """Write a convention for this project.
+
+    Shorthand for `remember --kind rule`. Rules are the entries injected into
+    every session and never truncated, so they are the ones worth making
+    frictionless to write.
+    """
+    resolved = _resolve_project(project, is_global)
+    text = _body_from_editor() if edit else _read_body(body)
+    with _session() as s:
+        entry = write.remember(
+            s.store, s.owner.id, title=title, body=text, kind=Kind.RULE,
+            project=resolved, tags=list(tag or []), origin=Origin.HUMAN,
         )
         typer.echo(entry.id)
 

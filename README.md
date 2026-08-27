@@ -28,12 +28,23 @@ starts. `--editable` means changes to this repo take effect without reinstalling
 ## Use
 
 ```bash
-remem remember "Postgres pool sizing" --body "..." --project myapp
+remem rule "Spaced hyphens, never em dashes"  --body "..."
+remem remember "Postgres pool sizing" --body "..."
+remem remember "A longer note" --edit          # compose the body in $EDITOR
 remem search "pool sizing"
 remem search "pool sizing" --json | jq '.[0].id'
 remem kb new myapp --title "myapp knowledge" --project myapp
 remem kb show myapp
 ```
+
+`remember` and `rule` default `--project` to the current directory's name -
+the same name the knowledge base injected at session start queries on. Pass
+`--global` for knowledge that is not tied to one project. (Before this
+defaulted, forgetting `--project` stored an entry with no project: the write
+succeeded and the entry simply never appeared in the knowledge base.)
+
+`rule` is shorthand for `remember --kind rule`. Rules are injected into every
+session and never truncated, so they are the ones worth writing down.
 
 Search is exact by default. When a query matches nothing, remem retries with
 typo-tolerant matching and marks those results — `~` in terminal output,

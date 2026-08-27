@@ -44,6 +44,29 @@ This is the discipline that keeps the store useful. Write when:
 - The user states a preference or convention that should hold in future.
 - You learned how a system behaves in a way the repo does not document.
 
+### Write it in the moment, without being asked
+
+Four things should make you reach for `remember` immediately, in the same turn
+they happen. Do not wait to be told, and do not save them for the end of the
+session - a convention recorded three turns later is usually recorded wrong,
+and one recorded at the end is usually not recorded at all.
+
+1. **The user corrects you.** "No, we use X here", "don't do Y in this repo".
+   A correction is a convention you did not know. Write it as `kind: rule`.
+2. **The user states a preference.** Formatting, naming, tooling, tone -
+   anything phrased as how things are done here rather than what to do now.
+3. **Something cost real time.** A wrong assumption, a confusing error, a
+   non-obvious fix. Write what you would have wanted to know an hour ago.
+4. **The user says "remember", "note that", or "for future reference".** That
+   is an explicit instruction - act on it rather than acknowledging it.
+
+Tell the user in one short line when you have written something, so a wrong
+entry can be corrected while it is still cheap to fix. Do not ask permission
+first for a rule the user just stated; they already told you.
+
+Omit `project` and the current project is used. Only pass it to file something
+under a different one.
+
 Do **not** write:
 
 - Anything already recorded in the code, the README, or git history.
