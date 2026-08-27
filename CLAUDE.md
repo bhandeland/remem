@@ -94,6 +94,22 @@ Invariants worth not breaking:
 - Jobs stop retrying after `MAX_ATTEMPTS`; `remem capture drain --job ID` retries by id.
   Failures record the reason *and* the model's raw output, both separately truncated.
 
+### Handoffs
+
+A handoff is an `Entry` with `origin='handoff'`, `kind=doc`, and a `topic:<slug>`
+tag - no separate table. Invariants:
+
+- Writing one supersedes the prior live handoff for the same `(project, topic)`.
+  Only the newest is ever live; the chain is the history.
+- Excluded from context blocks (`kb.resolve` filters origins) and from search
+  unless `include_handoffs=True`. `search.DEFAULT_ORIGINS` must gain any future
+  origin or that origin silently vanishes from search.
+- `remem handoff write` is fail-loud, unlike every hook in this repo: the user
+  is about to `/clear`.
+- `session_size.py` is Postgres-free and agent-neutral; it runs on every user
+  prompt via the `UserPromptSubmit` hook. Warn state lives in the platform
+  cache dir and fails toward warning, never toward silence.
+
 ### Hooks are fail-soft, and that is a hard contract
 
 `hook.session_start` / `session_end` exit 0 unconditionally, print nothing on error, and

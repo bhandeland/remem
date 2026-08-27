@@ -98,6 +98,34 @@ Change a query later with `remem kb query <slug> --tag X --project Y`, or
 `--clear` it so the knowledge base holds only what you pinned. Pinned entries
 are never affected.
 
+## Session handoff
+
+A long session is expensive to keep going and cheap to hand off. remem makes
+the boundary deliberate:
+
+```bash
+remem handoff write --topic gitlab-ci --body "..."   # or --edit
+remem handoff latest --topic gitlab-ci
+remem search "runner cache" --handoff
+```
+
+A handoff is an ordinary entry with `origin='handoff'`, a `topic:<slug>` tag,
+and four sections: Done, In flight, Next steps, Gotchas. Writing one supersedes
+the previous handoff for the same topic, so a project accumulates dozens of
+them and still has exactly one live entry per workstream.
+
+Handoffs are excluded from knowledge base context blocks and from search unless
+you pass `--handoff`. The next session in that project sees a one-line pointer
+instead:
+
+    Handoff available: gitlab-ci (2h ago) - run remem-prime gitlab-ci
+
+The `remem-handoff` and `remem-prime` skills drive the cycle:
+handoff, `/clear`, prime. A `UserPromptSubmit` hook counts the session's turns
+and suggests a handoff at 150, then every 50 after that - `REMEM_TURN_WARN_AT`
+and `REMEM_TURN_WARN_EVERY` tune it, and the warning always asks for a handoff
+at the next task boundary rather than mid-task.
+
 ## Install into Claude Code
 
 ```bash
@@ -145,6 +173,8 @@ Environment variable, then config file, then default.
 | fuzzy match threshold | `REMEM_FUZZY_THRESHOLD` | `0.3` |
 | distillation model | `REMEM_CAPTURE_MODEL` | `sonnet` |
 | hook diagnostics | `REMEM_HOOK_DEBUG` | unset (silent) |
+| session-size warning | `REMEM_TURN_WARN_AT` | `150` |
+| warning interval | `REMEM_TURN_WARN_EVERY` | `50` |
 
 ## Development
 
