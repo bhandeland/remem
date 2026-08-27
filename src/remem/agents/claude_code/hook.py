@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 from typing import Mapping
 
@@ -74,11 +75,36 @@ def session_start(stdin_text: str, env: Mapping[str, str]) -> str:
         return ""
 
 
+def spawn_drain(env: Mapping[str, str]) -> bool:
+    """Start a detached `remem capture drain` and return immediately.
+
+    Any session drains the backlog, so a capture is never stranded by the
+    session that produced it having ended. Detached and output-discarded: the
+    session must never wait for distillation, and must never see its output.
+    """
+    if env.get(CHILD_ENV_VAR):
+        return False
+    try:
+        subprocess.Popen(
+            ["remem", "capture", "drain"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+            start_new_session=True,
+            env=dict(env),
+        )
+        return True
+    except Exception:
+        return False
+
+
 def main() -> int:
     try:
-        block = session_start(sys.stdin.read(), env=dict(os.environ))
+        env = dict(os.environ)
+        block = session_start(sys.stdin.read(), env=env)
         if block:
             sys.stdout.write(block)
+        spawn_drain(env)
     except Exception:
         pass
     return 0
