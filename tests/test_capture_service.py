@@ -3,7 +3,7 @@ import pytest
 from remem.backends.postgres.migrate import migrate
 from remem.backends.postgres.store import PostgresStore
 from remem.distill.base import CapturedEntry, DistillationFailed, parse_entries
-from remem.domain import CaptureStatus, Kind, Origin, Query
+from remem.domain import CaptureStatus, Kind, Origin, Query, new_id
 from remem.services import capture
 
 pytestmark = pytest.mark.db
@@ -306,3 +306,66 @@ def test_a_long_raw_output_is_truncated_but_keeps_the_reason(
     stored = store.get_capture_job(job.id, owner.id)
     assert "no JSON array" in stored.error
     assert stored.error.count("z") == 500
+
+
+def test_drain_job_retries_a_job_that_gave_up(store, owner, transcript):
+    """The attempt cap is exactly what --job ID exists to override."""
+    capture.enable(store, owner.id, "remem")
+    job = capture.enqueue(store, owner.id, project="remem",
+                          transcript_path=transcript, session_id="s")
+    store.finish_capture_job(
+        job.id, owner.id, CaptureStatus.FAILED, "gave up after 3 attempts", 0
+    )
+
+    report = capture.drain_job(
+        store, owner.id, job.id,
+        FakeDistiller([CapturedEntry(title="T", body="B", kind=Kind.MEMORY)]),
+    )
+
+    assert report.claimed == 1
+    assert report.succeeded == 1
+    assert report.entries_written == 1
+    stored = store.get_capture_job(job.id, owner.id)
+    assert stored.status is CaptureStatus.DONE
+    assert stored.error is None
+
+
+def test_drain_job_leaves_the_other_jobs_alone(store, owner, transcript):
+    capture.enable(store, owner.id, "remem")
+    mine = capture.enqueue(store, owner.id, project="remem",
+                           transcript_path=transcript, session_id="a")
+    other = capture.enqueue(store, owner.id, project="remem",
+                            transcript_path=transcript, session_id="b")
+
+    capture.drain_job(store, owner.id, mine.id, FakeDistiller([]))
+
+    assert store.get_capture_job(other.id, owner.id).status is (
+        CaptureStatus.PENDING
+    )
+
+
+def test_drain_job_records_a_failure_rather_than_raising(store, owner):
+    capture.enable(store, owner.id, "remem")
+    job = capture.enqueue(store, owner.id, project="remem",
+                          transcript_path="/nonexistent.jsonl", session_id="s")
+
+    report = capture.drain_job(store, owner.id, job.id, FakeDistiller([]))
+
+    assert report.failed == 1
+    assert store.get_capture_job(job.id, owner.id).status is CaptureStatus.FAILED
+
+
+def test_drain_job_rejects_an_unknown_id(store, owner):
+    with pytest.raises(capture.CaptureJobNotFound):
+        capture.drain_job(store, owner.id, new_id(), FakeDistiller([]))
+
+
+def test_drain_job_rejects_another_owners_job(store, owner, transcript):
+    """Owner scoping is not optional just because an id was supplied."""
+    other = store.ensure_principal("someone-else")
+    capture.enable(store, other.id, "remem")
+    job = capture.enqueue(store, other.id, project="remem",
+                          transcript_path=transcript, session_id="s")
+
+    with pytest.raises(capture.CaptureJobNotFound):
+        capture.drain_job(store, owner.id, job.id, FakeDistiller([]))

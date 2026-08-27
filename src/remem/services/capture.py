@@ -25,6 +25,14 @@ MAX_RAW_IN_ERROR = 500
 MAX_REASON_IN_ERROR = 200
 
 
+class CaptureJobNotFound(Exception):
+    """No capture job with that id belongs to this owner."""
+
+    def __init__(self, job_id: UUID):
+        super().__init__(f"No capture job {job_id}")
+        self.job_id = job_id
+
+
 @dataclass(slots=True)
 class DrainReport:
     claimed: int = 0
@@ -141,59 +149,101 @@ def _safe_finish(
         return False
 
 
+def _run_job(
+    store: Store,
+    owner_id: UUID,
+    distiller: Distiller,
+    job: CaptureJob,
+    *,
+    enforce_cap: bool = True,
+) -> tuple[bool, int]:
+    """Distil one already-claimed job and record its outcome. Never raises.
+
+    Returns (succeeded, entries_written). `enforce_cap=False` is for a
+    deliberate retry by id, where giving up is precisely what the user is
+    overriding.
+    """
+    try:
+        if enforce_cap and job.attempts > MAX_ATTEMPTS:
+            _safe_finish(
+                store, job, owner_id, CaptureStatus.FAILED,
+                f"gave up after {MAX_ATTEMPTS} attempts", 0,
+            )
+            return False, 0
+        try:
+            text = Path(job.transcript_path).read_text(errors="replace")
+        except OSError as exc:
+            _safe_finish(
+                store, job, owner_id, CaptureStatus.FAILED,
+                f"transcript unreadable at {job.transcript_path}: {exc}", 0,
+            )
+            return False, 0
+        try:
+            entries = distiller.distill(text, job.project)
+        except DistillationFailed as exc:
+            _safe_finish(
+                store, job, owner_id, CaptureStatus.FAILED,
+                _failure_reason(exc), 0,
+            )
+            return False, 0
+        except Exception as exc:  # a distiller is third-party-ish code
+            _safe_finish(
+                store, job, owner_id, CaptureStatus.FAILED,
+                f"distiller raised {type(exc).__name__}: {exc}"[:500], 0,
+            )
+            return False, 0
+
+        written = _write(store, owner_id, job, entries)
+        _safe_finish(store, job, owner_id, CaptureStatus.DONE, None, written)
+        return True, written
+    except Exception as exc:
+        # A backstop beneath the specific handlers above: any other
+        # unexpected failure (e.g. the store itself raising mid-write)
+        # must still be recorded against this job, and the caller must
+        # move on rather than stranding it in `running`.
+        _safe_finish(
+            store, job, owner_id, CaptureStatus.FAILED,
+            f"{type(exc).__name__}: {exc}"[:500], 0,
+        )
+        return False, 0
+
+
+def _tally(report: DrainReport, succeeded: bool, written: int) -> None:
+    report.claimed += 1
+    if succeeded:
+        report.succeeded += 1
+        report.entries_written += written
+    else:
+        report.failed += 1
+
+
 def drain(
     store: Store, owner_id: UUID, distiller: Distiller, limit: int = 10
 ) -> DrainReport:
     """Distil claimed jobs. Never raises: a failing job records its reason."""
     report = DrainReport()
     for job in store.claim_capture_jobs(owner_id, limit=limit):
-        report.claimed += 1
-        try:
-            if job.attempts > MAX_ATTEMPTS:
-                _safe_finish(
-                    store, job, owner_id, CaptureStatus.FAILED,
-                    f"gave up after {MAX_ATTEMPTS} attempts", 0,
-                )
-                report.failed += 1
-                continue
-            try:
-                text = Path(job.transcript_path).read_text(errors="replace")
-            except OSError as exc:
-                _safe_finish(
-                    store, job, owner_id, CaptureStatus.FAILED,
-                    f"transcript unreadable at {job.transcript_path}: {exc}", 0,
-                )
-                report.failed += 1
-                continue
-            try:
-                entries = distiller.distill(text, job.project)
-            except DistillationFailed as exc:
-                _safe_finish(
-                    store, job, owner_id, CaptureStatus.FAILED,
-                    _failure_reason(exc), 0,
-                )
-                report.failed += 1
-                continue
-            except Exception as exc:  # a distiller is third-party-ish code
-                _safe_finish(
-                    store, job, owner_id, CaptureStatus.FAILED,
-                    f"distiller raised {type(exc).__name__}: {exc}"[:500], 0,
-                )
-                report.failed += 1
-                continue
+        _tally(report, *_run_job(store, owner_id, distiller, job))
+    return report
 
-            written = _write(store, owner_id, job, entries)
-            _safe_finish(store, job, owner_id, CaptureStatus.DONE, None, written)
-            report.succeeded += 1
-            report.entries_written += written
-        except Exception as exc:
-            # A backstop beneath the specific handlers above: any other
-            # unexpected failure (e.g. the store itself raising mid-write)
-            # must still be recorded against this job, and the loop must
-            # move on to the next one rather than stranding it in `running`.
-            _safe_finish(
-                store, job, owner_id, CaptureStatus.FAILED,
-                f"{type(exc).__name__}: {exc}"[:500], 0,
-            )
-            report.failed += 1
+
+def drain_job(
+    store: Store, owner_id: UUID, job_id: UUID, distiller: Distiller
+) -> DrainReport:
+    """Distil one named job, cap or no cap.
+
+    `drain` only ever claims pending and stale-running jobs, so a job that
+    has given up is otherwise unreachable - visible in `capture status` and
+    unactionable. This is the retry.
+
+    Raises CaptureJobNotFound when no such job belongs to this owner; that is
+    a caller error worth reporting, not a job outcome to record.
+    """
+    if store.get_capture_job(job_id, owner_id) is None:
+        raise CaptureJobNotFound(job_id)
+    job = store.claim_capture_job(job_id, owner_id)
+    if job is None:
+        raise CaptureJobNotFound(job_id)
+    report = DrainReport()
+    _tally(report, *_run_job(store, owner_id, distiller, job, enforce_cap=False))
     return report

@@ -53,6 +53,11 @@ text never crowds out rules you wrote. Promote a good one with `remem kb pin`.
 
 Nothing is captured from a project you have not enabled.
 
+`remem capture status` lists failures with the reason recorded against each
+job, including the model's own output when it returned something that could
+not be read as entries. A job that has failed too many times stops being
+retried automatically; retry it by id with `remem capture drain --job ID`.
+
 A knowledge base collects entries two ways: everything matching its query
 (`--project` and `--tag`) plus anything pinned into it with
 `remem kb pin <slug> <entry-id>`. A knowledge base created with neither

@@ -74,6 +74,14 @@ def _entry_id(value: str) -> UUID:
         raise typer.Exit(1)
 
 
+def _job_id(value: str) -> UUID:
+    try:
+        return UUID(value)
+    except ValueError:
+        typer.echo(f"'{value}' is not a valid capture job id", err=True)
+        raise typer.Exit(1)
+
+
 def _entry_dict(entry: Entry, snippet: str | None = None) -> dict:
     data = {
         "id": str(entry.id),
@@ -499,18 +507,33 @@ def capture_status(
 @capture_app.command("drain")
 def capture_drain(
     limit: Annotated[int, typer.Option("--limit")] = 10,
+    job: Annotated[Optional[str], typer.Option("--job")] = None,
 ):
-    """Distil queued sessions into entries."""
+    """Distil queued sessions into entries.
+
+    `--job ID` retries exactly that job, however many times it has already
+    failed. It is the only way back for a job that hit the attempt cap.
+    """
     from remem.distill.claude_cli import ClaudeCliDistiller
     from remem.services import capture
+
+    job_id = _job_id(job) if job is not None else None
 
     # Autocommit, unlike every other command: the drain records its own
     # progress as it goes, and it spends minutes at a time inside `claude`.
     # One transaction for the batch would both discard already-succeeded work
     # on a database error and hold row locks across those minutes.
     with _session(autocommit=True) as s:
-        report = capture.drain(s.store, s.owner.id, ClaudeCliDistiller(),
-                               limit=limit)
+        if job_id is not None:
+            try:
+                report = capture.drain_job(s.store, s.owner.id, job_id,
+                                           ClaudeCliDistiller())
+            except capture.CaptureJobNotFound as exc:
+                typer.echo(str(exc), err=True)
+                raise typer.Exit(1)
+        else:
+            report = capture.drain(s.store, s.owner.id, ClaudeCliDistiller(),
+                                   limit=limit)
     typer.echo(
         f"claimed {report.claimed}, succeeded {report.succeeded}, "
         f"failed {report.failed}, entries written {report.entries_written}"

@@ -531,6 +531,36 @@ class PostgresStore:
             )
             return [_row_to_capture_job(r) for r in cur.fetchall()]
 
+    def claim_capture_job(
+        self, job_id: UUID, owner_id: UUID
+    ) -> CaptureJob | None:
+        """Claim one named job whatever its status, for `drain --job ID`.
+
+        Unlike claim_capture_jobs this ignores status entirely: retrying a
+        job that already gave up is the whole point of the flag. SKIP LOCKED
+        still keeps a concurrent drain from taking the same row.
+        """
+        with self._cur() as cur:
+            cur.execute(
+                f"""
+                with claimed as (
+                  select id from capture_jobs
+                   where id = %(id)s and owner_id = %(owner_id)s
+                   for update skip locked
+                )
+                update capture_jobs j
+                   set status = 'running',
+                       attempts = j.attempts + 1,
+                       updated_at = clock_timestamp()
+                  from claimed
+                 where j.id = claimed.id
+                returning {capture_job_columns("j")}
+                """,
+                {"id": job_id, "owner_id": owner_id},
+            )
+            row = cur.fetchone()
+        return _row_to_capture_job(row) if row else None
+
     def finish_capture_job(
         self,
         job_id: UUID,

@@ -170,3 +170,50 @@ def test_a_real_database_error_does_not_discard_the_rest_of_the_drain(
     assert titles == ["GOOD"]
     # And the report told the truth about it.
     assert "entries written 1" in result.stdout
+
+
+@pytest.mark.db
+def test_drain_job_retries_one_job_by_id(env, monkeypatch, tmp_path):
+    from remem.domain import CaptureStatus
+
+    t = tmp_path / "t.jsonl"
+    t.write_text("GOOD")
+    owner_id, job_id = _enqueue_job(env, "remem", str(t))
+    with psycopg.connect(env) as c:
+        c.execute(
+            "update capture_jobs set status = 'failed', attempts = 9, "
+            "error = 'gave up after 3 attempts' where id = %s",
+            (job_id,),
+        )
+        c.commit()
+    monkeypatch.setattr(
+        "remem.distill.claude_cli.ClaudeCliDistiller", _TitleFromTranscript
+    )
+
+    result = runner.invoke(app, ["capture", "drain", "--job", str(job_id)])
+
+    assert result.exit_code == 0
+    with psycopg.connect(env) as c:
+        status, error = c.execute(
+            "select status, error from capture_jobs where id = %s", (job_id,)
+        ).fetchone()
+        titles = [r[0] for r in c.execute("select title from entries").fetchall()]
+    assert status == str(CaptureStatus.DONE)
+    assert error is None
+    assert titles == ["GOOD"]
+
+
+@pytest.mark.db
+def test_drain_job_with_an_unknown_id_exits_nonzero(env):
+    import uuid
+
+    result = runner.invoke(app, ["capture", "drain", "--job", str(uuid.uuid4())])
+    assert result.exit_code == 1
+    assert "No capture job" in result.stderr
+
+
+@pytest.mark.db
+def test_drain_job_with_a_malformed_id_exits_nonzero(env):
+    result = runner.invoke(app, ["capture", "drain", "--job", "not-a-uuid"])
+    assert result.exit_code == 1
+    assert "not a valid" in result.stderr
