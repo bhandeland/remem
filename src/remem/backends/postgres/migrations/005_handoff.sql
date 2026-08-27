@@ -1,0 +1,12 @@
+-- Session handoffs are ordinary entries with their own origin, so they can be
+-- excluded from context blocks and from default search without a second table.
+--
+-- `add value` inside a transaction is allowed since PG 12, with one
+-- restriction that matters to whoever writes 006: the new value cannot be
+-- USED in the same transaction that adds it. migrate() runs every pending
+-- migration in one transaction, so a later migration that both adds an enum
+-- value and inserts a row carrying it will fail.
+--
+-- `if not exists` because a database migrated by a build that already carried
+-- the value must not fail here.
+alter type entry_origin add value if not exists 'handoff';

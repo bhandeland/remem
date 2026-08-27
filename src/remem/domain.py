@@ -23,6 +23,7 @@ class Origin(StrEnum):
     HUMAN = "human"
     AGENT = "agent"
     CAPTURE = "capture"
+    HANDOFF = "handoff"
 
 
 class CaptureStatus(StrEnum):
