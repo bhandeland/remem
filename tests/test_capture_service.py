@@ -369,3 +369,53 @@ def test_drain_job_rejects_another_owners_job(store, owner, transcript):
 
     with pytest.raises(capture.CaptureJobNotFound):
         capture.drain_job(store, owner.id, job.id, FakeDistiller([]))
+
+
+# --- telling the distiller what already exists ------------------------------
+
+
+@pytest.mark.db
+def test_drain_tells_the_distiller_what_is_already_recorded(store, owner, transcript):
+    """Including entries the USER wrote. The observed failure was capture
+    re-deriving a hand-written rule, so human titles are exactly the ones the
+    distiller most needs to see."""
+    from remem.domain import Origin
+    from remem.services.write import remember
+
+    remember(store, owner.id, title="A rule the user wrote", body="b",
+             project="remem", origin=Origin.HUMAN)
+    remember(store, owner.id, title="An earlier capture", body="b",
+             project="remem", origin=Origin.CAPTURE)
+
+    capture.enable(store, owner.id, "remem")
+    capture.enqueue(store, owner.id, project="remem",
+                    transcript_path=transcript, session_id="s")
+
+    seen = {}
+
+    class Recording:
+        def distill(self, transcript, project, known_titles=None):
+            seen["titles"] = list(known_titles or [])
+            return []
+
+    capture.drain(store, owner.id, Recording())
+    assert "A rule the user wrote" in seen["titles"]
+    assert "An earlier capture" in seen["titles"]
+
+
+@pytest.mark.db
+def test_a_distiller_without_known_titles_support_still_works(
+    store, owner, transcript
+):
+    """The protocol gained an optional argument; a two-argument distiller must
+    not break."""
+    capture.enable(store, owner.id, "remem")
+    capture.enqueue(store, owner.id, project="remem",
+                    transcript_path=transcript, session_id="s")
+
+    class TwoArg:
+        def distill(self, transcript, project):
+            return []
+
+    report = capture.drain(store, owner.id, TwoArg())
+    assert report.succeeded == 1

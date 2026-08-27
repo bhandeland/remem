@@ -19,6 +19,7 @@ import typer
 from remem.backends.postgres.migrate import applied_versions, migrate, pending_versions
 from remem.config import load
 from remem.domain import CollectionQuery, Entry, Kind, Origin, Query
+from remem.project import resolve_project
 from remem.services import kb, write
 from remem.services.search import find
 from remem.session import ensure_database, open_session
@@ -33,8 +34,13 @@ capture_app = typer.Typer(help="Automatic capture of session knowledge.")
 app.add_typer(capture_app, name="capture")
 
 
-def _default_project() -> str:
-    return Path.cwd().name
+def _default_project() -> str | None:
+    """The repository's name, not the current directory's.
+
+    See remem.project - a subdirectory or a worktree used to file entries
+    under its own directory name, silently, where nothing would find them.
+    """
+    return resolve_project()
 
 
 def _unreachable(dsn: str) -> None:

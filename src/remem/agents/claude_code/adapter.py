@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Mapping
 
 from remem.agents.base import Identity, InstallReport, UnsupportedScope
+from remem.project import resolve_project
 
 HOOK_COMMAND = "remem hook session-start"
 SESSION_END_COMMAND = "remem hook session-end"
@@ -141,5 +142,10 @@ class ClaudeCodeAdapter:
         return Identity(
             agent=self.name,
             session_id=payload.get("session_id"),
-            project=Path(cwd).name if cwd else None,
+            # The repository's name, not the directory's: a session started in
+            # a subdirectory or a worktree belongs to the same project, and
+            # using the directory name meant it injected nothing and captured
+            # under a project nobody had enabled - silently, since the hook is
+            # fail-soft.
+            project=resolve_project(Path(cwd)) if cwd else None,
         )

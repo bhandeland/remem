@@ -6,6 +6,7 @@ the CLI only formats.
 
 from __future__ import annotations
 
+import inspect
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID
@@ -91,6 +92,38 @@ def _failure_reason(exc: DistillationFailed) -> str:
     if not raw:
         return reason
     return f"{reason}; raw output: {raw[:MAX_RAW_IN_ERROR]}"
+
+
+KNOWN_TITLE_LIMIT = 200
+
+
+def _known_titles(store: Store, owner_id: UUID, project: str) -> list[str]:
+    """Titles already recorded for this project, whoever wrote them.
+
+    Human-written entries are included deliberately: the observed failure was
+    capture re-deriving a rule the user had written by hand, so those are
+    exactly the titles the distiller most needs to know about.
+    """
+    hits = store.search(Query(project=project, limit=KNOWN_TITLE_LIMIT), owner_id)
+    return [h.entry.title for h in hits]
+
+
+def _distill(
+    distiller: Distiller, transcript: str, project: str, known_titles: list[str]
+) -> list[CapturedEntry]:
+    """Call a distiller, tolerating one that predates `known_titles`.
+
+    The protocol gained an optional argument; a two-argument implementation
+    (including the fakes in the test suite) must keep working rather than
+    failing with a TypeError that would be recorded as a distillation failure.
+    """
+    try:
+        accepts = "known_titles" in inspect.signature(distiller.distill).parameters
+    except (TypeError, ValueError):
+        accepts = False
+    if accepts:
+        return distiller.distill(transcript, project, known_titles=known_titles)
+    return distiller.distill(transcript, project)
 
 
 def _already_captured(store: Store, owner_id: UUID, project: str, title: str) -> bool:
@@ -179,7 +212,8 @@ def _run_job(
             )
             return False, 0
         try:
-            entries = distiller.distill(text, job.project)
+            known = _known_titles(store, owner_id, job.project)
+            entries = _distill(distiller, text, job.project, known)
         except DistillationFailed as exc:
             _safe_finish(
                 store, job, owner_id, CaptureStatus.FAILED,

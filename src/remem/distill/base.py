@@ -47,7 +47,19 @@ class CapturedEntry:
 
 
 class Distiller(Protocol):
-    def distill(self, transcript: str, project: str) -> list[CapturedEntry]: ...
+    def distill(
+        self,
+        transcript: str,
+        project: str,
+        known_titles: list[str] | None = None,
+    ) -> list[CapturedEntry]:
+        """Extract durable entries from a session transcript.
+
+        `known_titles` is what this project already holds - the distiller is
+        expected not to re-record them. Optional so a simpler implementation
+        can ignore it; the caller checks the signature before passing it.
+        """
+        ...
 
 
 def _clean_tags(value: object) -> list[str]:

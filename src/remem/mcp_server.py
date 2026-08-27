@@ -15,6 +15,7 @@ from uuid import UUID
 from mcp.server.mcpserver import MCPServer
 
 from remem.domain import Kind, Origin, Query
+from remem.project import resolve_project
 from remem.services import kb, write
 from remem.services.search import find
 from remem.session import open_session
@@ -31,10 +32,11 @@ def _default_project() -> str | None:
     matches the knowledge base the SessionStart hook injects. Without it, an
     agent that omits `project` writes an entry with none - which the project's
     knowledge base will never surface, even though the write succeeded.
-    """
-    from pathlib import Path
 
-    return Path.cwd().name or None
+    Resolved from the git repository rather than the directory name, so a
+    subdirectory or a worktree still files under the project it belongs to.
+    """
+    return resolve_project()
 
 
 def _session_id() -> str | None:

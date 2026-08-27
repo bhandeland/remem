@@ -65,6 +65,32 @@ Return ONLY the JSON array.
 """
 
 
+MAX_KNOWN_TITLES = 60
+
+
+def build_prompt(known_titles: list[str] | None = None) -> str:
+    """The distillation prompt, told what this project already holds.
+
+    Without this the distiller has no idea anything is recorded, so it happily
+    re-derives a rule the user wrote by hand an hour earlier. Dedup cannot
+    catch that: the wording differs, so an exact-title match sees two distinct
+    entries. Prevention has to happen before the model writes, not after.
+
+    Titles only, and capped: a project's whole store would crowd out the
+    transcript it is supposed to be reading.
+    """
+    titles = [t.strip() for t in (known_titles or []) if t and t.strip()]
+    if not titles:
+        return PROMPT
+    listed = "\n".join(f"- {t}" for t in titles[:MAX_KNOWN_TITLES])
+    return (
+        f"{PROMPT}\n"
+        "Already recorded for this project - do NOT record any of these "
+        "again, even reworded:\n"
+        f"{listed}\n"
+    )
+
+
 def build_command(prompt: str, model: str = DEFAULT_CAPTURE_MODEL) -> list[str]:
     """Always pin the model.
 
@@ -94,14 +120,19 @@ class ClaudeCliDistiller:
         self._timeout = timeout
         self._model = model
 
-    def distill(self, transcript: str, project: str) -> list[CapturedEntry]:
+    def distill(
+        self,
+        transcript: str,
+        project: str,
+        known_titles: list[str] | None = None,
+    ) -> list[CapturedEntry]:
         payload = (
             f"Project: {project}\n\nTranscript:\n{bound_transcript(transcript)}"
         )
         size = len(payload)
         try:
             result = subprocess.run(
-                build_command(PROMPT, self._model),
+                build_command(build_prompt(known_titles), self._model),
                 input=payload,
                 capture_output=True,
                 text=True,

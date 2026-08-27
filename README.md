@@ -37,8 +37,11 @@ remem kb new myapp --title "myapp knowledge" --project myapp
 remem kb show myapp
 ```
 
-`remember` and `rule` default `--project` to the current directory's name -
-the same name the knowledge base injected at session start queries on. Pass
+`remember` and `rule` default `--project` to the repository's name - the same
+name the knowledge base injected at session start queries on. It comes from git
+rather than the directory, so a subdirectory or a worktree still files under the
+project it belongs to (`cd src` used to file entries under a project called
+`src`, where nothing would look for them). Pass
 `--global` for knowledge that is not tied to one project. (Before this
 defaulted, forgetting `--project` stored an entry with no project: the write
 succeeded and the entry simply never appeared in the knowledge base.)
