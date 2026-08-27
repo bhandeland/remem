@@ -25,6 +25,13 @@ class Origin(StrEnum):
     CAPTURE = "capture"
 
 
+class CaptureStatus(StrEnum):
+    PENDING = "pending"
+    RUNNING = "running"
+    DONE = "done"
+    FAILED = "failed"
+
+
 class PrincipalKind(StrEnum):
     USER = "user"
     TEAM = "team"
@@ -120,6 +127,8 @@ class Query:
     tags: list[str] = field(default_factory=list)
     since: datetime | None = None
     include_superseded: bool = False
+    origins: list[Origin] = field(default_factory=list)
+    """Include only these origins. Empty means all origins."""
     limit: int = 20
 
 
@@ -136,3 +145,20 @@ class Hit:
     rank: float
     snippet: str
     fuzzy: bool = False
+
+
+@dataclass(slots=True)
+class CaptureJob:
+    """One session queued for distillation."""
+
+    id: UUID
+    owner_id: UUID
+    project: str
+    transcript_path: str
+    session_id: str | None = None
+    status: CaptureStatus = CaptureStatus.PENDING
+    attempts: int = 0
+    error: str | None = None
+    entries_written: int = 0
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
