@@ -15,8 +15,15 @@ at session start.
 ```bash
 docker compose up -d
 uv sync
-uv run remem db up
+uv tool install --editable .    # puts `remem` on your PATH
+remem db up
 ```
+
+`uv tool install` is not optional if you intend to use the Claude Code
+integration. The MCP server and both hooks are registered as bare `remem`, so a
+`remem` that exists only inside the project venv produces a configuration that
+silently does nothing: the hooks fail soft to silence and the MCP server never
+starts. `--editable` means changes to this repo take effect without reinstalling.
 
 ## Use
 
@@ -74,9 +81,15 @@ are never affected.
 remem install claude-code
 ```
 
-This registers the MCP server, adds a SessionStart hook that injects the
-project's knowledge base, and installs the `remem` skill. Only user scope is
-implemented in v1; `--scope project` is rejected rather than quietly ignored.
+This registers the MCP server, adds SessionStart and SessionEnd hooks, and
+installs the `remem` skill. Both config files are backed up before they are
+written. Only user scope is implemented in v1; `--scope project` is rejected
+rather than quietly ignored.
+
+Check `which remem` first. Everything registered here calls bare `remem`, so
+without it on your PATH the install appears to succeed and then does nothing at
+all - the hooks are fail-soft and say nothing, and the MCP server simply never
+starts. See Setup.
 
 **The hook injects the knowledge base whose slug is exactly the session
 directory's name.** Working in `~/code/myapp` gets you the knowledge base with
