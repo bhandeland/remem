@@ -40,6 +40,11 @@ class Kind(StrEnum):
     """How a setting's value is interpreted."""
 
     INT = "int"
+    #: A real number. Separate from INT because the bound check differs: a
+    #: float setting can need an *exclusive* lower bound (a similarity
+    #: threshold of exactly 0 matches everything), which an integer range
+    #: expresses by simply raising the minimum by one.
+    FLOAT = "float"
     BOOL = "bool"
     #: Enabled by *presence*, whatever the value - so "0" enables it too.
     PRESENCE = "presence"
@@ -59,8 +64,14 @@ class EnvVar:
     kind: Kind
     #: One line. Rendered by `remem config list`, so it must fit on a line.
     help: str
-    minimum: int | None = None
-    maximum: int | None = None
+    #: Inclusive bounds, in the units the value is written in. Typed loosely
+    #: because a Kind.FLOAT setting bounds a float and a Kind.INT one an int;
+    #: the coerce branch for each kind is what gives them meaning.
+    minimum: int | float | None = None
+    maximum: int | float | None = None
+    #: Makes `minimum` exclusive: the value must be strictly greater than it.
+    #: Only meaningful for Kind.FLOAT - see the note on the member.
+    exclusive_minimum: bool = False
     #: The documented default, shown when the key is unset. A string because
     #: that is what lands in settings.json and what the user typed.
     default: str | None = None

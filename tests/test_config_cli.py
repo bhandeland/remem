@@ -170,3 +170,38 @@ def test_set_strips_whitespace_before_parsing_a_duration(tmp_path):
     assert result.exit_code == 0
     settings = json.loads((tmp_path / "claude" / "settings.json").read_text())
     assert settings["env"]["BASH_DEFAULT_TIMEOUT_MS"] == "600000"
+
+
+def test_set_refuses_a_non_numeric_fuzzy_threshold(tmp_path):
+    # The end-to-end shape of the bug: the value used to be written verbatim
+    # and then discarded by config.load(), so `set` reported success and
+    # nothing changed.
+    result = runner.invoke(
+        app,
+        ["config", "set", "REMEM_FUZZY_THRESHOLD", "not-a-number"],
+        env=_env(tmp_path),
+    )
+    assert result.exit_code == 1
+    assert not (tmp_path / "config.toml").exists()
+
+
+def test_set_writes_a_fuzzy_threshold_as_a_toml_float(tmp_path):
+    # A quoted "0.45" would be thrown away by config.load()'s float() guard
+    # in exactly the way a bare string value was.
+    result = runner.invoke(
+        app,
+        ["config", "set", "REMEM_FUZZY_THRESHOLD", "0.45"],
+        env=_env(tmp_path),
+    )
+    assert result.exit_code == 0
+    data = tomllib.loads((tmp_path / "config.toml").read_text())
+    assert data["fuzzy_threshold"] == 0.45
+
+
+def test_set_refuses_an_empty_value_on_a_remem_integer(tmp_path):
+    result = runner.invoke(
+        app, ["config", "set", "REMEM_MAX_CHARS", ""], env=_env(tmp_path)
+    )
+    assert result.exit_code == 1
+    assert "unset" in result.output
+    assert not (tmp_path / "config.toml").exists()

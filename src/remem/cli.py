@@ -560,7 +560,7 @@ def config_set(
     env, remem_path, agent_path, table = _config_targets(agent)
     try:
         target, var = svc.route(key, table)
-        resolved = svc.coerce(var, value)
+        resolved = svc.coerce(var, value, target)
     except (svc.UnknownSetting, svc.NotSettable, svc.InvalidValue) as exc:
         # KeyError stringifies with quotes around it; strip them so the
         # message reads like a sentence rather than a repr.

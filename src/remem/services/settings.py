@@ -56,17 +56,52 @@ def parse_duration(raw: str) -> int:
     return int(match.group(1)) * _MULTIPLIER[match.group(2)]
 
 
-def coerce(var: EnvVar, raw: str) -> str:
+def _float_range_error(var: EnvVar, number: float) -> str:
+    """The refusal message for a float outside its bounds.
+
+    States the whole constraint rather than the half that was crossed - the
+    caller learns the legal range from one error instead of having to trip
+    the other one to find the far end.
+    """
+    parts = []
+    if var.minimum is not None:
+        gate = "greater than" if var.exclusive_minimum else "at least"
+        parts.append(f"{gate} {var.minimum}")
+    if var.maximum is not None:
+        parts.append(f"at most {var.maximum}")
+    return f"{var.name} must be {' and '.join(parts)}; got {number}."
+
+
+def coerce(var: EnvVar, raw: str, target: Target) -> str:
     """Validate raw against var and return the string to write.
 
     Raises InvalidValue rather than writing something approximate. Callers
     must call this before touching a file, so that a rejected value leaves
     the file byte-identical.
+
+    `target` is needed only for the empty-string rule below: the two files
+    give an empty value opposite meanings, and the value alone cannot say
+    which one is being written.
     """
-    # An empty string is never a type error: it is Claude Code's documented
-    # way to override a shell variable the user cannot otherwise control.
-    # `unset` is the separate operation that removes the key.
+    # An empty string is not a type error in an agent's settings file: it is
+    # Claude Code's documented way to override a shell variable the user
+    # cannot otherwise control, and `unset` is the separate operation that
+    # removes the key.
+    #
+    # remem's own file resolves the other way - the environment already beats
+    # config.toml - so an empty value there neutralises nothing. On a numeric
+    # key it is worse than useless: `max_chars = ""` is accepted here and
+    # then thrown away by config.load()'s int(), which is the accepted-then-
+    # ignored write this whole command exists to prevent. Refuse it and name
+    # the operation the user actually wanted. Free-form remem keys (the DSN,
+    # the capture model) keep the permissive behaviour: blanking a file value
+    # there is meaningful and config.load() has its own fallback for it.
     if raw == "":
+        if target is Target.REMEM and var.kind in (Kind.INT, Kind.FLOAT):
+            raise InvalidValue(
+                f"{var.name} takes a number, so an empty value would be "
+                f"ignored. Use `remem config unset {var.name}` instead."
+            )
         return ""
 
     if var.kind is Kind.PRESENCE:
@@ -114,6 +149,28 @@ def coerce(var: EnvVar, raw: str) -> str:
             )
         return str(number)
 
+    if var.kind is Kind.FLOAT:
+        try:
+            number = float(raw.strip())
+        except ValueError:
+            raise InvalidValue(
+                f"{var.name} takes a number, not {raw!r}."
+            ) from None
+        if var.minimum is not None:
+            below = (
+                number <= var.minimum
+                if var.exclusive_minimum
+                else number < var.minimum
+            )
+            if below:
+                raise InvalidValue(_float_range_error(var, number))
+        if var.maximum is not None and number > var.maximum:
+            raise InvalidValue(_float_range_error(var, number))
+        # Normalised rather than echoed back, so that "1" and ".5" reach the
+        # file in the same spelling a human would have written, and so that
+        # write_remem's float() call cannot fail on something coerce accepted.
+        return str(number)
+
     return raw
 
 
@@ -151,9 +208,14 @@ REMEM_VARS: Mapping[str, EnvVar] = {
         "REMEM_MAX_CHARS", Kind.INT, "Cap on a rendered context block.",
         minimum=1, default=str(remem_config.DEFAULT_MAX_CHARS),
     ),
+    # The bounds mirror config.load()'s own guard exactly. Below or at 0 the
+    # fuzzy fallback matches everything and above 1 it matches nothing, so
+    # config.load() discards anything outside the range - which, while this
+    # was a free-form Kind.STR, made `set` a reliable no-op for a bad value.
     "REMEM_FUZZY_THRESHOLD": EnvVar(
-        "REMEM_FUZZY_THRESHOLD", Kind.STR,
+        "REMEM_FUZZY_THRESHOLD", Kind.FLOAT,
         "Trigram similarity floor for the fuzzy fallback (0 < t <= 1).",
+        minimum=0.0, maximum=1.0, exclusive_minimum=True,
         default=str(remem_config.DEFAULT_FUZZY_THRESHOLD),
     ),
     "REMEM_CAPTURE_MODEL": EnvVar(
@@ -211,6 +273,22 @@ def route(key: str, table: Mapping[str, EnvVar]) -> tuple[Target, EnvVar]:
     raise UnknownSetting(f"unknown setting '{key}'. Supported: {supported}")
 
 
+def _typed(var: EnvVar, value: str) -> object:
+    """The value as the TOML type its kind implies.
+
+    coerce() has already normalised the string, so int()/float() here cannot
+    fail on anything that reached this point; an empty value on a numeric
+    remem key is refused there rather than written as a string.
+    """
+    if not value:
+        return value
+    if var.kind is Kind.INT:
+        return int(value)
+    if var.kind is Kind.FLOAT:
+        return float(value)
+    return value
+
+
 def write_remem(path: Path, key: str, value: str | None) -> None:
     """Set or unset one key in remem's config.toml.
 
@@ -236,8 +314,11 @@ def write_remem(path: Path, key: str, value: str | None) -> None:
         env_key = _BY_FILE_KEY.get(name, name)
         var = REMEM_VARS[env_key]
         # Write the natural TOML type so the file reads the way a human
-        # would have written it, and `get` round-trips what was set.
-        data[name] = int(value) if var.kind is Kind.INT and value else value
+        # would have written it, and `get` round-trips what was set. A
+        # quoted number would be as good as no write at all: config.load()
+        # coerces with int()/float() and falls back to the default on
+        # anything it cannot parse.
+        data[name] = _typed(var, value)
 
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(tomli_w.dumps(data))
