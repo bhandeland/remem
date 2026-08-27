@@ -13,6 +13,33 @@ from typing import Mapping
 
 from remem.distill.base import CHILD_ENV_VAR, CapturedEntry, DistillationFailed, parse_entries
 
+# Measured against the real CLI on a long session's transcript:
+#   40KB  -> returns in seconds, and the model follows the prompt
+#   400KB -> ~5 minutes (past any sane timeout), AND the model ignores the
+#            prompt entirely, continuing the transcript's conversation instead
+#   5.9MB -> claude exits 1
+# The second case is the dangerous one: it does not announce itself. Output
+# comes back as prose, parse_entries raises, and the job looks like a bad
+# prompt rather than an oversized input. Bound it well below that.
+MAX_TRANSCRIPT_BYTES = 40_000
+
+TRUNCATION_NOTE = (
+    "[This is the TAIL of a longer session; earlier turns were truncated.]\n"
+)
+
+
+def bound_transcript(transcript: str, limit: int = MAX_TRANSCRIPT_BYTES) -> str:
+    """Keep the end of a transcript, not the beginning.
+
+    A session's conclusions, decisions and corrections live at the end; its
+    opening is setup and throat-clearing. The note matters as much as the
+    truncation - without it the model reasons about a session that appears to
+    begin mid-thought.
+    """
+    if len(transcript) <= limit:
+        return transcript
+    return TRUNCATION_NOTE + transcript[-limit:]
+
 PROMPT = """\
 You are reading a transcript of a coding session to extract durable knowledge.
 
@@ -58,10 +85,14 @@ class ClaudeCliDistiller:
         self._timeout = timeout
 
     def distill(self, transcript: str, project: str) -> list[CapturedEntry]:
+        payload = (
+            f"Project: {project}\n\nTranscript:\n{bound_transcript(transcript)}"
+        )
+        size = len(payload)
         try:
             result = subprocess.run(
                 build_command(PROMPT),
-                input=f"Project: {project}\n\nTranscript:\n{transcript}",
+                input=payload,
                 capture_output=True,
                 text=True,
                 timeout=self._timeout,
@@ -73,11 +104,15 @@ class ClaudeCliDistiller:
             ) from exc
         except subprocess.TimeoutExpired as exc:
             raise DistillationFailed(
-                f"claude timed out after {self._timeout}s"
+                f"claude timed out after {self._timeout}s on {size} bytes of input"
             ) from exc
 
         if result.returncode != 0:
+            # Observed in the wild: exit 1 with completely empty stderr. The
+            # exit code alone is not a diagnosis, so say what was sent too.
+            detail = result.stderr[:300].strip() or "no stderr output"
             raise DistillationFailed(
-                f"claude exited {result.returncode}: {result.stderr[:300]}"
+                f"claude exited {result.returncode} on {size} bytes of input: "
+                f"{detail}"
             )
         return parse_entries(result.stdout)
