@@ -583,3 +583,13 @@ class PostgresStore:
                 (owner_id, limit),
             )
             return [_row_to_capture_job(r) for r in cur.fetchall()]
+
+    def enabled_capture_projects(self, owner_id: UUID) -> list[str]:
+        """Projects with capture switched on, for `remem capture status`."""
+        with self._cur() as cur:
+            cur.execute(
+                "select project from capture_settings "
+                "where owner_id = %s and enabled order by project",
+                (owner_id,),
+            )
+            return [r["project"] for r in cur.fetchall()]

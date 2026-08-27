@@ -474,12 +474,7 @@ def capture_status(
     with _session() as s:
         counts = s.store.capture_job_counts(s.owner.id)
         failures = s.store.recent_failed_capture_jobs(s.owner.id)
-        rows = s.conn.execute(
-            "select project from capture_settings "
-            "where owner_id = %s and enabled order by project",
-            (s.owner.id,),
-        ).fetchall()
-        projects = [r[0] for r in rows]
+        projects = s.store.enabled_capture_projects(s.owner.id)
 
     if as_json:
         typer.echo(json.dumps({

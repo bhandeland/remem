@@ -153,3 +153,13 @@ def test_two_concurrent_drains_do_not_claim_the_same_job(live_dsn):
         b.commit()
 
     assert len(claimed_a) + len(claimed_b) == 1
+
+
+def test_enabled_capture_projects_lists_only_enabled_ones_for_this_owner(store, owner):
+    other = store.ensure_principal("someone-else")
+    store.set_capture_enabled(owner.id, "beta", True)
+    store.set_capture_enabled(owner.id, "alpha", True)
+    store.set_capture_enabled(owner.id, "gamma", False)
+    store.set_capture_enabled(other.id, "theirs", True)
+
+    assert store.enabled_capture_projects(owner.id) == ["alpha", "beta"]
