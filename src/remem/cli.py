@@ -33,6 +33,9 @@ app.add_typer(kb_app, name="kb")
 capture_app = typer.Typer(help="Automatic capture of session knowledge.")
 app.add_typer(capture_app, name="capture")
 
+handoff_app = typer.Typer(help="Session handoffs.")
+app.add_typer(handoff_app, name="handoff")
+
 
 def _default_project() -> str | None:
     """The repository's name, not the current directory's.
@@ -648,6 +651,71 @@ def capture_drain(
         f"claimed {report.claimed}, succeeded {report.succeeded}, "
         f"failed {report.failed}, entries written {report.entries_written}"
     )
+
+
+@handoff_app.command("write")
+def handoff_write(
+    body: Annotated[Optional[str], typer.Option("--body")] = None,
+    edit: Annotated[bool, typer.Option("--edit")] = False,
+    topic: Annotated[Optional[str], typer.Option("--topic")] = None,
+    project: Annotated[Optional[str], typer.Option("--project")] = None,
+):
+    """Store this session's state so it can be resumed after /clear.
+
+    The body is four sections - Done, In flight, Next steps, Gotchas. Writing
+    a handoff supersedes the previous one for the same topic, so a project
+    only ever has one live handoff per workstream.
+    """
+    from remem.services import handoff as handoff_svc
+
+    name = project or _default_project()
+    text = (
+        _body_from_editor(handoff_svc.BLANK_BODY) if edit else _read_body(body)
+    )
+    with _session() as s:
+        try:
+            entry, superseded = handoff_svc.write(
+                s.store, s.owner.id, project=name, topic=topic, body=text,
+            )
+        except (handoff_svc.NoProject, ValueError) as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(1)
+    typer.echo(entry.id)
+    if superseded is not None:
+        typer.echo(f"superseded {superseded.id}")
+    typer.echo(
+        f"resume with: /clear, then remem-prime "
+        f"{handoff_svc.topic_of(entry)}"
+    )
+
+
+@handoff_app.command("latest")
+def handoff_latest(
+    topic: Annotated[Optional[str], typer.Option("--topic")] = None,
+    project: Annotated[Optional[str], typer.Option("--project")] = None,
+    as_json: Annotated[bool, typer.Option("--json")] = False,
+):
+    """Print the newest live handoff for this project."""
+    from remem.services import handoff as handoff_svc
+
+    name = project or _default_project()
+    with _session() as s:
+        entry = (
+            handoff_svc.latest(s.store, s.owner.id, project=name, topic=topic)
+            if name
+            else None
+        )
+    if entry is None:
+        # An ordinary state, not an error: most projects have never been
+        # handed off, and prime asks about them anyway.
+        typer.echo(f"No handoff stored for '{name or 'this directory'}'.")
+        return
+    if as_json:
+        typer.echo(json.dumps(_entry_dict(entry), indent=2))
+        return
+    typer.echo(f"{entry.title}  ({entry.id})")
+    typer.echo("")
+    typer.echo(entry.body)
 
 
 if __name__ == "__main__":
