@@ -289,15 +289,17 @@ def _typed(var: EnvVar, value: str) -> object:
     return value
 
 
-def write_remem(path: Path, key: str, value: str | None) -> None:
+def write_remem(path: Path, key: str, value: str | None) -> Path | None:
     """Set or unset one key in remem's config.toml.
 
     Rewriting the file loses comments and formatting, which is why it is
-    backed up first. tomli-w rather than a hand-rolled writer because the DSN
-    can hold a password containing quotes or backslashes, and TOML escaping
-    is the wrong thing to be clever about.
+    backed up first, and why the backup's path is returned for the caller to
+    report. tomli-w rather than a hand-rolled writer because the DSN can hold
+    a password containing quotes or backslashes, and TOML escaping is the
+    wrong thing to be clever about.
     """
     data: dict = {}
+    backed_up: Path | None = None
     if path.exists():
         try:
             data = tomllib.loads(path.read_text())
@@ -305,7 +307,11 @@ def write_remem(path: Path, key: str, value: str | None) -> None:
             # Same posture as config.load(): a broken file must not be a
             # dead end. It is backed up below before being replaced.
             data = {}
-        jsonfile.backup_once(path, set())
+        # A fresh set rather than a shared one: this function reads the file
+        # itself instead of going through read_json, and writes once per
+        # process, so there is exactly one backup per invocation and nothing
+        # for a de-duplication set carried in from outside to suppress.
+        backed_up = jsonfile.backup_once(path, set())
 
     name = file_key(key)
     if value is None:
@@ -322,6 +328,7 @@ def write_remem(path: Path, key: str, value: str | None) -> None:
 
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(tomli_w.dumps(data))
+    return backed_up
 
 
 @dataclass(frozen=True, slots=True)
@@ -334,9 +341,17 @@ class Setting:
     target: Target
 
 
-def write_agent(path: Path, key: str, value: str | None) -> None:
-    """Set or unset one key in the env block of an agent's settings.json."""
+def write_agent(path: Path, key: str, value: str | None) -> Path | None:
+    """Set or unset one key in the env block of an agent's settings.json.
+
+    Returns where the file was backed up, for the caller to report.
+    """
+    # Back up before reading rather than letting write_json do it at the end.
+    # read_json snapshots the file itself when it turns out to be corrupt, and
+    # that copy is the one that matters - taking it here means one backup per
+    # invocation either way, with a path this function can return.
     backed_up: set[Path] = set()
+    made = jsonfile.backup_once(path, backed_up)
     data, _ = jsonfile.read_json(path, backed_up)
     env_block = data.get("env")
     if not isinstance(env_block, dict):
@@ -353,6 +368,7 @@ def write_agent(path: Path, key: str, value: str | None) -> None:
     else:
         env_block[key] = value
     jsonfile.write_json(path, data, backed_up)
+    return made
 
 
 def shadow_warning(

@@ -205,3 +205,54 @@ def test_set_refuses_an_empty_value_on_a_remem_integer(tmp_path):
     assert result.exit_code == 1
     assert "unset" in result.output
     assert not (tmp_path / "config.toml").exists()
+
+
+def test_set_reports_where_the_remem_backup_went(tmp_path):
+    # Rewriting config.toml loses comments and formatting. The backup lands
+    # beside the file under a timestamped name the user has no reason to
+    # guess, so a safety net nobody is told about is most of the way to no
+    # safety net at all.
+    path = tmp_path / "config.toml"
+    path.write_text("# hand written\nmax_chars = 4000\n")
+    result = runner.invoke(
+        app, ["config", "set", "REMEM_MAX_CHARS", "8000"], env=_env(tmp_path)
+    )
+    assert result.exit_code == 0
+    backups = [p for p in tmp_path.iterdir() if ".bak" in p.name]
+    assert len(backups) == 1
+    assert str(backups[0]) in result.stdout
+
+
+def test_set_reports_where_the_agent_backup_went(tmp_path):
+    path = tmp_path / "claude" / "settings.json"
+    path.parent.mkdir()
+    path.write_text('{"env": {"BASH_MAX_OUTPUT_LENGTH": "1000"}}')
+    result = runner.invoke(
+        app,
+        ["config", "set", "BASH_DEFAULT_TIMEOUT_MS", "10m"],
+        env=_env(tmp_path),
+    )
+    assert result.exit_code == 0
+    backups = [p for p in path.parent.iterdir() if ".bak" in p.name]
+    assert len(backups) == 1
+    assert str(backups[0]) in result.stdout
+
+
+def test_unset_reports_where_the_backup_went(tmp_path):
+    runner.invoke(
+        app, ["config", "set", "REMEM_MAX_CHARS", "8000"], env=_env(tmp_path)
+    )
+    result = runner.invoke(
+        app, ["config", "unset", "REMEM_MAX_CHARS"], env=_env(tmp_path)
+    )
+    assert result.exit_code == 0
+    assert "Backed up to" in result.stdout
+
+
+def test_set_says_nothing_about_a_backup_when_there_was_no_file(tmp_path):
+    # Nothing to lose on a first write, so nothing to report.
+    result = runner.invoke(
+        app, ["config", "set", "REMEM_MAX_CHARS", "8000"], env=_env(tmp_path)
+    )
+    assert result.exit_code == 0
+    assert "Backed up" not in result.stdout

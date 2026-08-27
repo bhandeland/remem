@@ -45,3 +45,15 @@ def test_backup_once_does_not_back_up_the_same_file_twice(tmp_path):
     jsonfile.backup_once(path, backed_up)
 
     assert len(list(tmp_path.glob("settings.json.bak*"))) == 1
+
+
+def test_backup_once_returns_where_the_copy_went(tmp_path):
+    # The caller is what tells the user, so the path has to come back out.
+    path = tmp_path / "settings.json"
+    path.write_text("{}")
+    made = jsonfile.backup_once(path, set())
+    assert made is not None and made.exists()
+
+
+def test_backup_once_returns_none_when_there_was_nothing_to_back_up(tmp_path):
+    assert jsonfile.backup_once(tmp_path / "missing.json", set()) is None

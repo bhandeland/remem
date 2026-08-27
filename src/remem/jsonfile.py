@@ -29,13 +29,21 @@ def backup(path: Path) -> Path:
     return target
 
 
-def backup_once(path: Path, backed_up: set[Path]) -> None:
+def backup_once(path: Path, backed_up: set[Path]) -> Path | None:
     """Back up path if it exists on disk and hasn't already been backed up
     during this run (avoids a redundant second backup of a file read_json
-    already snapshotted because it was corrupt)."""
+    already snapshotted because it was corrupt).
+
+    Returns where the copy went, or None if no copy was made - either the
+    file did not exist yet or this run has already snapshotted it. The
+    caller is what tells the user; a timestamped `.bakNNNNNNNNNN` sitting
+    silently beside the file is a safety net nobody knows to look for.
+    """
     if path.exists() and path not in backed_up:
-        backup(path)
+        target = backup(path)
         backed_up.add(path)
+        return target
+    return None
 
 
 def read_json(path: Path, backed_up: set[Path]) -> tuple[dict, list[str]]:
@@ -52,7 +60,9 @@ def read_json(path: Path, backed_up: set[Path]) -> tuple[dict, list[str]]:
         ]
 
 
-def write_json(path: Path, data: dict, backed_up: set[Path]) -> None:
-    backup_once(path, backed_up)
+def write_json(path: Path, data: dict, backed_up: set[Path]) -> Path | None:
+    """Write data, backing the existing file up first. Returns the backup."""
+    made = backup_once(path, backed_up)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2) + "\n")
+    return made

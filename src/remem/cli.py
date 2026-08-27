@@ -568,13 +568,19 @@ def config_set(
         raise typer.Exit(1)
 
     if target is svc.Target.REMEM:
-        svc.write_remem(remem_path, var.name, resolved)
+        backup = svc.write_remem(remem_path, var.name, resolved)
         where = remem_path
     else:
-        svc.write_agent(agent_path, var.name, resolved)
+        backup = svc.write_agent(agent_path, var.name, resolved)
         where = agent_path
 
     typer.echo(f"{var.name} = {resolved!r} in {where}")
+    # Rewriting either file loses whatever was not a setting - comments and
+    # formatting in config.toml, key order in settings.json. The copy is
+    # taken automatically, so the only thing left to get wrong is not saying
+    # where it went; a timestamped .bak name is not one anybody would guess.
+    if backup is not None:
+        typer.echo(f"Backed up to {backup}")
     warning = svc.shadow_warning(target, var.name, env)
     if warning:
         typer.echo(warning, err=True)
@@ -596,10 +602,12 @@ def config_unset(
         raise typer.Exit(1)
 
     if target is svc.Target.REMEM:
-        svc.write_remem(remem_path, var.name, None)
+        backup = svc.write_remem(remem_path, var.name, None)
     else:
-        svc.write_agent(agent_path, var.name, None)
+        backup = svc.write_agent(agent_path, var.name, None)
     typer.echo(f"Unset {var.name}.")
+    if backup is not None:
+        typer.echo(f"Backed up to {backup}")
 
 
 @config_app.command("get")

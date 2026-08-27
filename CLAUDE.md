@@ -128,6 +128,10 @@ Code environment variables lands in the `env` block of `settings.json`.
   remem's `config.toml`, while `settings.json` beats a shell export. `set`
   says so when the key it just wrote is also exported, because writing a
   shadowed remem key is otherwise a silent no-op.
+- **Every write backs the file up first and says where the backup went.** A
+  rewrite of `config.toml` loses comments and formatting, so the writers
+  return the backup path and the CLI echoes it - a `.bak<timestamp>` nobody
+  is told about is barely a safety net.
 - This is the one service that opens no database connection. It must keep
   working with Postgres down.
 
