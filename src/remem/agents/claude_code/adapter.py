@@ -1,4 +1,4 @@
-"""Installs remem into Claude Code: MCP server, SessionStart hook, skill."""
+"""Installs remem into Claude Code: MCP server, hooks, and bundled skills."""
 
 from __future__ import annotations
 
