@@ -13,6 +13,7 @@ from typing import Mapping
 
 from remem.agents.claude_code.adapter import ClaudeCodeAdapter
 from remem.config import load
+from remem.distill.base import CHILD_ENV_VAR
 from remem.services import kb
 from remem.session import open_session
 
@@ -78,6 +79,67 @@ def main() -> int:
         block = session_start(sys.stdin.read(), env=dict(os.environ))
         if block:
             sys.stdout.write(block)
+    except Exception:
+        pass
+    return 0
+
+
+def session_end(stdin_text: str, env: Mapping[str, str]) -> None:
+    """Queue this session for distillation. Never raises, never prints.
+
+    Does exactly one INSERT. Everything fragile - the subprocess, the model,
+    the parsing - happens in the drain, where it can be retried and inspected.
+    """
+    if env.get(CHILD_ENV_VAR):
+        # This session IS a distillation run. Enqueueing here would spawn
+        # another distillation, without bound.
+        _debug(env, "skipped: running inside a capture child")
+        return
+
+    try:
+        payload = json.loads(stdin_text) if stdin_text.strip() else {}
+    except (json.JSONDecodeError, AttributeError):
+        _debug(env, "stdin was not valid JSON")
+        return
+
+    try:
+        transcript_path = payload.get("transcript_path")
+        if not transcript_path:
+            _debug(env, "the hook payload carried no transcript_path")
+            return
+
+        identity = ClaudeCodeAdapter().identity(env, payload)
+        if not identity.project:
+            _debug(env, "the hook payload carried no cwd")
+            return
+
+        from remem.services import capture
+
+        config = load(env=env)
+        with open_session(config) as s:
+            job = capture.enqueue(
+                s.store,
+                s.owner.id,
+                project=identity.project,
+                transcript_path=transcript_path,
+                session_id=identity.session_id,
+            )
+            if job is None:
+                _debug(
+                    env,
+                    f"capture is not enabled for project '{identity.project}'. "
+                    f"Enable it with `remem capture enable --project "
+                    f"{identity.project}`.",
+                )
+    except Exception:
+        # Same contract as session_start: a knowledge tool must never be why a
+        # session fails to close.
+        _debug(env, "capture enqueue failed")
+
+
+def main_session_end() -> int:
+    try:
+        session_end(sys.stdin.read(), env=dict(os.environ))
     except Exception:
         pass
     return 0
