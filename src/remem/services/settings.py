@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import re
 import tomllib
+from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 from typing import Mapping
@@ -230,3 +231,121 @@ def write_remem(path: Path, key: str, value: str | None) -> None:
 
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(tomli_w.dumps(data))
+
+
+@dataclass(frozen=True, slots=True)
+class Setting:
+    key: str
+    value: str | None
+    #: "environment", "file", or "default" - the whole point of `list`.
+    source: str
+    var: EnvVar
+    target: Target
+
+
+def write_agent(path: Path, key: str, value: str | None) -> None:
+    """Set or unset one key in the env block of an agent's settings.json."""
+    backed_up: set[Path] = set()
+    data, _ = jsonfile.read_json(path, backed_up)
+    env_block = data.get("env")
+    if not isinstance(env_block, dict):
+        # settings.json is a file remem does not own, and every other touch
+        # of it degrades rather than raising. A hand-corrupted file can have
+        # "env" set to something other than a dict (e.g. "env": "yes"); a
+        # bare setdefault would hand back that non-dict value and crash on
+        # the next line. Replace it with a fresh dict instead - the same
+        # posture as write_remem's "broken file must not be a dead end".
+        env_block = {}
+        data["env"] = env_block
+    if value is None:
+        env_block.pop(key, None)
+    else:
+        env_block[key] = value
+    jsonfile.write_json(path, data, backed_up)
+
+
+def shadow_warning(
+    target: Target, key: str, env: Mapping[str, str]
+) -> str | None:
+    """Whether the value just written will actually be the one in effect.
+
+    The two targets resolve in opposite directions, which is the single most
+    confusing thing about this command:
+
+        remem        environment beats config.toml
+        Claude Code  settings.json beats the environment
+
+    So the same situation - the key is also exported - is a silent no-op on
+    one side and the intended behaviour on the other. Saying nothing would
+    leave the user staring at a correctly written file that changed nothing.
+    """
+    if key not in env:
+        return None
+    if target is Target.REMEM:
+        return (
+            f"{key} is set in your environment, which takes precedence over "
+            f"the config file, so this change will not take effect until you "
+            f"unset it."
+        )
+    return (
+        f"{key} is also set in your environment. The settings file overrides "
+        f"it, so the value just written is the one that will be used."
+    )
+
+
+def _agent_env(path: Path) -> dict:
+    data, _ = jsonfile.read_json(path, set())
+    block = data.get("env")
+    return block if isinstance(block, dict) else {}
+
+
+def list_settings(
+    remem_path: Path,
+    agent_path: Path,
+    table: Mapping[str, EnvVar],
+    env: Mapping[str, str],
+) -> list[Setting]:
+    """Every settable key, its effective value, and where that value came from.
+
+    This is the feature that justifies the command existing alongside
+    Claude Code's own /config: one view over both tools, with each side's
+    precedence rule already applied.
+    """
+    rows: list[Setting] = []
+
+    file_data: dict = {}
+    if remem_path.exists():
+        try:
+            file_data = tomllib.loads(remem_path.read_text())
+        except tomllib.TOMLDecodeError:
+            file_data = {}
+
+    for key, var in REMEM_VARS.items():
+        # Environment first: config.load() picks the env var over the file.
+        if key in env:
+            rows.append(Setting(key, env[key], "environment", var, Target.REMEM))
+            continue
+        name = _FILE_KEYS[key]
+        if name in file_data:
+            rows.append(
+                Setting(key, str(file_data[name]), "file", var, Target.REMEM)
+            )
+            continue
+        rows.append(Setting(key, var.default, "default", var, Target.REMEM))
+
+    agent_block = _agent_env(agent_path)
+    for key, var in table.items():
+        # File first: for Claude Code the settings file beats the export.
+        if key in agent_block:
+            rows.append(
+                Setting(key, agent_block[key], "file", var, Target.AGENT)
+            )
+            continue
+        if key in env:
+            rows.append(
+                Setting(key, env[key], "environment", var, Target.AGENT)
+            )
+            continue
+        rows.append(Setting(key, var.default, "default", var, Target.AGENT))
+
+    return rows
