@@ -1,0 +1,96 @@
+import pytest
+
+from remem.distill.base import (
+    MAX_BODY,
+    MAX_ENTRIES,
+    MAX_TITLE,
+    CapturedEntry,
+    DistillationFailed,
+    parse_entries,
+)
+from remem.domain import Kind
+
+
+def test_parses_a_well_formed_array():
+    raw = """[
+      {"title": "Pool sizing", "body": "pgbouncer saturates",
+       "kind": "memory", "tags": ["ops"]}
+    ]"""
+    entries = parse_entries(raw)
+    assert entries == [
+        CapturedEntry(title="Pool sizing", body="pgbouncer saturates",
+                      kind=Kind.MEMORY, tags=["ops"])
+    ]
+
+
+def test_an_empty_array_is_valid_and_yields_nothing():
+    """Most sessions contain nothing durable. That is success, not failure."""
+    assert parse_entries("[]") == []
+
+
+def test_tolerates_prose_around_the_json():
+    """Models prepend explanations however firmly you ask them not to."""
+    raw = 'Here is what I found:\\n[{"title":"T","body":"B","kind":"rule"}]\\nDone.'
+    assert [e.title for e in parse_entries(raw)] == ["T"]
+
+
+def test_tolerates_a_fenced_code_block():
+    raw = '```json\\n[{"title":"T","body":"B","kind":"doc"}]\\n```'
+    assert [e.kind for e in parse_entries(raw)] == [Kind.DOC]
+
+
+def test_missing_tags_defaults_to_empty():
+    assert parse_entries('[{"title":"T","body":"B","kind":"memory"}]')[0].tags == []
+
+
+def test_drops_entries_missing_required_fields_without_failing_the_batch():
+    raw = """[
+      {"title": "Good", "body": "B", "kind": "memory"},
+      {"title": "No body", "kind": "memory"},
+      {"body": "No title", "kind": "memory"}
+    ]"""
+    assert [e.title for e in parse_entries(raw)] == ["Good"]
+
+
+def test_drops_entries_with_an_unknown_kind():
+    raw = """[
+      {"title": "Good", "body": "B", "kind": "memory"},
+      {"title": "Bad", "body": "B", "kind": "note"}
+    ]"""
+    assert [e.title for e in parse_entries(raw)] == ["Good"]
+
+
+def test_truncates_to_the_entry_cap():
+    raw = "[" + ",".join(
+        f'{{"title":"T{i}","body":"B","kind":"memory"}}' for i in range(20)
+    ) + "]"
+    assert len(parse_entries(raw)) == MAX_ENTRIES
+
+
+def test_caps_title_and_body_length():
+    raw = (
+        '[{"title":"' + "t" * 500 + '","body":"' + "b" * 9000
+        + '","kind":"memory"}]'
+    )
+    entry = parse_entries(raw)[0]
+    assert len(entry.title) == MAX_TITLE
+    assert len(entry.body) == MAX_BODY
+
+
+def test_non_string_tags_are_dropped():
+    raw = '[{"title":"T","body":"B","kind":"memory","tags":["ok",5,null]}]'
+    assert parse_entries(raw)[0].tags == ["ok"]
+
+
+@pytest.mark.parametrize("raw", ["", "   ", "not json at all", "{}", "null", "[1,2,3]"])
+def test_unparseable_output_raises_distillation_failed(raw):
+    with pytest.raises(DistillationFailed):
+        parse_entries(raw)
+
+
+def test_whitespace_only_title_or_body_is_dropped():
+    """A non-empty array where every item fails validation is a distillation
+    failure (not a quiet empty result) - see parse_entries for the rationale."""
+    raw = '[{"title":"  ","body":"B","kind":"memory"}]'
+    with pytest.raises(DistillationFailed):
+        parse_entries(raw)
