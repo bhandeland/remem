@@ -213,6 +213,9 @@ class PostgresStore:
         if query.tags:
             where.append("e.tags && %(tags)s")
             params["tags"] = list(query.tags)
+        if query.origins:
+            where.append("e.origin = any(%(origins)s::entry_origin[])")
+            params["origins"] = [str(o) for o in query.origins]
         if query.since is not None:
             where.append("e.created_at >= %(since)s")
             params["since"] = query.since
@@ -290,6 +293,9 @@ class PostgresStore:
         if query.tags:
             where.append("e.tags && %(tags)s")
             params["tags"] = list(query.tags)
+        if query.origins:
+            where.append("e.origin = any(%(origins)s::entry_origin[])")
+            params["origins"] = [str(o) for o in query.origins]
         if query.since is not None:
             where.append("e.created_at >= %(since)s")
             params["since"] = query.since
