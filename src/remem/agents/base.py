@@ -96,11 +96,21 @@ class AgentAdapter(Protocol):
     ) -> InstallReport: ...
     def identity(self, env: Mapping[str, str], payload: dict) -> Identity: ...
 
-    # Optional capability, probed with getattr rather than declared here:
+    # Optional capabilities, probed with getattr rather than declared here:
     #
     #     def env_settings(self) -> Mapping[str, EnvVar]: ...
+    #     def settings_path(self, home: Path, env: Mapping[str, str]) -> Path: ...
     #
     # Adapters written before `remem config` existed - including any third
-    # party one already shipped - do not have it, and requiring it would break
-    # them at import time. The registry contract is that a broken third-party
-    # adapter warns rather than breaking remem, so the service probes instead.
+    # party one already shipped - do not have them, and requiring them would
+    # break those adapters at import time. The registry contract is that a
+    # broken third-party adapter warns rather than breaking remem, so the
+    # service probes instead.
+    #
+    # The pair goes together: env_settings says which variables exist and
+    # settings_path says which file they live in. An adapter with only one of
+    # them cannot be written to, so services/settings.resolve_targets treats
+    # it exactly like an adapter with neither - "no settable env vars" - and
+    # never falls back to another agent's file. env is passed for the same
+    # reason install() takes it, and so that CLAUDE_CONFIG_DIR and its
+    # equivalents are honoured without the service knowing they exist.

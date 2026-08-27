@@ -523,17 +523,19 @@ def install(
 
 
 def _config_targets(agent: str):
-    """The two files `remem config` reads and writes, plus the agent's table.
+    """Resolve --agent to an adapter and ask the service where its files are.
 
-    CLAUDE_CONFIG_DIR is honoured through the adapter's own resolver, so this
-    command lands in the same place `remem install` did.
+    Everything this function decides is a parsing decision: the name of the
+    agent, and what to print when there is no such agent. Which file that
+    agent's environment block lives in, and what a missing capability means,
+    are the service's calls - hard-wiring one adapter's resolver here is how
+    `--agent codex` would end up writing into ~/.claude/settings.json.
     """
     import os
     from pathlib import Path
 
-    from remem.agents.claude_code.adapter import resolve_paths
     from remem.agents.registry import UnknownAgent, get as get_adapter
-    from remem.config import default_config_path
+    from remem.services import settings as svc
 
     env = os.environ
     try:
@@ -542,10 +544,8 @@ def _config_targets(agent: str):
         # registry.get already lists what is registered, so echo it as-is.
         typer.echo(str(exc), err=True)
         raise typer.Exit(1)
-    paths = resolve_paths(Path.home(), env)
-    remem_path = Path(env.get("REMEM_CONFIG", default_config_path()))
-    table = getattr(adapter, "env_settings", lambda: {})()
-    return env, remem_path, paths.settings, table
+    targets = svc.resolve_targets(adapter, Path.home(), env)
+    return env, targets.remem_path, targets.agent_path, targets.table
 
 
 @config_app.command("set")

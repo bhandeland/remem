@@ -400,7 +400,50 @@ def shadow_warning(
     )
 
 
-def _agent_env(path: Path) -> dict:
+@dataclass(frozen=True, slots=True)
+class Targets:
+    """The files one `remem config` invocation reads and writes.
+
+    agent_path is None when the resolved adapter has no env block remem can
+    write, in which case table is empty too - the two always travel together.
+    """
+
+    remem_path: Path
+    agent_path: Path | None
+    table: Mapping[str, EnvVar]
+
+
+def resolve_targets(
+    adapter: object, home: Path, env: Mapping[str, str]
+) -> Targets:
+    """Which files this agent's settings live in, and what it lets us set.
+
+    Policy, not parsing, which is why it is here and not in the frontend:
+    choosing the file an agent's env block lives in is the difference between
+    configuring that agent and quietly corrupting another one's config. The
+    frontend resolves the adapter by name and hands it over; everything after
+    that is this module's decision.
+
+    `env_settings` and `settings_path` are both *optional* capabilities,
+    probed with getattr - see the rationale on AgentAdapter in agents/base.py.
+    An adapter missing either one is reported as having no settable
+    environment variables, which is the spec's documented outcome and is why
+    the probe cannot simply be deleted as unreachable: claude-code is the only
+    adapter in-tree that has them.
+    """
+    remem_path = Path(
+        env.get("REMEM_CONFIG", remem_config.default_config_path())
+    )
+    table_of = getattr(adapter, "env_settings", None)
+    path_of = getattr(adapter, "settings_path", None)
+    if table_of is None or path_of is None:
+        return Targets(remem_path, None, {})
+    return Targets(remem_path, path_of(home, env), table_of())
+
+
+def _agent_env(path: Path | None) -> dict:
+    if path is None:
+        return {}
     data, _ = jsonfile.read_json(path, set())
     block = data.get("env")
     return block if isinstance(block, dict) else {}
@@ -408,7 +451,7 @@ def _agent_env(path: Path) -> dict:
 
 def list_settings(
     remem_path: Path,
-    agent_path: Path,
+    agent_path: Path | None,
     table: Mapping[str, EnvVar],
     env: Mapping[str, str],
 ) -> list[Setting]:

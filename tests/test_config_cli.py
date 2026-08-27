@@ -1,13 +1,36 @@
 from __future__ import annotations
 
 import json
+import os
 import tomllib
+from pathlib import Path
+from typing import Mapping
 
+import pytest
 from typer.testing import CliRunner
 
+import remem.agents.registry as registry
+from remem.agents.base import EnvVar, Kind
+from remem.agents.claude_code.env_vars import CLAUDE_CODE_ENV_VARS
 from remem.cli import app
+from remem.services.settings import REMEM_VARS
 
 runner = CliRunner()
+
+
+@pytest.fixture(autouse=True)
+def _clean_environment(monkeypatch):
+    """Strip every settable key from the real process environment.
+
+    CliRunner's `env=` *merges* into os.environ rather than replacing it, and
+    a CLI frontend legitimately reads os.environ - so without this a
+    developer who exports REMEM_MAX_CHARS in their shell changes what these
+    tests see (that key's source becomes "environment"). The repo's rule is
+    that the environment is injected, never inherited, and for a CLI test
+    that means clearing the inherited half first.
+    """
+    for key in list(REMEM_VARS) + list(CLAUDE_CODE_ENV_VARS):
+        monkeypatch.delenv(key, raising=False)
 
 
 def _env(tmp_path, **extra):
@@ -256,3 +279,61 @@ def test_set_says_nothing_about_a_backup_when_there_was_no_file(tmp_path):
     )
     assert result.exit_code == 0
     assert "Backed up" not in result.stdout
+
+
+class _OtherAgent:
+    """A second registered adapter, with its own table and its own file."""
+
+    name = "other"
+
+    def env_settings(self) -> Mapping[str, EnvVar]:
+        return {
+            "OTHER_TIMEOUT_MS": EnvVar(
+                "OTHER_TIMEOUT_MS", Kind.INT, "Another agent's timeout.",
+                minimum=1,
+            )
+        }
+
+    def settings_path(self, home: Path, env: Mapping[str, str]) -> Path:
+        return Path(env["OTHER_SETTINGS"])
+
+
+@pytest.fixture
+def other_agent(monkeypatch):
+    real = registry.discover()
+    monkeypatch.setattr(
+        registry, "discover", lambda: {**real, "other": _OtherAgent}
+    )
+
+
+def test_set_on_a_second_agent_writes_that_agents_file(
+    tmp_path, other_agent, monkeypatch
+):
+    # Before the probes moved into the service, --agent picked the table but
+    # the settings path was always Claude Code's, so this value would have
+    # landed in ~/.claude/settings.json - silent, and wrong in the direction
+    # that corrupts another tool's config.
+    other = tmp_path / "other-settings.json"
+    monkeypatch.setenv("OTHER_SETTINGS", str(other))
+    result = runner.invoke(
+        app,
+        ["config", "set", "--agent", "other", "OTHER_TIMEOUT_MS", "10"],
+        env=_env(tmp_path, OTHER_SETTINGS=str(other)),
+    )
+    assert result.exit_code == 0
+    assert json.loads(other.read_text())["env"]["OTHER_TIMEOUT_MS"] == "10"
+    assert not (tmp_path / "claude" / "settings.json").exists()
+
+
+def test_a_claude_code_key_is_unknown_to_another_agent(
+    tmp_path, other_agent, monkeypatch
+):
+    other = tmp_path / "other-settings.json"
+    monkeypatch.setenv("OTHER_SETTINGS", str(other))
+    result = runner.invoke(
+        app,
+        ["config", "set", "--agent", "other", "BASH_MAX_OUTPUT_LENGTH", "100"],
+        env=_env(tmp_path, OTHER_SETTINGS=str(other)),
+    )
+    assert result.exit_code == 1
+    assert not other.exists()

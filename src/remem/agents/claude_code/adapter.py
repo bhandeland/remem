@@ -201,6 +201,14 @@ class ClaudeCodeAdapter:
             project=resolve_project(Path(cwd)) if cwd else None,
         )
 
+    def settings_path(self, home: Path, env: Mapping[str, str]) -> Path:
+        """Where `remem config` writes this agent's env block.
+
+        The same resolver install() uses, so CLAUDE_CONFIG_DIR moves both and
+        the two commands can never disagree about which file they mean.
+        """
+        return resolve_paths(home, env).settings
+
     def env_settings(self) -> Mapping[str, EnvVar]:
         """The environment variables `remem config` may write for this agent.
 

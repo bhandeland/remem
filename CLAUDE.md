@@ -120,6 +120,11 @@ Code environment variables lands in the `env` block of `settings.json`.
   (`agents/claude_code/env_vars.py`), not in `services/`. It is a fact about
   Claude Code, not about remem, and keeping it there is what lets a future
   adapter ship its own.
+- `env_settings()` and `settings_path()` are **optional adapter capabilities**,
+  probed with `getattr` in `settings.resolve_targets` and documented on the
+  Protocol rather than declared on it. They go together: an adapter with only
+  one of them reports "no settable env vars" rather than falling back to
+  another agent's file. The frontend resolves `--agent` and nothing else.
 - **No credential and no endpoint variable is ever settable.** Their absence
   from the table is the enforcement; `tests/test_env_vars.py` asserts it.
   Neither is `CLAUDE_CONFIG_DIR` or `REMEM_CONFIG` - each names the file that
