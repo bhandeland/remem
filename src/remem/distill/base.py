@@ -8,7 +8,6 @@ reaches the store.
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -24,8 +23,6 @@ MAX_BODY = 4000
 # the distiller and the agent hook can import it without depending on each
 # other. This string MUST match wherever the child process checks it.
 CHILD_ENV_VAR = "REMEM_CAPTURE_CHILD"
-
-_ARRAY = re.compile(r"\[.*\]", re.DOTALL)
 
 
 class DistillationFailed(Exception):
@@ -72,36 +69,66 @@ def _entry_from(item: object) -> CapturedEntry | None:
     )
 
 
+def _find_array_candidates(raw: str) -> list[list[object]]:
+    """Scan for every top-level JSON array embedded in `raw`.
+
+    A greedy "first [ to last ]" regex would span from a decoy array clear
+    through to the real one (or past a stray "]" in trailing prose), and
+    then fail to parse as JSON at all. Instead we try `raw_decode` at every
+    "[" and keep whatever actually decodes as a list, in the order they
+    appear. Non-list top-level values (e.g. `{}` decoding at a `[` inside
+    a fenced block's sibling text) and parse failures at a given position
+    are simply skipped - they aren't array candidates.
+    """
+    decoder = json.JSONDecoder()
+    candidates: list[list[object]] = []
+    for i, ch in enumerate(raw):
+        if ch != "[":
+            continue
+        try:
+            value, _ = decoder.raw_decode(raw, i)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, list):
+            candidates.append(value)
+    return candidates
+
+
 def parse_entries(raw: str) -> list[CapturedEntry]:
     """Read a distiller's raw output into validated entries.
 
     Accepts a bare JSON array, or one embedded in prose or a fenced block -
     models prepend explanations however firmly the prompt asks them not to.
-    Raises DistillationFailed when no array can be found at all, or when the
-    JSON is malformed, or when the top-level value isn't a list.
+    Models also second-guess themselves mid-output ("attempt 1 was wrong,
+    here's the real one") or drop a stray "[0]" into trailing prose, so
+    there can be more than one JSON array in the text. We take the FIRST
+    array that yields at least one valid entry - not merely the first one
+    that parses - because the first parseable array might be a decoy like
+    `[1,2,3]` that itself contains no usable entries.
 
-    An empty array ("[]") is a deliberate, successful "found nothing" result -
-    most sessions contain nothing durable - and returns []. But a *non-empty*
-    array where every item fails validation is different: the model produced
-    output, and none of it was usable. That's a distillation failure, not a
-    quiet clean session, so it raises rather than silently returning [] - it
-    needs to show up in `remem capture status` instead of being indistinguishable
-    from a week with nothing to capture.
+    Raises DistillationFailed when no JSON array can be found at all.
+
+    An empty array ("[]") is a deliberate, successful "found nothing" result
+    - most sessions contain nothing durable - and returns []. But when every
+    candidate array is non-empty and none of them yields a valid entry, that's
+    different: the model produced output, and none of it was usable. That's a
+    distillation failure, not a quiet clean session, so it raises rather than
+    silently returning [] - it needs to show up in `remem capture status`
+    instead of being indistinguishable from a week with nothing to capture.
     """
-    match = _ARRAY.search(raw or "")
-    if match is None:
+    candidates = _find_array_candidates(raw or "")
+    if not candidates:
         raise DistillationFailed("no JSON array in distiller output")
-    try:
-        data = json.loads(match.group(0))
-    except json.JSONDecodeError as exc:
-        raise DistillationFailed(f"output was not valid JSON: {exc}") from exc
-    if not isinstance(data, list):
-        raise DistillationFailed("distiller output was not a list")
 
-    if not data:
+    saw_empty = False
+    for data in candidates:
+        if not data:
+            saw_empty = True
+            continue
+        entries = [e for e in (_entry_from(i) for i in data) if e is not None]
+        if entries:
+            return entries[:MAX_ENTRIES]
+
+    if saw_empty:
         return []
-
-    entries = [e for e in (_entry_from(i) for i in data) if e is not None]
-    if not entries:
-        raise DistillationFailed("no entry in a non-empty array passed validation")
-    return entries[:MAX_ENTRIES]
+    raise DistillationFailed("no candidate array contained a valid entry")

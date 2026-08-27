@@ -88,6 +88,24 @@ def test_unparseable_output_raises_distillation_failed(raw):
         parse_entries(raw)
 
 
+def test_prefers_the_array_that_actually_contains_entries():
+    """A model second-guessing itself emits a decoy array before the real one."""
+    raw = ('First attempt: [1,2,3] was wrong. Correct output: '
+           '[{"title":"Good","body":"B","kind":"memory"}]')
+    assert [e.title for e in parse_entries(raw)] == ["Good"]
+
+
+def test_tolerates_a_bracket_in_prose_after_a_fenced_block():
+    raw = ('```json\n[{"title":"Good","body":"B","kind":"memory"}]\n```\n'
+           'Note: see items[0] for details.')
+    assert [e.title for e in parse_entries(raw)] == ["Good"]
+
+
+def test_an_empty_array_still_wins_over_no_valid_entries():
+    """[] is the deliberate 'nothing durable' answer and stays a success."""
+    assert parse_entries('Nothing to record: []') == []
+
+
 def test_whitespace_only_title_or_body_is_dropped():
     """A non-empty array where every item fails validation is a distillation
     failure (not a quiet empty result) - see parse_entries for the rationale."""
