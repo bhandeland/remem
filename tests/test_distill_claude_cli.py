@@ -204,3 +204,41 @@ def test_a_timeout_reports_the_input_size(monkeypatch):
     with pytest.raises(DistillationFailed) as exc:
         ClaudeCliDistiller().distill("t" * 5000, "remem")
     assert "bytes" in str(exc.value).lower()
+
+
+# --- model pinning ----------------------------------------------------------
+
+
+def test_the_command_pins_a_model():
+    """Without --model, `claude -p` inherits the user's session model, so
+    distillation silently changes whenever they switch models for unrelated
+    reasons."""
+    cmd = build_command("prompt text", model="sonnet")
+    assert "--model" in cmd
+    assert cmd[cmd.index("--model") + 1] == "sonnet"
+
+
+def test_the_distiller_passes_its_configured_model(monkeypatch):
+    seen = {}
+
+    def fake_run(cmd, **kwargs):
+        seen["cmd"] = cmd
+        return subprocess.CompletedProcess(cmd, 0, stdout="[]", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    ClaudeCliDistiller(model="haiku").distill("t", "remem")
+    assert seen["cmd"][seen["cmd"].index("--model") + 1] == "haiku"
+
+
+def test_the_distiller_defaults_to_the_configured_default(monkeypatch):
+    from remem.config import DEFAULT_CAPTURE_MODEL
+
+    seen = {}
+
+    def fake_run(cmd, **kwargs):
+        seen["cmd"] = cmd
+        return subprocess.CompletedProcess(cmd, 0, stdout="[]", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    ClaudeCliDistiller().distill("t", "remem")
+    assert seen["cmd"][seen["cmd"].index("--model") + 1] == DEFAULT_CAPTURE_MODEL

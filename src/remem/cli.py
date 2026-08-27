@@ -458,7 +458,18 @@ def capture_enable(
     name = project or _default_project()
     with _session() as s:
         capture.enable(s.store, s.owner.id, name)
+        model = s.config.capture_model
     typer.echo(f"capture enabled for '{name}'")
+    # State the cost at the moment the tradeoff is actionable. Measured on a
+    # real session: roughly 20 cents per distillation on sonnet, a third of
+    # that on haiku - which returned noticeably worse judgement about what was
+    # worth keeping.
+    typer.echo(
+        f"distillation runs `claude -p --model {model}` once per session, "
+        f"roughly $0.10-0.25 each.\n"
+        f"change it with REMEM_CAPTURE_MODEL (e.g. haiku for less, "
+        f"opus for more)."
+    )
 
 
 @capture_app.command("disable")
@@ -482,10 +493,12 @@ def capture_status(
     with _session() as s:
         counts = s.store.capture_job_counts(s.owner.id)
         failures = s.store.recent_failed_capture_jobs(s.owner.id)
+        model = s.config.capture_model
         projects = s.store.enabled_capture_projects(s.owner.id)
 
     if as_json:
         typer.echo(json.dumps({
+            "model": model,
             "enabled_projects": projects,
             "counts": counts,
             "failures": [
@@ -496,6 +509,7 @@ def capture_status(
         return
 
     typer.echo(f"Capture enabled for: {', '.join(projects) or 'no projects'}")
+    typer.echo(f"Distillation model: {model}")
     if counts:
         typer.echo("Jobs: " + ", ".join(f"{k}={v}" for k, v in sorted(counts.items())))
     else:
@@ -524,16 +538,16 @@ def capture_drain(
     # One transaction for the batch would both discard already-succeeded work
     # on a database error and hold row locks across those minutes.
     with _session(autocommit=True) as s:
+        distiller = ClaudeCliDistiller(model=s.config.capture_model)
         if job_id is not None:
             try:
                 report = capture.drain_job(s.store, s.owner.id, job_id,
-                                           ClaudeCliDistiller())
+                                           distiller)
             except capture.CaptureJobNotFound as exc:
                 typer.echo(str(exc), err=True)
                 raise typer.Exit(1)
         else:
-            report = capture.drain(s.store, s.owner.id, ClaudeCliDistiller(),
-                                   limit=limit)
+            report = capture.drain(s.store, s.owner.id, distiller, limit=limit)
     typer.echo(
         f"claimed {report.claimed}, succeeded {report.succeeded}, "
         f"failed {report.failed}, entries written {report.entries_written}"

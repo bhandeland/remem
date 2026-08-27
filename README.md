@@ -60,6 +60,15 @@ text never crowds out rules you wrote. Promote a good one with `remem kb pin`.
 
 Nothing is captured from a project you have not enabled.
 
+Distillation runs `claude -p` with the model pinned by `REMEM_CAPTURE_MODEL`
+(default `sonnet`), roughly $0.10-0.25 per session. It is pinned rather than
+inherited so cost and behaviour do not change when you switch your own session
+model. Measured on a real 40KB transcript, `haiku` cost about a third as much
+but returned one usable entry out of three - a platitude, and an open question
+recorded as a durable rule - where `sonnet` and `opus` each returned two out of
+two. Deciding what will still be true in a month is a judgement task, not a
+compression one, so the cheap tier costs more than it saves.
+
 `remem capture status` lists failures with the reason recorded against each
 job, including the model's own output when it returned something that could
 not be read as entries. A job that has failed too many times stops being
@@ -120,6 +129,7 @@ Environment variable, then config file, then default.
 | config file | `REMEM_CONFIG` | platform config dir, `remem/config.toml` |
 | context budget | `REMEM_MAX_CHARS` | `6000` |
 | fuzzy match threshold | `REMEM_FUZZY_THRESHOLD` | `0.3` |
+| distillation model | `REMEM_CAPTURE_MODEL` | `sonnet` |
 | hook diagnostics | `REMEM_HOOK_DEBUG` | unset (silent) |
 
 ## Development

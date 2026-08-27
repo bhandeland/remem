@@ -217,3 +217,40 @@ def test_drain_job_with_a_malformed_id_exits_nonzero(env):
     result = runner.invoke(app, ["capture", "drain", "--job", "not-a-uuid"])
     assert result.exit_code == 1
     assert "not a valid" in result.stderr
+
+
+@pytest.mark.db
+def test_enable_states_the_model_and_cost(env):
+    """Borrowed from claude-mem, which quotes a rate at install time. The
+    moment a user opts in is the moment the tradeoff is actionable."""
+    result = runner.invoke(app, ["capture", "enable", "--project", "remem"])
+    assert result.exit_code == 0
+    out = result.stdout.lower()
+    assert "sonnet" in out
+    assert "REMEM_CAPTURE_MODEL".lower() in out
+
+
+@pytest.mark.db
+def test_status_reports_the_configured_model(env):
+    payload = json.loads(
+        runner.invoke(app, ["capture", "status", "--json"]).stdout
+    )
+    assert payload["model"] == "sonnet"
+
+
+@pytest.mark.db
+def test_drain_uses_the_configured_model(env, monkeypatch):
+    """The CLI must pass config through, not let the distiller default win."""
+    seen = {}
+
+    class Probe:
+        def __init__(self, *args, **kwargs):
+            seen.update(kwargs)
+
+        def distill(self, transcript, project):
+            return []
+
+    monkeypatch.setenv("REMEM_CAPTURE_MODEL", "opus")
+    monkeypatch.setattr("remem.distill.claude_cli.ClaudeCliDistiller", Probe)
+    assert runner.invoke(app, ["capture", "drain"]).exit_code == 0
+    assert seen.get("model") == "opus"

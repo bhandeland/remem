@@ -11,6 +11,7 @@ import os
 import subprocess
 from typing import Mapping
 
+from remem.config import DEFAULT_CAPTURE_MODEL
 from remem.distill.base import CHILD_ENV_VAR, CapturedEntry, DistillationFailed, parse_entries
 
 # Measured against the real CLI on a long session's transcript:
@@ -64,8 +65,14 @@ Return ONLY the JSON array.
 """
 
 
-def build_command(prompt: str) -> list[str]:
-    return ["claude", "-p", prompt]
+def build_command(prompt: str, model: str = DEFAULT_CAPTURE_MODEL) -> list[str]:
+    """Always pin the model.
+
+    Without --model, `claude -p` inherits the user's session model, so
+    distillation would silently get more expensive the moment they switch to a
+    stronger model for unrelated reasons.
+    """
+    return ["claude", "-p", "--model", model, prompt]
 
 
 def build_env(base: Mapping[str, str]) -> dict[str, str]:
@@ -81,8 +88,11 @@ def build_env(base: Mapping[str, str]) -> dict[str, str]:
 
 
 class ClaudeCliDistiller:
-    def __init__(self, timeout: int = 180) -> None:
+    def __init__(
+        self, timeout: int = 180, model: str = DEFAULT_CAPTURE_MODEL
+    ) -> None:
         self._timeout = timeout
+        self._model = model
 
     def distill(self, transcript: str, project: str) -> list[CapturedEntry]:
         payload = (
@@ -91,7 +101,7 @@ class ClaudeCliDistiller:
         size = len(payload)
         try:
             result = subprocess.run(
-                build_command(PROMPT),
+                build_command(PROMPT, self._model),
                 input=payload,
                 capture_output=True,
                 text=True,
