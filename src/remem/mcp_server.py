@@ -93,6 +93,7 @@ def recall_tool(
     project: str | None = None,
     tags: list[str] | None = None,
     limit: int = 10,
+    include_handoffs: bool = False,
 ) -> list[dict] | dict:
     """Search stored knowledge before assuming something is unknown.
 
@@ -102,6 +103,10 @@ def recall_tool(
 
     kind: optional filter - "memory", "doc", or "rule". Omit to search
     across all kinds.
+
+    include_handoffs: session handoffs are excluded by default because a
+    project accumulates many of them. Pass true when resuming a workstream
+    and looking for where it was left.
 
     If nothing matches exactly, this falls back to typo-tolerant matching and
     every result carries "fuzzy": true. Treat those as approximate: they may
@@ -120,6 +125,7 @@ def recall_tool(
             Query(text=query, kinds=kinds,
                   project=project, tags=list(tags or []), limit=limit),
             fuzzy_threshold=s.config.fuzzy_threshold,
+            include_handoffs=include_handoffs,
         )
         return [
             {

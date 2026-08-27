@@ -225,11 +225,13 @@ def search(
     tag: Annotated[Optional[list[str]], typer.Option("--tag")] = None,
     limit: Annotated[int, typer.Option("--limit")] = 20,
     as_json: Annotated[bool, typer.Option("--json")] = False,
+    handoff: Annotated[bool, typer.Option("--handoff")] = False,
 ):
     """Search stored knowledge.
 
     Falls back to typo-tolerant matching when an exact search finds nothing;
     those results are marked with a leading ~ (and "fuzzy": true in --json).
+    --handoff also searches session handoffs, which are excluded by default.
     """
     with _session() as s:
         hits = find(
@@ -237,6 +239,7 @@ def search(
             Query(text=query, kinds=list(kind or []), project=project,
                   tags=list(tag or []), limit=limit),
             fuzzy_threshold=s.config.fuzzy_threshold,
+            include_handoffs=handoff,
         )
     if as_json:
         payload = []
