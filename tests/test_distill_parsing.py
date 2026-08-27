@@ -112,3 +112,16 @@ def test_whitespace_only_title_or_body_is_dropped():
     raw = '[{"title":"  ","body":"B","kind":"memory"}]'
     with pytest.raises(DistillationFailed):
         parse_entries(raw)
+
+
+def test_failure_carries_the_raw_output_for_diagnosis():
+    """The user cannot fix a misbehaving prompt they cannot see."""
+    with pytest.raises(DistillationFailed) as exc:
+        parse_entries("I'm sorry, I can't help with that.")
+    assert exc.value.raw == "I'm sorry, I can't help with that."
+
+
+def test_failure_on_a_valueless_array_carries_the_raw_output():
+    with pytest.raises(DistillationFailed) as exc:
+        parse_entries("[1, 2, 3]")
+    assert exc.value.raw == "[1, 2, 3]"

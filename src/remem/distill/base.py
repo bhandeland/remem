@@ -26,7 +26,16 @@ CHILD_ENV_VAR = "REMEM_CAPTURE_CHILD"
 
 
 class DistillationFailed(Exception):
-    """The distiller produced output that could not be read as entries."""
+    """The distiller produced output that could not be read as entries.
+
+    `raw` carries the model's actual output where we have it. A user cannot
+    fix a prompt whose failing response they never see, so the drain records
+    it against the job.
+    """
+
+    def __init__(self, message: str, raw: str | None = None):
+        super().__init__(message)
+        self.raw = raw
 
 
 @dataclass(slots=True)
@@ -118,7 +127,7 @@ def parse_entries(raw: str) -> list[CapturedEntry]:
     """
     candidates = _find_array_candidates(raw or "")
     if not candidates:
-        raise DistillationFailed("no JSON array in distiller output")
+        raise DistillationFailed("no JSON array in distiller output", raw)
 
     saw_empty = False
     for data in candidates:
@@ -131,4 +140,6 @@ def parse_entries(raw: str) -> list[CapturedEntry]:
 
     if saw_empty:
         return []
-    raise DistillationFailed("no candidate array contained a valid entry")
+    raise DistillationFailed(
+        "no candidate array contained a valid entry", raw
+    )

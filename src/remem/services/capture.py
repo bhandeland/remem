@@ -18,6 +18,12 @@ from remem.store import Store
 MAX_ATTEMPTS = 3
 AGENT = "claude-code"
 
+# The spec's diagnostic budget: the model's own output, as recorded against a
+# failed job. The reason is kept whole in front of it - truncating the pair as
+# one string would let a long raw response clip the reason away to nothing.
+MAX_RAW_IN_ERROR = 500
+MAX_REASON_IN_ERROR = 200
+
 
 @dataclass(slots=True)
 class DrainReport:
@@ -63,6 +69,20 @@ def enqueue(
             session_id=session_id,
         )
     )
+
+
+def _failure_reason(exc: DistillationFailed) -> str:
+    """Compose a job error from the reason plus the model's raw output.
+
+    An LLM returning prose instead of JSON is this feature's commonest real
+    failure, and the reason alone ("no JSON array in distiller output") cannot
+    tell a refusal from a truncation from a wrong shape.
+    """
+    reason = str(exc)[:MAX_REASON_IN_ERROR]
+    raw = (getattr(exc, "raw", None) or "").strip()
+    if not raw:
+        return reason
+    return f"{reason}; raw output: {raw[:MAX_RAW_IN_ERROR]}"
 
 
 def _already_captured(store: Store, owner_id: UUID, project: str, title: str) -> bool:
@@ -149,7 +169,8 @@ def drain(
                 entries = distiller.distill(text, job.project)
             except DistillationFailed as exc:
                 _safe_finish(
-                    store, job, owner_id, CaptureStatus.FAILED, str(exc)[:500], 0
+                    store, job, owner_id, CaptureStatus.FAILED,
+                    _failure_reason(exc), 0,
                 )
                 report.failed += 1
                 continue

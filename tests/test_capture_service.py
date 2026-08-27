@@ -2,7 +2,7 @@ import pytest
 
 from remem.backends.postgres.migrate import migrate
 from remem.backends.postgres.store import PostgresStore
-from remem.distill.base import CapturedEntry, DistillationFailed
+from remem.distill.base import CapturedEntry, DistillationFailed, parse_entries
 from remem.domain import CaptureStatus, Kind, Origin, Query
 from remem.services import capture
 
@@ -266,3 +266,43 @@ def test_one_job_raising_does_not_abandon_the_rest(store, owner, transcript):
     assert report.claimed == 2
     assert report.failed == 1
     assert report.succeeded == 1
+
+
+def test_unparseable_output_records_the_raw_text_in_the_error(
+    store, owner, transcript
+):
+    """Prose instead of JSON is the model's commonest failure. Show it."""
+    prose = "I reviewed the session and found nothing worth remembering."
+    capture.enable(store, owner.id, "remem")
+    job = capture.enqueue(store, owner.id, project="remem",
+                          transcript_path=transcript, session_id="s")
+
+    class ProseDistiller:
+        def distill(self, transcript, project):
+            return parse_entries(prose)
+
+    report = capture.drain(store, owner.id, ProseDistiller())
+
+    assert report.failed == 1
+    stored = store.get_capture_job(job.id, owner.id)
+    assert stored.status is CaptureStatus.FAILED
+    assert "no JSON array" in stored.error
+    assert prose in stored.error
+
+
+def test_a_long_raw_output_is_truncated_but_keeps_the_reason(
+    store, owner, transcript
+):
+    capture.enable(store, owner.id, "remem")
+    job = capture.enqueue(store, owner.id, project="remem",
+                          transcript_path=transcript, session_id="s")
+
+    class ProseDistiller:
+        def distill(self, transcript, project):
+            return parse_entries("z" * 5000)
+
+    capture.drain(store, owner.id, ProseDistiller())
+
+    stored = store.get_capture_job(job.id, owner.id)
+    assert "no JSON array" in stored.error
+    assert stored.error.count("z") == 500
