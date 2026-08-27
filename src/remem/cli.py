@@ -533,6 +533,14 @@ def hook_session_end():
     raise typer.Exit(main_session_end())
 
 
+@hook_app.command("session-size")
+def hook_session_size():
+    """Warn when a session has grown long enough to hand off. Always exits 0."""
+    from remem.agents.claude_code.hook import main_session_size
+
+    raise typer.Exit(main_session_size())
+
+
 @capture_app.command("enable")
 def capture_enable(
     project: Annotated[Optional[str], typer.Option("--project")] = None,

@@ -17,6 +17,7 @@ from remem.config import load
 from remem.distill.base import CHILD_ENV_VAR
 from remem.services import kb
 from remem.session import open_session
+from remem import session_size as session_size_mod
 
 
 def _debug(env: Mapping[str, str], reason: str) -> None:
@@ -166,6 +167,52 @@ def session_end(stdin_text: str, env: Mapping[str, str]) -> None:
 def main_session_end() -> int:
     try:
         session_end(sys.stdin.read(), env=dict(os.environ))
+    except Exception:
+        pass
+    return 0
+
+
+def session_size(stdin_text: str, env: Mapping[str, str]) -> str:
+    """A reminder to hand off, or "" - which is most prompts.
+
+    Same fail-soft contract as the other hooks, and one more reason for it:
+    this runs on every single user prompt.
+    """
+    if env.get(CHILD_ENV_VAR):
+        return ""
+
+    try:
+        payload = json.loads(stdin_text) if stdin_text.strip() else {}
+    except (json.JSONDecodeError, AttributeError):
+        _debug(env, "stdin was not valid JSON")
+        return ""
+
+    try:
+        transcript_path = payload.get("transcript_path")
+        if not transcript_path:
+            _debug(env, "the hook payload carried no transcript_path")
+            return ""
+        session_id = payload.get("session_id") or "unknown"
+
+        config = load(env=env)
+        count = session_size_mod.count_turns(transcript_path)
+        last = session_size_mod.read_last_warned(session_id)
+        if not session_size_mod.should_warn(
+            count, last, config.turn_warn_at, config.turn_warn_every
+        ):
+            return ""
+        session_size_mod.record_warned(session_id, count)
+        return session_size_mod.reminder(count)
+    except Exception as exc:
+        _debug(env, f"{type(exc).__name__}: {exc}")
+        return ""
+
+
+def main_session_size() -> int:
+    try:
+        text = session_size(sys.stdin.read(), env=dict(os.environ))
+        if text:
+            sys.stdout.write(text)
     except Exception:
         pass
     return 0
