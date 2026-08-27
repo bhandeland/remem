@@ -26,6 +26,11 @@ DEFAULT_FUZZY_THRESHOLD = 0.3
 # true in a month is not a compression task.
 DEFAULT_CAPTURE_MODEL = "sonnet"
 
+# A session past this many turns is expensive to keep going and cheap to hand
+# off. 150/50 matches the shell hook this replaced.
+DEFAULT_TURN_WARN_AT = 150
+DEFAULT_TURN_WARN_EVERY = 50
+
 
 @dataclass(frozen=True, slots=True)
 class Config:
@@ -34,6 +39,8 @@ class Config:
     max_chars: int
     fuzzy_threshold: float
     capture_model: str
+    turn_warn_at: int
+    turn_warn_every: int
 
 
 def default_config_path() -> Path:
@@ -88,10 +95,27 @@ def load(
         # An empty value would become `--model ''`, which claude rejects.
         capture_model = DEFAULT_CAPTURE_MODEL
 
+    def positive_int(env_key: str, file_key: str, default: int) -> int:
+        value = pick(env_key, file_key, default)
+        try:
+            value = int(value)
+        except (TypeError, ValueError):
+            return default
+        # A non-positive threshold would warn on every prompt forever, which
+        # is how a warning gets ignored.
+        return value if value > 0 else default
+
+    turn_warn_at = positive_int("REMEM_TURN_WARN_AT", "turn_warn_at",
+                                DEFAULT_TURN_WARN_AT)
+    turn_warn_every = positive_int("REMEM_TURN_WARN_EVERY", "turn_warn_every",
+                                   DEFAULT_TURN_WARN_EVERY)
+
     return Config(
         capture_model=capture_model,
         fuzzy_threshold=threshold,
         dsn=str(pick("REMEM_DSN", "dsn", DEFAULT_DSN)),
         user_handle=str(pick("REMEM_USER_ID", "user_handle", DEFAULT_HANDLE)),
         max_chars=max_chars,
+        turn_warn_at=turn_warn_at,
+        turn_warn_every=turn_warn_every,
     )

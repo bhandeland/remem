@@ -79,3 +79,17 @@ def test_a_blank_capture_model_falls_back_to_the_default():
 
     cfg = load(env={"REMEM_CAPTURE_MODEL": "   "}, config_path=Path("/nonexistent"))
     assert cfg.capture_model == DEFAULT_CAPTURE_MODEL
+
+
+def test_turn_thresholds_come_from_the_environment(tmp_path):
+    cfg = load(env={"REMEM_TURN_WARN_AT": "80", "REMEM_TURN_WARN_EVERY": "20"},
+               config_path=tmp_path / "none.toml")
+    assert cfg.turn_warn_at == 80
+    assert cfg.turn_warn_every == 20
+
+
+def test_nonsense_turn_thresholds_fall_back_to_the_defaults(tmp_path):
+    cfg = load(env={"REMEM_TURN_WARN_AT": "zero", "REMEM_TURN_WARN_EVERY": "0"},
+               config_path=tmp_path / "none.toml")
+    assert cfg.turn_warn_at == 150
+    assert cfg.turn_warn_every == 50
