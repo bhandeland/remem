@@ -217,3 +217,52 @@ def test_drain_gives_up_after_the_attempt_cap(store, owner):
 def test_drain_on_an_empty_queue_reports_nothing_claimed(store, owner):
     report = capture.drain(store, owner.id, FakeDistiller([]))
     assert report.claimed == 0
+
+
+def test_drain_does_not_raise_when_writing_an_entry_fails(store, owner, transcript):
+    """A database error mid-write must be recorded, not propagated."""
+    capture.enable(store, owner.id, "remem")
+    job = capture.enqueue(store, owner.id, project="remem",
+                          transcript_path=transcript, session_id="s")
+
+    class ExplodingStore:
+        def __init__(self, inner): self._inner = inner
+        def __getattr__(self, name): return getattr(self._inner, name)
+        def put_entry(self, entry): raise RuntimeError("connection lost")
+
+    report = capture.drain(
+        ExplodingStore(store), owner.id,
+        FakeDistiller([CapturedEntry(title="T", body="B", kind=Kind.MEMORY)]),
+    )
+    assert report.failed == 1
+    stored = store.get_capture_job(job.id, owner.id)
+    assert stored.status is CaptureStatus.FAILED
+    assert "connection lost" in stored.error
+
+
+def test_one_job_raising_does_not_abandon_the_rest(store, owner, transcript):
+    """The loop must continue: jobs already claimed must not be stranded."""
+    capture.enable(store, owner.id, "remem")
+    capture.enqueue(store, owner.id, project="remem",
+                    transcript_path=transcript, session_id="a")
+    capture.enqueue(store, owner.id, project="remem",
+                    transcript_path=transcript, session_id="b")
+
+    calls = []
+
+    class SometimesExploding:
+        def __init__(self, inner): self._inner = inner
+        def __getattr__(self, name): return getattr(self._inner, name)
+        def put_entry(self, entry):
+            calls.append(entry.title)
+            if len(calls) == 1:
+                raise RuntimeError("first one fails")
+            return self._inner.put_entry(entry)
+
+    report = capture.drain(
+        SometimesExploding(store), owner.id,
+        FakeDistiller([CapturedEntry(title="T", body="B", kind=Kind.MEMORY)]),
+    )
+    assert report.claimed == 2
+    assert report.failed == 1
+    assert report.succeeded == 1

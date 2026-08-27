@@ -100,6 +100,27 @@ def _write(
     return written
 
 
+def _safe_finish(
+    store: Store,
+    job: CaptureJob,
+    owner_id: UUID,
+    status: CaptureStatus,
+    error: str | None,
+    written: int,
+) -> bool:
+    """Record a job's outcome. Never raises.
+
+    If the database is unreachable we cannot record anything - but the drain
+    must still finish its loop and return a report rather than raising into
+    the CLI or the hook.
+    """
+    try:
+        store.finish_capture_job(job.id, owner_id, status, error, written)
+        return True
+    except Exception:
+        return False
+
+
 def drain(
     store: Store, owner_id: UUID, distiller: Distiller, limit: int = 10
 ) -> DrainReport:
@@ -107,42 +128,51 @@ def drain(
     report = DrainReport()
     for job in store.claim_capture_jobs(owner_id, limit=limit):
         report.claimed += 1
-        if job.attempts > MAX_ATTEMPTS:
-            store.finish_capture_job(
-                job.id, owner_id, CaptureStatus.FAILED,
-                f"gave up after {MAX_ATTEMPTS} attempts", 0,
-            )
-            report.failed += 1
-            continue
         try:
-            text = Path(job.transcript_path).read_text(errors="replace")
-        except OSError as exc:
-            store.finish_capture_job(
-                job.id, owner_id, CaptureStatus.FAILED,
-                f"transcript unreadable at {job.transcript_path}: {exc}", 0,
-            )
-            report.failed += 1
-            continue
-        try:
-            entries = distiller.distill(text, job.project)
-        except DistillationFailed as exc:
-            store.finish_capture_job(
-                job.id, owner_id, CaptureStatus.FAILED, str(exc)[:500], 0
-            )
-            report.failed += 1
-            continue
-        except Exception as exc:  # a distiller is third-party-ish code
-            store.finish_capture_job(
-                job.id, owner_id, CaptureStatus.FAILED,
-                f"distiller raised {type(exc).__name__}: {exc}"[:500], 0,
-            )
-            report.failed += 1
-            continue
+            if job.attempts > MAX_ATTEMPTS:
+                _safe_finish(
+                    store, job, owner_id, CaptureStatus.FAILED,
+                    f"gave up after {MAX_ATTEMPTS} attempts", 0,
+                )
+                report.failed += 1
+                continue
+            try:
+                text = Path(job.transcript_path).read_text(errors="replace")
+            except OSError as exc:
+                _safe_finish(
+                    store, job, owner_id, CaptureStatus.FAILED,
+                    f"transcript unreadable at {job.transcript_path}: {exc}", 0,
+                )
+                report.failed += 1
+                continue
+            try:
+                entries = distiller.distill(text, job.project)
+            except DistillationFailed as exc:
+                _safe_finish(
+                    store, job, owner_id, CaptureStatus.FAILED, str(exc)[:500], 0
+                )
+                report.failed += 1
+                continue
+            except Exception as exc:  # a distiller is third-party-ish code
+                _safe_finish(
+                    store, job, owner_id, CaptureStatus.FAILED,
+                    f"distiller raised {type(exc).__name__}: {exc}"[:500], 0,
+                )
+                report.failed += 1
+                continue
 
-        written = _write(store, owner_id, job, entries)
-        store.finish_capture_job(
-            job.id, owner_id, CaptureStatus.DONE, None, written
-        )
-        report.succeeded += 1
-        report.entries_written += written
+            written = _write(store, owner_id, job, entries)
+            _safe_finish(store, job, owner_id, CaptureStatus.DONE, None, written)
+            report.succeeded += 1
+            report.entries_written += written
+        except Exception as exc:
+            # A backstop beneath the specific handlers above: any other
+            # unexpected failure (e.g. the store itself raising mid-write)
+            # must still be recorded against this job, and the loop must
+            # move on to the next one rather than stranding it in `running`.
+            _safe_finish(
+                store, job, owner_id, CaptureStatus.FAILED,
+                f"{type(exc).__name__}: {exc}"[:500], 0,
+            )
+            report.failed += 1
     return report
