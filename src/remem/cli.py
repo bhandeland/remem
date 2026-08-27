@@ -522,6 +522,18 @@ def install(
         typer.echo(note)
 
 
+def _message(exc: Exception) -> str:
+    """An exception's message, without KeyError's repr quotes.
+
+    UnknownSetting subclasses KeyError, and KeyError stringifies as the repr
+    of its argument, so str() would render a sentence wrapped in quotes.
+    Reaching for args[0] is exact; stripping quote characters off both ends
+    of the rendered string would also mangle a message that legitimately
+    ends in a quoted key name.
+    """
+    return exc.args[0] if isinstance(exc, KeyError) else str(exc)
+
+
 def _config_targets(agent: str):
     """Resolve --agent to an adapter and ask the service where its files are.
 
@@ -562,9 +574,7 @@ def config_set(
         target, var = svc.route(key, table)
         resolved = svc.coerce(var, value, target)
     except (svc.UnknownSetting, svc.NotSettable, svc.InvalidValue) as exc:
-        # KeyError stringifies with quotes around it; strip them so the
-        # message reads like a sentence rather than a repr.
-        typer.echo(str(exc).strip("\"'"), err=True)
+        typer.echo(_message(exc), err=True)
         raise typer.Exit(1)
 
     if target is svc.Target.REMEM:
@@ -598,7 +608,7 @@ def config_unset(
     try:
         target, var = svc.route(key, table)
     except (svc.UnknownSetting, svc.NotSettable) as exc:
-        typer.echo(str(exc).strip("\"'"), err=True)
+        typer.echo(_message(exc), err=True)
         raise typer.Exit(1)
 
     if target is svc.Target.REMEM:
@@ -622,7 +632,7 @@ def config_get(
     try:
         _, var = svc.route(key, table)
     except (svc.UnknownSetting, svc.NotSettable) as exc:
-        typer.echo(str(exc).strip("\"'"), err=True)
+        typer.echo(_message(exc), err=True)
         raise typer.Exit(1)
 
     rows = svc.list_settings(remem_path, agent_path, table, env)

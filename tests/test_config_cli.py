@@ -337,3 +337,15 @@ def test_a_claude_code_key_is_unknown_to_another_agent(
     )
     assert result.exit_code == 1
     assert not other.exists()
+
+
+def test_an_unknown_key_error_is_not_wrapped_in_quotes(tmp_path):
+    # UnknownSetting subclasses KeyError, whose str() is the repr of its
+    # argument. Stripping quotes off both ends of that would also eat a
+    # closing quote from a message that legitimately ends in a quoted key.
+    result = runner.invoke(
+        app, ["config", "get", "NOPE"], env=_env(tmp_path)
+    )
+    assert result.exit_code == 1
+    line = result.output.strip().splitlines()[0]
+    assert line.startswith("unknown setting")

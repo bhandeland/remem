@@ -273,6 +273,21 @@ def route(key: str, table: Mapping[str, EnvVar]) -> tuple[Target, EnvVar]:
     raise UnknownSetting(f"unknown setting '{key}'. Supported: {supported}")
 
 
+def _read_toml(path: Path) -> dict:
+    """remem's config.toml, or an empty dict if it is missing or broken.
+
+    Same posture as config.load(): a file remem cannot parse must not be a
+    dead end. Both readers below need it, and two copies of a three-line
+    try/except is how they drift apart.
+    """
+    if not path.exists():
+        return {}
+    try:
+        return tomllib.loads(path.read_text())
+    except tomllib.TOMLDecodeError:
+        return {}
+
+
 def _typed(var: EnvVar, value: str) -> object:
     """The value as the TOML type its kind implies.
 
@@ -298,19 +313,17 @@ def write_remem(path: Path, key: str, value: str | None) -> Path | None:
     a password containing quotes or backslashes, and TOML escaping is the
     wrong thing to be clever about.
     """
-    data: dict = {}
+    data = _read_toml(path)
     backed_up: Path | None = None
     if path.exists():
-        try:
-            data = tomllib.loads(path.read_text())
-        except tomllib.TOMLDecodeError:
-            # Same posture as config.load(): a broken file must not be a
-            # dead end. It is backed up below before being replaced.
-            data = {}
-        # A fresh set rather than a shared one: this function reads the file
-        # itself instead of going through read_json, and writes once per
-        # process, so there is exactly one backup per invocation and nothing
-        # for a de-duplication set carried in from outside to suppress.
+        # A broken file is read as empty and then replaced, which is exactly
+        # why this backup matters.
+        #
+        # A fresh de-duplication set rather than a shared one: this function
+        # reads the file itself instead of going through read_json, and
+        # writes once per process, so there is exactly one backup per
+        # invocation and nothing for a set carried in from outside to
+        # suppress.
         backed_up = jsonfile.backup_once(path, set())
 
     name = file_key(key)
@@ -463,12 +476,7 @@ def list_settings(
     """
     rows: list[Setting] = []
 
-    file_data: dict = {}
-    if remem_path.exists():
-        try:
-            file_data = tomllib.loads(remem_path.read_text())
-        except tomllib.TOMLDecodeError:
-            file_data = {}
+    file_data = _read_toml(remem_path)
 
     for key, var in REMEM_VARS.items():
         # Environment first: config.load() picks the env var over the file.
