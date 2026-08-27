@@ -25,16 +25,7 @@ DEFAULT_ORIGINS = [Origin.HUMAN, Origin.AGENT, Origin.CAPTURE]
 def _clamped(query: Query) -> Query:
     if query.limit <= MAX_LIMIT:
         return query
-    return Query(
-        text=query.text,
-        kinds=query.kinds,
-        project=query.project,
-        tags=query.tags,
-        since=query.since,
-        include_superseded=query.include_superseded,
-        origins=query.origins,
-        limit=MAX_LIMIT,
-    )
+    return replace(query, limit=MAX_LIMIT)
 
 
 def find(

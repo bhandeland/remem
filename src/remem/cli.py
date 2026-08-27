@@ -699,12 +699,17 @@ def handoff_latest(
     from remem.services import handoff as handoff_svc
 
     name = project or _default_project()
+    if not name:
+        # No project to query at all - a printed one-liner, not a reason to
+        # open a database connection (and, if Postgres is down, an error).
+        typer.echo("No handoff stored for this directory.")
+        return
     with _session() as s:
-        entry = (
-            handoff_svc.latest(s.store, s.owner.id, project=name, topic=topic)
-            if name
-            else None
-        )
+        try:
+            entry = handoff_svc.latest(s.store, s.owner.id, project=name, topic=topic)
+        except ValueError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(1)
     if entry is None:
         # An ordinary state, not an error: most projects have never been
         # handed off, and prime asks about them anyway.

@@ -65,3 +65,30 @@ def test_a_handoff_with_no_project_fails_loudly(env, monkeypatch, tmp_path):
     r = runner.invoke(app, ["handoff", "write", "--body", BODY])
     assert r.exit_code == 1
     assert "project" in r.stderr
+
+
+def test_an_unslugable_topic_fails_loudly_and_does_not_touch_another_topic(env):
+    """The CLI-level version of the silent-data-loss regression test: writing
+    an unslug-able topic must not supersede an unrelated live handoff."""
+    first = runner.invoke(app, ["handoff", "write", "--topic", "ci",
+                                "--project", "remem", "--body", BODY])
+    assert first.exit_code == 0, first.stdout
+
+    bad = runner.invoke(app, ["handoff", "write", "--topic", "!!!",
+                              "--project", "remem", "--body", BODY])
+    assert bad.exit_code == 1
+    assert "topic" in bad.stderr
+
+    r = runner.invoke(app, ["handoff", "latest", "--topic", "ci",
+                            "--project", "remem", "--json"])
+    payload = json.loads(r.stdout)
+    assert "landed it" in payload["body"]
+
+
+def test_latest_with_an_unslugable_topic_fails_loudly(env):
+    runner.invoke(app, ["handoff", "write", "--topic", "ci",
+                        "--project", "remem", "--body", BODY])
+    r = runner.invoke(app, ["handoff", "latest", "--topic", "!!!",
+                            "--project", "remem"])
+    assert r.exit_code == 1
+    assert "topic" in r.stderr

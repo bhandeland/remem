@@ -54,11 +54,24 @@ def latest(
     project: str,
     topic: str | None = None,
 ) -> Entry | None:
-    """The newest live handoff for a project, optionally for one topic."""
+    """The newest live handoff for a project, optionally for one topic.
+
+    `topic is None` means "any topic" and is a deliberately wide query. A
+    topic that is given but slugs to nothing (all punctuation, say) is a
+    different case and must not collapse into the same wide query - doing so
+    would return, and thus present, an unrelated topic's handoff as this
+    topic's. Reject it instead of silently dropping the tag filter.
+    """
+    tags = []
+    if topic is not None:
+        slug = slugify(topic)
+        if not slug:
+            raise ValueError(f"topic {topic!r} has no slug-able characters")
+        tags = [topic_tag(slug)]
     hits = store.search(
         Query(
             project=project,
-            tags=[topic_tag(topic)] if topic else [],
+            tags=tags,
             origins=[Origin.HANDOFF],
             limit=1,
         ),
@@ -85,10 +98,20 @@ def write(
     """
     if not project:
         raise NoProject("a handoff needs a project; run it inside a repository")
-    if not body.strip():
+    if not body.strip() or body.strip() == BLANK_BODY.strip():
+        # The second case is `--edit` closed without writing anything: the
+        # editor was seeded with BLANK_BODY (non-empty, so the naive "is it
+        # empty" check misses it), and saving it unchanged stores four empty
+        # headings as if they were a real handoff.
         raise ValueError("a handoff needs a body")
 
     slug = slugify(topic or project)
+    if not slug:
+        # Name whichever one it actually was - project stands in for topic
+        # when none is given, and the error should not blame "topic" for a
+        # project name that has no slug-able characters.
+        label = "topic" if topic else "project"
+        raise ValueError(f"{label} {topic or project!r} has no slug-able characters")
     previous = latest(store, owner_id, project=project, topic=slug)
 
     day = today or datetime.now(tz=UTC).date()

@@ -12,13 +12,15 @@ import subprocess
 import sys
 from datetime import datetime
 from typing import Mapping
+from uuid import UUID
 
+from remem import session_size as session_size_mod
 from remem.agents.claude_code.adapter import ClaudeCodeAdapter
 from remem.config import load
 from remem.distill.base import CHILD_ENV_VAR
 from remem.services import kb
 from remem.session import open_session
-from remem import session_size as session_size_mod
+from remem.store import Store
 
 
 def _debug(env: Mapping[str, str], reason: str) -> None:
@@ -86,7 +88,9 @@ def session_start(stdin_text: str, env: Mapping[str, str]) -> str:
         return ""
 
 
-def handoff_pointer(store, owner_id, project: str, now=None) -> str:
+def handoff_pointer(
+    store: Store, owner_id: UUID, project: str, now: datetime | None = None
+) -> str:
     """One line naming the live handoff, or "".
 
     Never raises: session_start's caller treats any exception as silence, but

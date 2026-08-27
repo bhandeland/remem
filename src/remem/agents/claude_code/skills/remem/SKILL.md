@@ -33,6 +33,10 @@ Work cheap passes first, expensive detail only for confirmed hits.
    remem get <id>
    ```
 
+Session handoffs are excluded from these results by default - add
+`--handoff` to search them too, or use the `remem-prime` skill to resume from
+one directly.
+
 4. **Answer** in plain language. Do not dump raw search output at the user.
 
 ## When to write a memory

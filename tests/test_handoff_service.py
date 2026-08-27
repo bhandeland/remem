@@ -88,6 +88,39 @@ def test_an_empty_body_is_rejected(store, owner):
         handoff.write(store, owner.id, project="remem", body="   ")
 
 
+def test_the_untouched_blank_template_is_rejected(store, owner):
+    """`--edit` seeds the editor with BLANK_BODY, which is non-empty, so
+    quitting without typing anything must be caught here rather than by the
+    `not body.strip()` check, which it defeats."""
+    with pytest.raises(ValueError):
+        handoff.write(store, owner.id, project="remem", body=handoff.BLANK_BODY)
+
+
+def test_an_unslugable_topic_is_rejected(store, owner):
+    with pytest.raises(ValueError):
+        handoff.write(store, owner.id, project="remem", topic="!!!", body=BODY)
+
+
+def test_rejecting_an_unslugable_topic_leaves_another_topics_handoff_untouched(
+    store, owner
+):
+    """The test that would have caught the silent-data-loss bug: a rejected
+    write for one topic must never fall through to superseding another."""
+    live, _ = handoff.write(store, owner.id, project="remem",
+                            topic="ci", body=BODY)
+    with pytest.raises(ValueError):
+        handoff.write(store, owner.id, project="remem", topic="!!!", body=BODY)
+    assert store.get_entry(live.id, owner.id).superseded_by is None
+
+
+def test_latest_with_an_unslugable_topic_does_not_return_another_topics_handoff(
+    store, owner
+):
+    handoff.write(store, owner.id, project="remem", topic="ci", body=BODY)
+    with pytest.raises(ValueError):
+        handoff.latest(store, owner.id, project="remem", topic="!!!")
+
+
 def test_slugify_makes_a_tag_safe_topic():
     assert handoff.slugify("GitLab CI / runners") == "gitlab-ci-runners"
     assert handoff.slugify("  spaced  out  ") == "spaced-out"

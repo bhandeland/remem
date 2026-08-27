@@ -152,10 +152,7 @@ class ClaudeCodeAdapter:
             if not skill_dir.is_dir():
                 continue
             target = root / skill_dir.name
-            target.mkdir(parents=True, exist_ok=True)
-            for item in skill_dir.iterdir():
-                if item.is_file():
-                    (target / item.name).write_text(item.read_text())
+            shutil.copytree(skill_dir, target, dirs_exist_ok=True)
             report.actions.append(f"Installed the {skill_dir.name} skill in {target}")
 
     def identity(self, env: Mapping[str, str], payload: dict) -> Identity:
