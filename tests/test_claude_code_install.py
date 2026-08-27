@@ -141,5 +141,8 @@ def test_install_rejects_project_scope(tmp_path):
 def test_install_states_the_hook_slug_convention(tmp_path):
     report = ClaudeCodeAdapter().install(scope="user", home=tmp_path)
     text = "\n".join(report.notes)
-    assert "slug" in text and "directory name" in text
+    assert "slug" in text and "repository name" in text
     assert "remem kb new" in text
+    # The convention people get wrong: a subdirectory or worktree is the same
+    # project, so the note has to say so rather than just naming the rule.
+    assert "worktree" in text or "subdirectory" in text
