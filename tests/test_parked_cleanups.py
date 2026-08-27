@@ -95,6 +95,21 @@ def test_find_actually_caps_the_limit(store, owner):
     assert len(hits) == MAX_LIMIT
 
 
+def test_clamping_an_oversized_limit_preserves_the_origins_filter(store, owner):
+    """A filter that survives normal limits but vanishes on large ones is
+    worse than no filter: nothing reports the loss."""
+    from remem.domain import Origin
+
+    write.remember(store, owner.id, title="Human", body="shared",
+                   origin=Origin.HUMAN)
+    write.remember(store, owner.id, title="Captured", body="shared",
+                   origin=Origin.CAPTURE)
+
+    hits = find(store, owner.id,
+                Query(text="shared", origins=[Origin.HUMAN], limit=100000))
+    assert [h.entry.title for h in hits] == ["Human"]
+
+
 # --- store.pin returned None, so failure was silent -------------------------
 
 

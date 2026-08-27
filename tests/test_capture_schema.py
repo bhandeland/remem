@@ -54,7 +54,9 @@ def test_capture_jobs_pending_index_is_partial(conn):
         ("capture_jobs_pending_idx",),
     ).fetchone()
     assert row is not None
-    assert "pending" in row[0]
+    definition = row[0].lower()
+    assert "where" in definition
+    assert "status = 'pending'" in definition
 
 
 def test_capture_job_timestamps_use_clock_timestamp(conn):

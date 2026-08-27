@@ -21,6 +21,7 @@ def _clamped(query: Query) -> Query:
         tags=query.tags,
         since=query.since,
         include_superseded=query.include_superseded,
+        origins=query.origins,
         limit=MAX_LIMIT,
     )
 
