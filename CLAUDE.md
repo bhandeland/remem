@@ -110,6 +110,27 @@ tag - no separate table. Invariants:
   prompt via the `UserPromptSubmit` hook. Warn state lives in the platform
   cache dir and fails toward warning, never toward silence.
 
+### Settings
+
+`remem config` reads and writes two files from one command, routed by key
+name: `REMEM_*` keys land in remem's `config.toml`, a curated set of Claude
+Code environment variables lands in the `env` block of `settings.json`.
+
+- The table of Claude Code variables lives on the **adapter**
+  (`agents/claude_code/env_vars.py`), not in `services/`. It is a fact about
+  Claude Code, not about remem, and keeping it there is what lets a future
+  adapter ship its own.
+- **No credential and no endpoint variable is ever settable.** Their absence
+  from the table is the enforcement; `tests/test_env_vars.py` asserts it.
+  Neither is `CLAUDE_CONFIG_DIR` or `REMEM_CONFIG` - each names the file that
+  would store it.
+- The two targets resolve in **opposite directions**: the environment beats
+  remem's `config.toml`, while `settings.json` beats a shell export. `set`
+  says so when the key it just wrote is also exported, because writing a
+  shadowed remem key is otherwise a silent no-op.
+- This is the one service that opens no database connection. It must keep
+  working with Postgres down.
+
 ### Hooks are fail-soft, and that is a hard contract
 
 `hook.session_start` / `session_end` exit 0 unconditionally, print nothing on error, and

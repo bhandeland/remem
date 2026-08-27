@@ -94,6 +94,20 @@ adding a contradiction:
 remem supersede <id> --title "New title" --body "What is true now"
 ```
 
+## Settings
+
+`remem config list` shows every remem and Claude Code setting, its value, and
+whether it came from the environment, a file, or a default.
+
+```bash
+remem config set BASH_DEFAULT_TIMEOUT_MS 10m
+remem config unset DISABLE_TELEMETRY
+```
+
+If the user asks why a setting they changed had no effect, run `remem config
+get <key>` - a `source` of `environment` on a remem key means an export is
+shadowing the file.
+
 ## Knowledge bases
 
 A knowledge base is a curated set of entries rendered as one context block.

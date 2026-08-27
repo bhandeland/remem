@@ -34,6 +34,12 @@ HANDOFF_NOTE = (
     "tune it with REMEM_TURN_WARN_AT and REMEM_TURN_WARN_EVERY."
 )
 
+CONFIG_NOTE = (
+    "Tune remem and Claude Code together with `remem config list` - it shows "
+    "every setting, its value, and whether that value came from the "
+    "environment, a file, or a default."
+)
+
 
 CONFIG_DIR_VAR = "CLAUDE_CONFIG_DIR"
 
@@ -114,6 +120,7 @@ class ClaudeCodeAdapter:
         report.notes.append(SLUG_CONVENTION)
         report.notes.append(CAPTURE_NOTE)
         report.notes.append(HANDOFF_NOTE)
+        report.notes.append(CONFIG_NOTE)
         return report
 
     def _install_mcp(

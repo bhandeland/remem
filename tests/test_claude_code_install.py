@@ -259,3 +259,10 @@ def test_install_reports_the_relocated_directory(tmp_path):
     # Without this the user sees a successful install with no hint that it
     # landed somewhere other than ~/.claude.
     assert any("CLAUDE_CONFIG_DIR" in n for n in report.notes)
+
+
+def test_install_mentions_the_config_command(tmp_path):
+    # The install report is where someone learns what remem can do for them
+    # next; a command nobody is pointed at is a command nobody runs.
+    report = ClaudeCodeAdapter().install(scope="user", home=tmp_path)
+    assert any("remem config" in n for n in report.notes)
