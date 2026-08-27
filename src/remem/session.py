@@ -44,11 +44,23 @@ def ensure_database(dsn: str) -> bool:
 
 
 @contextmanager
-def open_session(config: Config | None = None):
+def open_session(config: Config | None = None, *, autocommit: bool = False):
+    """Open a session. One transaction for the whole block by default.
+
+    `autocommit=True` makes each statement durable on its own instead. That
+    matters for long-running work that records its own progress: in a single
+    transaction a genuinely failed statement leaves the connection in
+    InFailedSqlTransaction, so every later statement - including the ones
+    recording the failure - is silently swallowed and Postgres turns the final
+    COMMIT into a ROLLBACK, discarding work that had already succeeded. It also
+    avoids holding row locks open across minutes of subprocess work.
+    """
     cfg = config or load()
-    with psycopg.connect(cfg.dsn) as conn:
+    with psycopg.connect(cfg.dsn, autocommit=autocommit) as conn:
         store = PostgresStore(conn)
         owner = store.ensure_principal(cfg.user_handle)
-        conn.commit()
+        if not autocommit:
+            conn.commit()
         yield Session(conn=conn, store=store, owner=owner, config=cfg)
-        conn.commit()
+        if not autocommit:
+            conn.commit()

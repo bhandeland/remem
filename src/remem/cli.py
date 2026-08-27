@@ -45,11 +45,11 @@ def _unreachable(dsn: str) -> None:
 
 
 @contextmanager
-def _session():
+def _session(*, autocommit: bool = False):
     """open_session() with the one failure every command shares handled once."""
     cfg = load()
     try:
-        with open_session(cfg) as s:
+        with open_session(cfg, autocommit=autocommit) as s:
             yield s
     except psycopg.OperationalError:
         _unreachable(cfg.dsn)
@@ -504,7 +504,11 @@ def capture_drain(
     from remem.distill.claude_cli import ClaudeCliDistiller
     from remem.services import capture
 
-    with _session() as s:
+    # Autocommit, unlike every other command: the drain records its own
+    # progress as it goes, and it spends minutes at a time inside `claude`.
+    # One transaction for the batch would both discard already-succeeded work
+    # on a database error and hold row locks across those minutes.
+    with _session(autocommit=True) as s:
         report = capture.drain(s.store, s.owner.id, ClaudeCliDistiller(),
                                limit=limit)
     typer.echo(
