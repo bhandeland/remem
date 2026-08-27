@@ -141,6 +141,21 @@ def test_config_works_with_postgres_unreachable(tmp_path):
     assert result.exit_code == 0
 
 
+def test_set_strips_whitespace_on_a_non_duration_integer(tmp_path):
+    # coerce's plain-integer branch (var.duration is False) had the same
+    # isdigit()-without-strip gap as parse_duration - fixed alongside it so a
+    # duration key and a non-duration key don't disagree on an
+    # identical-looking padded value.
+    result = runner.invoke(
+        app,
+        ["config", "set", "BASH_MAX_OUTPUT_LENGTH", " 30000 "],
+        env=_env(tmp_path),
+    )
+    assert result.exit_code == 0
+    settings = json.loads((tmp_path / "claude" / "settings.json").read_text())
+    assert settings["env"]["BASH_MAX_OUTPUT_LENGTH"] == "30000"
+
+
 def test_set_strips_whitespace_before_parsing_a_duration(tmp_path):
     # parse_duration's plain-integer fast path uses raw.isdigit() without
     # stripping, so an unstripped " 600000 " misses it and falls into the

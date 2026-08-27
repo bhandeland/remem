@@ -88,8 +88,13 @@ def coerce(var: EnvVar, raw: str) -> str:
     if var.kind is Kind.INT:
         if var.duration:
             number = parse_duration(raw)
-        elif raw.isdigit():
-            number = int(raw)
+        elif raw.strip().isdigit():
+            # Same whitespace tolerance as parse_duration, and for the same
+            # reason: CLI input can carry incidental whitespace that a bare
+            # isdigit() treats as non-numeric. Without this, a duration key
+            # and a plain-integer key would disagree on an identical-looking
+            # padded value, which is worse than rejecting both.
+            number = int(raw.strip())
         else:
             raise InvalidValue(f"{var.name} takes a whole number, not {raw!r}.")
         # Both bounds are reported on every violation, not just the one that
