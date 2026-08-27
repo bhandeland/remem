@@ -10,7 +10,8 @@ from pathlib import Path
 from typing import Mapping
 
 from remem import jsonfile
-from remem.agents.base import Identity, InstallReport, UnsupportedScope
+from remem.agents.base import EnvVar, Identity, InstallReport, UnsupportedScope
+from remem.agents.claude_code.env_vars import CLAUDE_CODE_ENV_VARS
 from remem.project import resolve_project
 
 HOOK_COMMAND = "remem hook session-start"
@@ -192,3 +193,11 @@ class ClaudeCodeAdapter:
             # fail-soft.
             project=resolve_project(Path(cwd)) if cwd else None,
         )
+
+    def env_settings(self) -> Mapping[str, EnvVar]:
+        """The environment variables `remem config` may write for this agent.
+
+        Data, not policy: routing, validation and precedence all live in
+        services/settings.py. The adapter only answers what exists.
+        """
+        return CLAUDE_CODE_ENV_VARS
