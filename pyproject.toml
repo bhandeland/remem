@@ -34,4 +34,7 @@ packages = ["src/remem"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = ["db: requires a running Postgres (docker compose up -d)"]
+markers = [
+    "db: requires a running Postgres (docker compose up -d)",
+    "slow: shells out to a real build; skip with -m 'not slow'",
+]
