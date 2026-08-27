@@ -10,6 +10,7 @@ import json
 import os
 import subprocess
 import sys
+from datetime import datetime
 from typing import Mapping
 
 from remem.agents.claude_code.adapter import ClaudeCodeAdapter
@@ -50,6 +51,7 @@ def session_start(stdin_text: str, env: Mapping[str, str]) -> str:
 
         config = load(env=env)
         with open_session(config) as s:
+            block = ""
             try:
                 collection = kb.get(s.store, s.owner.id, identity.project)
             except kb.CollectionNotFound:
@@ -60,19 +62,49 @@ def session_start(stdin_text: str, env: Mapping[str, str]) -> str:
                     "knowledge base whose slug matches the directory name - "
                     f"create one with `remem kb new {identity.project}`.",
                 )
-                return ""
-            entries = kb.resolve(s.store, s.owner.id, identity.project)
-            if not entries:
-                _debug(
-                    env,
-                    f"knowledge base '{identity.project}' matched no entries",
-                )
-                return ""
-            return kb.render(collection, entries, config.max_chars)
+            else:
+                entries = kb.resolve(s.store, s.owner.id, identity.project)
+                if entries:
+                    block = kb.render(collection, entries, config.max_chars)
+                else:
+                    _debug(
+                        env,
+                        f"knowledge base '{identity.project}' matched no entries",
+                    )
+
+            # Appended after render, outside max_chars on purpose: it is a
+            # fixed ~20 tokens, and making it compete with rules for the
+            # budget would be absurd. It is also emitted for a project with no
+            # knowledge base at all, which is why the block is built rather
+            # than returned early.
+            pointer = handoff_pointer(s.store, s.owner.id, identity.project)
+            return "\n".join(part for part in (block, pointer) if part)
     except Exception as exc:
         # Any failure at all - unreachable database, missing migrations, an
         # over-budget knowledge base - is silence, never a broken session.
         _debug(env, f"{type(exc).__name__}: {exc}")
+        return ""
+
+
+def handoff_pointer(store, owner_id, project: str, now=None) -> str:
+    """One line naming the live handoff, or "".
+
+    Never raises: session_start's caller treats any exception as silence, but
+    a helper that can throw turns a working knowledge base into no output at
+    all, which is a worse failure than a missing pointer.
+    """
+    try:
+        from remem.services import handoff
+
+        entry = handoff.latest(store, owner_id, project=project)
+        if entry is None or entry.created_at is None:
+            return ""
+        topic = handoff.topic_of(entry) or project
+        age = handoff.age_phrase(
+            entry.created_at, now or datetime.now(tz=entry.created_at.tzinfo)
+        )
+        return f"Handoff available: {topic} ({age}) - run remem-prime {topic}"
+    except Exception:
         return ""
 
 
