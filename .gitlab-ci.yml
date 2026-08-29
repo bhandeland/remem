@@ -123,15 +123,39 @@ pytest:
 # Publish Stage
 # =============================================================================
 
+# Trusted Publishing (OIDC), not a stored API token. PyPI holds a pending
+# publisher for nighthawk-oss/remem pinned to this file and to the environment
+# name below - all three claims must match or the mint request is refused, so
+# renaming the environment here silently breaks publishing.
+#
+# uv cannot yet perform the GitLab exchange itself (astral-sh/uv#12754), so the
+# short-lived id_token is traded for a PyPI API token by hand and passed in.
 publish-pypi:
   stage: publish
   image: python:${PYTHON_VERSION}-slim
+  id_tokens:
+    PYPI_ID_TOKEN:
+      aud: pypi
   script:
     - pip install uv
+    # python:*-slim ships no curl, so the exchange uses the stdlib. The minted
+    # token is short-lived and scoped to this project; it is never persisted.
+    - |
+      API_TOKEN=$(python - <<'PY'
+      import json, os, urllib.request
+      req = urllib.request.Request(
+          "https://pypi.org/_/oidc/mint-token",
+          data=json.dumps({"token": os.environ["PYPI_ID_TOKEN"]}).encode(),
+          headers={"Content-Type": "application/json"},
+      )
+      with urllib.request.urlopen(req) as r:
+          print(json.load(r)["token"])
+      PY
+      )
     - uv build
-    - uv publish --token $PYPI_TOKEN
+    - uv publish --token "$API_TOKEN"
   rules:
     - if: $CI_COMMIT_TAG
   environment:
-    name: pypi
+    name: release
     url: https://pypi.org/project/remem/
