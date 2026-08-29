@@ -176,36 +176,48 @@ def test_every_hook_the_adapter_records_is_one_the_plugin_sends():
 
 
 def test_plugin_serializes_inside_try_catch():
-    """The fail-soft contract: JSON.stringify must not run before entering
+    """The fail-soft contract: JSON.stringify(...) must not run before entering
     callRemem's try block, or a circular reference or BigInt in tool output
-    will escape uncaught and break the user's turn.
+    will escape uncaught and break the user's turn. This check covers all three
+    call sites: record() (used by tool.execute.after and chat.message) and
+    experimental.chat.system.transform's context injection.
 
-    This is a structural check: JSON.stringify should only appear inside the
-    callRemem function definition, never as a hook argument expression.
+    This is a structural check: JSON.stringify(...) should appear exactly once
+    in the plugin, within the callRemem function's try block, never as an
+    argument expression to callRemem in any of the three handlers.
     """
     source = _plugin_source()
     lines = source.split("\n")
 
-    # Find the callRemem function to know where to stop checking for violations
-    in_callRemem = False
-    in_hook_handlers = False
+    # Find callRemem function boundaries
+    callremem_start = None
+    callremem_end = None
 
     for i, line in enumerate(lines):
         if "async function callRemem" in line:
-            in_callRemem = True
-            continue
-        if in_callRemem and line.strip().startswith("}"):
-            in_callRemem = False
-            continue
+            callremem_start = i
+        if callremem_start is not None and callremem_end is None:
+            if line.strip().startswith("}") and i > callremem_start:
+                callremem_end = i
+                break
 
-        # After callRemem ends, we enter the server export and hook handlers
-        if "export const server" in line:
-            in_hook_handlers = True
-            continue
+    assert callremem_start is not None and callremem_end is not None, (
+        "Could not find callRemem function span - test is broken"
+    )
 
-        # In hook handlers, JSON.stringify should not appear (it's called inside callRemem)
-        if in_hook_handlers and "JSON.stringify" in line:
-            raise AssertionError(
-                f"JSON.stringify appears outside callRemem at line {i + 1}: {line}\n"
-                "This breaks the fail-soft contract - exceptions from stringify will escape uncaught."
-            )
+    # Count JSON.stringify(...) calls, excluding comments
+    source_no_comments = re.sub(r"//.*", "", source)
+    stringify_calls = len(re.findall(r"JSON\.stringify\s*\(", source_no_comments))
+
+    assert stringify_calls == 1, (
+        f"JSON.stringify(...) should appear exactly once, found {stringify_calls}. "
+        "This breaks the fail-soft contract - stringify must be inside "
+        "callRemem's try block, never as a hook argument expression."
+    )
+
+    # Verify it's within callRemem
+    callremem_text = "\n".join(lines[callremem_start : callremem_end + 1])
+    assert "JSON.stringify" in callremem_text, (
+        "JSON.stringify(...) found outside callRemem function. "
+        "This breaks the fail-soft contract - exceptions from stringify will escape uncaught."
+    )
