@@ -530,3 +530,38 @@ def test_repeated_success_never_exhausts_the_attempt_budget(conn, store, owner):
     assert job.status is JobStatus.DONE
     assert job.error is None
     assert job.attempts <= extraction.MAX_ATTEMPTS
+
+
+def test_a_watermark_survives_a_later_failure_on_the_same_session(store, owner):
+    """Discovery keys on `covers_through`, not on job status.
+
+    One row per session means a job that succeeded and later failed leaves
+    the row FAILED with its mark intact. Keyed on status, that session would
+    have no DONE job and every event it holds - including the ones already
+    extracted into entries - would read as outstanding, forever.
+    """
+    record.enable(store, owner.id, "remem")
+    first = three_events(store, owner, base=NOW - timedelta(hours=4))
+    extraction.process(store, owner.id, FakeExtractor([an_entry()]),
+                       idle_seconds=IDLE, limit=10)
+
+    later = [
+        record.record(
+            store,
+            owner.id,
+            a_harness_event(
+                occurred_at=NOW - timedelta(hours=2) + timedelta(seconds=i),
+                payload={"command": f"later {i}"},
+            ),
+            "claude-code",
+        )
+        for i in range(2)
+    ]
+    boom = FakeExtractor(error=RuntimeError("claude exploded"))
+    report = extraction.process(store, owner.id, boom, idle_seconds=IDLE,
+                                limit=10)
+    assert report.failed == 1
+
+    [awaiting] = store.sessions_awaiting_extraction(owner.id, IDLE, 10)
+    assert awaiting.event_count == len(later)
+    assert awaiting.extract_from == max(e.occurred_at for e in first)

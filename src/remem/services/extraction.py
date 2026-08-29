@@ -34,6 +34,14 @@ MAX_REASON_IN_ERROR = 200
 # The most events one run hands the model. The renderer bounds the prompt by
 # bytes as well; this bounds the query, so a runaway session cannot make the
 # read itself expensive.
+#
+# It is also one of the two ways a single session is claimed repeatedly: a
+# session longer than this is deliberately worked over successive runs, each
+# claiming the same `extract_jobs` row and advancing the watermark (a resumed
+# session is the other way). That is why `attempts` must count *consecutive*
+# failures and be reset by a successful finish - see `finish_extract_job`.
+# Without that reset, batching alone kills any session past
+# MAX_EVENTS_PER_JOB * MAX_ATTEMPTS events.
 MAX_EVENTS_PER_JOB = 500
 
 # How many sessions discovery looks at per `limit` it will actually claim.
@@ -274,8 +282,9 @@ def _gave_up(job: ExtractJob | None) -> bool:
     Discovery is what makes this necessary, and it is not how the capture
     spool behaved: `claim_capture_jobs` only ever took pending and stale
     rows, so a job that gave up simply dropped out of the backlog.
-    `sessions_awaiting_extraction` computes its watermarks from DONE jobs
-    only, so a session whose job failed still has outstanding events and is
+    `sessions_awaiting_extraction` computes its watermarks from
+    `covers_through`, which a job that has never succeeded does not have, so
+    a session whose job only ever failed still has outstanding events and is
     rediscovered by every later run - which would claim it again, record
     "gave up" again, and report `failed 1` for the life of the session.
 
@@ -301,8 +310,8 @@ def awaiting_sessions(
     session whose extraction has already given up.
 
     The one place the "given up" rule is evaluated. `sessions_awaiting_extraction`
-    only knows about DONE jobs (see its own docstring), so a session whose
-    job FAILED past the attempt cap still looks like outstanding work by
+    only knows watermarks (see its own docstring), so a session whose job
+    FAILED past the attempt cap still looks like outstanding work by
     that definition alone and would be rediscovered forever - `_gave_up` is
     what excludes it, and every caller that needs a true "awaiting" count
     goes through this function rather than re-deriving the rule. `process`

@@ -878,9 +878,9 @@ class PostgresStore:
         """Delete raw events older than `before`, and say what that cost.
 
         "Extracted" uses the same watermark rule as
-        `sessions_awaiting_extraction` - the newest `covers_through` among a
-        session's DONE jobs - so prune and process can never disagree about
-        what has already been extracted. `--force` (the `force` argument)
+        `sessions_awaiting_extraction` - the newest `covers_through` recorded
+        for a session, whatever its job's current status - so prune and
+        process can never disagree about what has already been extracted. `--force` (the `force` argument)
         drops that condition entirely rather than widening it: an unextracted
         event is raw that produced nothing, and losing it is the outcome the
         whole pipeline exists to prevent, so overriding that is a deliberate
@@ -897,9 +897,18 @@ class PostgresStore:
             cur.execute(
                 """
                 with watermarks as (
+                  -- Keyed on covers_through, never on status: extract_jobs
+                  -- holds one row per session, so a job that succeeded and
+                  -- later failed leaves the row FAILED even though its mark
+                  -- still stands. covers_through is set only by a successful
+                  -- finish and preserved on every failure path, so it is a
+                  -- precise record of "extracted through here"; status only
+                  -- records how the last run ended. Filtering on status would
+                  -- make already-extracted events read as unextracted and
+                  -- permanently overcount kept_unextracted.
                   select project, harness, session_id, max(covers_through) as mark
                     from extract_jobs
-                   where owner_id = %(owner_id)s and status = 'done'
+                   where owner_id = %(owner_id)s and covers_through is not null
                    group by project, harness, session_id
                 ), scoped as (
                   select e.id,
@@ -981,16 +990,49 @@ class PostgresStore:
         entries_written: int,
         covers_through: datetime | None,
     ) -> None:
+        """Record a job's outcome, and on success clear its retry budget.
+
+        `attempts` counts *consecutive* failures, which is what MAX_ATTEMPTS
+        and every docstring around it already claim it means - so a run that
+        succeeds resets it to zero. The old capture spool needed no such
+        reset: a job was keyed on a transcript path and claimed exactly once,
+        so every increment really was a failed try. Discovery-based claiming
+        changed that. `claim_extract_job` upserts on the session key, and the
+        SAME row is legitimately re-claimed every time the session produces
+        new outstanding events - a resumed session (Claude Code keeps its
+        session_id across --continue/--resume), or a long one worked over
+        successive runs by MAX_EVENTS_PER_JOB. Without the reset, a session
+        extracted cleanly more than MAX_ATTEMPTS times dies permanently with
+        "gave up after N attempts", a failure that never happened.
+
+        The reset belongs here and not in `claim_extract_job`: claiming stays
+        a pure claim, and "a successful run clears the retry budget" sits with
+        the rest of the outcome recording, where the next reader will find it.
+        """
         with self._cur() as cur:
             cur.execute(
                 """
                 update extract_jobs
-                   set status = %s, error = %s, entries_written = %s,
-                       covers_through = %s, updated_at = clock_timestamp()
-                 where id = %s and owner_id = %s
+                   set status = %(status)s::job_status, error = %(error)s,
+                       entries_written = %(written)s,
+                       covers_through = %(covers_through)s,
+                       -- Explicitly cast on both uses: the same parameter is
+                       -- assigned to a job_status column and compared to a
+                       -- text literal, and Postgres refuses to deduce one
+                       -- type for both.
+                       attempts = case when %(status)s::text = 'done' then 0
+                                       else attempts end,
+                       updated_at = clock_timestamp()
+                 where id = %(id)s and owner_id = %(owner_id)s
                 """,
-                (str(status), error, entries_written, covers_through,
-                 job_id, owner_id),
+                {
+                    "status": str(status),
+                    "error": error,
+                    "written": entries_written,
+                    "covers_through": covers_through,
+                    "id": job_id,
+                    "owner_id": owner_id,
+                },
             )
 
     def try_advisory_lock(self, name: str, owner_id: UUID) -> bool:
@@ -1095,10 +1137,10 @@ class PostgresStore:
     ) -> list[SessionRef]:
         """Sessions with events past their watermark, quiet long enough.
 
-        The `watermarks` CTE gives the newest covers_through per session
-        among its DONE jobs - the newest, not any, because a session can be
-        extracted more than once across its life and only the latest
-        watermark matters. Events at or before that mark already produced
+        The `watermarks` CTE gives the newest covers_through per session -
+        the newest, not any, because a session can be extracted more than
+        once across its life and only the latest watermark matters. It keys
+        on covers_through rather than on job status; see the CTE's comment. Events at or before that mark already produced
         whatever they were going to produce; event_count and the idle check
         both look only at what is left after it, which is what makes
         event_count mean "work outstanding" rather than "events that exist".
@@ -1107,9 +1149,17 @@ class PostgresStore:
             cur.execute(
                 """
                 with watermarks as (
+                  -- Keyed on covers_through, never on status: one row per
+                  -- session means a job that succeeded and later failed
+                  -- leaves the row FAILED with its mark intact. covers_through
+                  -- is written only by a successful finish and preserved on
+                  -- every failure path, so it says "extracted through here"
+                  -- where status only says how the last run ended. On status
+                  -- this session would report every event, extracted ones
+                  -- included, as outstanding forever.
                   select project, harness, session_id, max(covers_through) as mark
                     from extract_jobs
-                   where owner_id = %(owner_id)s and status = 'done'
+                   where owner_id = %(owner_id)s and covers_through is not null
                    group by project, harness, session_id
                 )
                 select e.project, e.harness, e.session_id,
