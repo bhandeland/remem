@@ -48,7 +48,7 @@ Settled before the design, and binding on code, docs and CLI:
 | **record** | what hooks do: write events (was "capture") |
 | **extract** | events -> entries (was "distil") |
 | **process** | run queued work (was "drain") |
-| **prune** | delete events past retention |
+| **prune** | delete events, on request - never on a schedule by default |
 | **harness** | the agent tool remem is running under |
 | origin **`extracted`** | an entry the extractor produced (was `capture`) |
 
@@ -84,7 +84,8 @@ one. It is triggered by idleness instead - see "Extraction trigger".
    adapter work and nothing else.
 2. Keep raw events in the database, in full, so extraction can be re-run.
 3. Extract entries from events without a session-end hook.
-4. Prune events on a retention policy, leaving entries and provenance intact.
+4. Keep events indefinitely by default, with prune available as an explicit
+   command that leaves entries and provenance intact.
 5. Recall entries by meaning, not only by word, without weakening the existing
    precision guarantees.
 6. Make "recording nothing" visible. Fail-soft hooks must not be able to fail
@@ -118,9 +119,9 @@ one. It is triggered by idleness instead - see "Extraction trigger".
   full with `tool`, `harness` and timestamps, and `entry_events` means every
   event eventually carries an implicit label - *did anything durable come out of
   this?* - so a usable labelled corpus accumulates for free. Revisit when there
-  is a year of it. Note the tension: the 14-day prune is a privacy and size
-  decision that also keeps that corpus shallow. If the corpus is ever wanted,
-  the lever is retention, not architecture.
+  is a year of it. Keeping events by default is what makes that possible: a
+  scheduled prune would keep the corpus permanently shallow, and the whole point
+  of accumulating raw is to have something to look back over.
 
   Separately, a large existing document corpus is the right way to test whether
   semantic recall works at all - a store of ten entries cannot answer it. That
@@ -160,8 +161,9 @@ and re-run because the raw is still there.
 extraction and survives into provenance.
 
 Payloads are stored **in full**. Truncating at record time is lossy forever and
-would degrade the extraction this table exists to enable; the mitigations are
-short retention and prune, not partial capture. See "Retention and exposure".
+would degrade the extraction this table exists to enable. The mitigation is the
+opt-in gate and an explicit prune the user reaches for, not partial capture and
+not automatic expiry. See "Retention and exposure".
 
 ### `entries` - unchanged
 
@@ -177,6 +179,8 @@ create table entry_events (
   harness    text not null,
   primary key (entry_id, event_id)
 );
+
+create index entry_events_event_idx on entry_events (event_id);
 ```
 
 `session_id` and `harness` are denormalised on purpose. When prune deletes the
@@ -184,6 +188,33 @@ events, the row still records where the entry came from. `event_id` is allowed
 to dangle - there is no foreign key, because a foreign key would force a choice
 between blocking prune and erasing provenance, and both are worse than a
 recorded pointer to something we have deliberately deleted.
+
+**This row is an audit record, not a live relationship.** "This entry came from
+event X, in session Y, on harness Z" is a fact about the past, and it stays true
+after event X is deleted. A foreign key would model it as though it stopped
+being true, which is the wrong claim. That framing is what makes the missing
+constraint a decision rather than an omission, and it carries two rules:
+
+- **No read path may dereference `event_id`.** The only query allowed to follow
+  it is forensic - *show me the raw behind this entry, if we still have it* -
+  and that query must treat absence as an ordinary answer, not an error. This is
+  the same invariant as "entries must be self-contained", seen from the other
+  side, and it is what keeps prune safe to run at all.
+- **Dangling must be visible, never inferred.** `remem events prune` reports how
+  many provenance rows it just left dangling, and the forensic lookup says
+  "event pruned" rather than "not found". Silence about deleted raw is how a
+  user concludes the provenance was never recorded.
+
+Since prune is no longer scheduled (see "Retention and exposure"), dangling is
+now the rare case rather than the expected steady state - but the design does
+not depend on that, and must not start depending on it.
+
+Ids are uuid7, so a dangling `event_id` cannot later be reused by a different
+event and quietly acquire a wrong meaning.
+
+The index on `event_id` exists because there is no foreign key to provide one:
+without it, "what came out of this event" is a sequential scan, and that is the
+query the labelled-corpus idea in the non-goals depends on.
 
 ### `entry_vectors` - derived, disposable
 
@@ -224,7 +255,7 @@ output - carry over as they are.
 harness hook / plugin   ->  remem record event      one INSERT, fail-soft
 cron (or SessionStart)  ->  remem events process    extract -> entries + provenance
 cron                    ->  remem embed             entries lacking a current vector
-cron                    ->  remem events prune      extracted events past retention
+on request              ->  remem events prune      extracted events, explicit window
 ```
 
 Every step is a command. Nothing in the pipeline requires a specific harness,
@@ -277,10 +308,16 @@ configuration question for someone else's package.
 
 ### Prune
 
-`remem events prune --before 30d` deletes events that are **both** older than
-the window and already extracted. Unextracted events are never deleted by
-default - losing raw before it has produced anything is the one outcome the
+Nothing prunes on its own. `remem events prune --before 30d` deletes events that
+are **both** older than the given window and already extracted. `--before` has
+no default: the window is always something the user typed, so there is no
+configured number quietly deleting history. Unextracted events are never deleted
+by default - losing raw before it has produced anything is the one outcome the
 whole design exists to prevent. `--force` overrides for a stuck session, loudly.
+
+Prune reports what it deleted **and** how many `entry_events` rows it just left
+dangling. That number is the cost of the run, and it is the only moment a user
+can see it.
 
 ## Search
 
@@ -311,14 +348,26 @@ only less findable, and `remem embed` fixes it.
 ## Retention and exposure
 
 Full payloads mean `events` will contain file contents, command output, and
-whatever a user pasted into a prompt - including material that should not sit in
-a database indefinitely.
+whatever a user pasted into a prompt.
 
-- Default retention is short: **14 days**, `REMEM_EVENT_RETENTION_DAYS`.
-- Recording is opt-in per project, as capture was.
-- Prune is a first-class command, expected to run from the same cron as process.
+**Events are kept indefinitely by default.** There is no retention window and no
+`REMEM_EVENT_RETENTION_DAYS`. The purpose of this pipeline is to distil and
+summarise over a long history so future decisions are better and past mistakes
+are not repeated, and a store that expires its raw after two weeks cannot do
+that. Depth is the feature; deleting it on a timer works against the thing being
+built.
+
+- Recording is opt-in per project, as capture was. That gate, not expiry, is the
+  privacy story - it is what decides whether sensitive material is ever written.
+- Prune is a first-class command, run deliberately: to reclaim space, or to drop
+  a project or window the user does not want kept. It is not wired to cron and
+  no install configures it to run.
+- Local storage is the assumption. Events are on the user's own Postgres, not a
+  service; growth is a disk question they can answer with prune when it matters.
 - Entries must be self-contained. Nothing may lazily read an event back at read
-  time, or pruning would silently break retrieval.
+  time, or pruning would silently break retrieval. This holds even though prune
+  is now rare - the dangling `event_id` in `entry_events` is what makes the
+  option survivable, and it only survives if nothing depends on the event.
 
 ## Failure visibility
 
@@ -374,6 +423,7 @@ overlapping:
 | Extractor returns unusable output | job fails, records reason and raw output, retries to `MAX_ATTEMPTS` |
 | No embedder available | `embed` exits non-zero; search degrades to two tiers |
 | Prune would delete unextracted events | refuses without `--force` |
+| Prune run with no `--before` | refuses; there is no default retention window |
 | Adapter capability raises | warn, degrade, continue |
 
 ## Testing
@@ -384,7 +434,9 @@ overlapping:
   dead loop described above.
 - Round-trip: record events from fixtures for each harness shape, process,
   assert entries and `entry_events` rows.
-- Prune leaves entries and provenance intact and refuses unextracted events.
+- Prune leaves entries and provenance intact, refuses unextracted events, and
+  refuses to run at all without an explicit `--before` - nothing deletes events
+  on a default.
 - Search tier ordering, including that a semantic hit is marked `semantic` and
   that an exact result never contains one.
 - Re-embedding under a changed model leaves the old rows until deleted and never
@@ -392,22 +444,82 @@ overlapping:
 - Idle trigger: a session with recent events is not extracted; the same session
   after the idle window is.
 - The packaging test extends to any new migrations and adapter assets.
+- Migration: a collection whose `query` filters on kind `memory`, created before
+  `006`, resolves to the same entries after it. This is the jsonb rewrite in
+  migration step 4 and the one failure mode that would otherwise be silent.
+- Migration: an entry with `origin='capture'` is readable as `extracted`, and a
+  pending `capture_jobs` row survives in `capture_jobs_legacy` rather than being
+  translated or dropped.
+- Forensic lookup of a pruned event reports "event pruned", not "not found", and
+  no ordinary read path joins `entry_events` to `events`.
 
 Database-backed tests skip when Postgres is unreachable, so a green run means
 nothing unless the skip count is zero.
 
 ## Migration from capture
 
-1. New migration: `events`, `entry_events`, `entry_vectors`, `event_kind`;
-   rename `capture_jobs` to `extract_jobs` and re-key it to a session;
-   `alter type entry_origin rename value 'capture' to 'extracted'`;
-   `alter type entry_kind rename value 'memory' to 'note'`.
-2. Existing `origin='capture'` entries become `extracted` by the rename. They
-   have no events and therefore no provenance - correct, and visible.
-3. `REMEM_CAPTURE_MODEL` becomes `REMEM_EXTRACT_MODEL`; the old name is read as
-   a fallback for one release and warns.
-4. `remem capture *` commands become `remem record *` and `remem events *`, with
-   the old spellings kept as hidden aliases that warn.
+One migration, `006_events.sql`. It is the only part of this design that touches
+existing data, so each step is spelled out with what it can and cannot break.
+
+**1. New tables.** `event_kind`, `events`, `entry_events`, `entry_vectors`. Pure
+creation; nothing existing is read or altered.
+
+**2. `extract_jobs` is a new table, not a re-keyed `capture_jobs`.** The earlier
+draft renamed and re-keyed in place. That is the wrong trade. The old key is a
+`transcript_path not null`; the new one is `(owner_id, project, harness,
+session_id)`, and the two do not convert: a pending capture job names a
+transcript, while the new extractor's input is *events*, which do not exist for
+that session and never will. Any translation would be inventing rows.
+
+So: create `extract_jobs` fresh, and rename `capture_jobs` to
+`capture_jobs_legacy` - untouched, unread, no code path referring to it, dropped
+in a later migration once the user has confirmed they want nothing from it.
+Pending old jobs are not carried forward and not silently deleted; they sit
+there, inspectable, and `remem events status` mentions them once if any are
+`pending` so the dead spool is visible rather than mysterious. `capture_status`
+is likewise left in place for the legacy table and a new `job_status` created
+alongside it, so no enum is mutated while a table still uses it.
+
+This costs one dead table for a release and removes every way the step can
+corrupt data. Renaming beats transforming.
+
+**3. Enum renames.** `alter type entry_origin rename value 'capture' to
+'extracted'` and `alter type entry_kind rename value 'memory' to 'note'`.
+
+Both are safe inside the caller's transaction - unlike `ALTER TYPE ... ADD
+VALUE`, which is the famous footgun, `RENAME VALUE` is transactional and rewrites
+no rows: the label changes, the ordinal does not. This matters because
+`migrate()` runs inside the caller's transaction and must be able to roll back.
+
+Existing `origin='capture'` entries become `extracted` by the rename. They have
+no events and therefore no provenance - correct, and visible.
+
+**4. The gap the rename does not close: `collections.query` is `jsonb`.** A smart
+collection filtering on kinds stores the literal string `"memory"` in JSON, and
+`ALTER TYPE ... RENAME VALUE` does not reach inside jsonb. Without a data update,
+every existing collection that filters on `memory` silently matches nothing after
+the migration - and an empty query matching nothing, forever, is precisely this
+codebase's documented sharp edge. The migration must therefore also rewrite
+`"memory"` to `"note"` inside `collections.query`, and a test must assert a
+pre-migration collection still resolves to the same entries afterwards. This is
+the single highest-risk line in the migration; it is also the one a reader would
+never think to look for, which is why it gets its own step.
+
+**5. Names outside the database.** `REMEM_CAPTURE_MODEL` becomes
+`REMEM_EXTRACT_MODEL`; the old name is read as a fallback for one release and
+warns. `remem capture *` becomes `remem record *` and `remem events *`, with the
+old spellings kept as hidden aliases that warn. `CHILD_ENV_VAR`
+(`REMEM_CAPTURE_CHILD`) is checked by both hooks and by the spawned child - it is
+renamed on every side in the same commit or not at all, per the standing warning
+in CLAUDE.md.
+
+**6. Forward-only, and loud about it.** remem is installed per-user with
+`uv tool install`, so binary and database move together - there is no rolling
+deploy to stage this for. The real exposure is the opposite direction: an *older*
+`remem` from another checkout or worktree pointed at a migrated database. It will
+fail on the renamed enum labels, and that failure must stay loud. No compatibility
+shim reads both spellings; a version that cannot understand the schema should say
+so rather than half-work.
 
 ## Open questions
 
