@@ -19,8 +19,10 @@ import typer
 from remem.backends.postgres.migrate import applied_versions, migrate, pending_versions
 from remem.config import load
 from remem.domain import CollectionQuery, Entry, Kind, Match, Origin, Query
+from remem.embed import EmbedderUnavailable, load_embedder
 from remem.project import resolve_project
 from remem.services import kb, write
+from remem.services.embed import backfill
 from remem.services.search import find
 from remem.session import ensure_database, open_session
 
@@ -272,6 +274,42 @@ def search(
         marker = {Match.EXACT: "", Match.SEMANTIC: "~ ", Match.FUZZY: "? "}[h.match]
         typer.echo(f"{marker}{h.entry.id}  [{h.entry.kind}] {h.entry.title}")
         typer.echo(f"    {h.snippet}")
+
+
+@app.command()
+def embed(
+    limit: Annotated[Optional[int], typer.Option(
+        "--limit", help="Stop after this many entries.")] = None,
+    batch: Annotated[int, typer.Option("--batch")] = 32,
+):
+    """Embed entries that have no vector for the configured model.
+
+    Idempotent and safe to re-run - it does whatever is missing. Run it after
+    writing entries, or from cron. Changing REMEM_EMBED_MODEL makes every
+    entry need embedding again; the old vectors stay until deleted.
+    """
+    # Built before the session is opened, deliberately: a cron command
+    # should fail on a missing embedder without first paying for a Postgres
+    # connection. That means this reads config via load() rather than the
+    # session's s.config - the two are the same file, just read a moment
+    # apart, which is fine for a value (embed_model) nothing else in this
+    # command touches concurrently.
+    try:
+        embedder = load_embedder(load().embed_model)
+    except EmbedderUnavailable as exc:
+        # Loud, not fail-soft: embedding is this command's entire job, and a
+        # silent success would leave search quietly missing a tier forever.
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1)
+
+    with _session() as s:
+        result = backfill(s.store, s.owner.id, embedder,
+                          batch_size=batch, max_entries=limit)
+
+    typer.echo(f"Embedded {result.embedded} entries with {result.model}.")
+    if result.failed:
+        typer.echo(f"{result.failed} failed - re-run to retry.", err=True)
+        raise typer.Exit(1)
 
 
 @app.command()
