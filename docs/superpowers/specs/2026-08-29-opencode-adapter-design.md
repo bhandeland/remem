@@ -52,7 +52,7 @@ the events-and-recall design gives - a trigger all three harnesses share.
 
 ## Requirements
 
-- `remem install --agent opencode` registers event recording and knowledge base
+- `remem install opencode` registers event recording and knowledge base
   injection, globally or per project.
 - Recorded events reach `remem record event` in the shape `services/record.py`
   already consumes, behind the existing per-project opt-in.
@@ -77,7 +77,7 @@ src/remem/agents/opencode/
   hooks.py       # the vendored hook-name list (see "The contract test")
 ```
 
-`remem install --agent opencode` writes `plugin.js` verbatim into opencode's
+`remem install opencode` writes `plugin.js` verbatim into opencode's
 plugin directory: `~/.config/opencode/plugin/` for a global install,
 `.opencode/plugin/` for a per-project one. The directory is the registration -
 opencode loads what it finds there, so **install never touches the user's
