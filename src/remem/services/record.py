@@ -16,20 +16,6 @@ from remem.domain import Event, new_id
 from remem.store import Store
 
 
-class RecordingDisabled(Exception):
-    """Recording is not enabled for this project.
-
-    Not raised on the hook path - a hook treats a closed gate as an
-    ordinary, silent outcome. `remem record event` raises it only to explain
-    itself under `--json` or `--strict`, where a human is asking why nothing
-    happened.
-    """
-
-    def __init__(self, project: str | None):
-        super().__init__(f"recording is not enabled for project {project!r}")
-        self.project = project
-
-
 def enable(store: Store, owner_id: UUID, project: str) -> None:
     store.set_record_enabled(owner_id, project, True)
 
