@@ -445,7 +445,7 @@ overlapping:
   after the idle window is.
 - The packaging test extends to any new migrations and adapter assets.
 - Migration: a collection whose `query` filters on kind `memory`, created before
-  `006`, resolves to the same entries after it. This is the jsonb rewrite in
+  `007`, resolves to the same entries after it. This is the jsonb rewrite in
   migration step 4 and the one failure mode that would otherwise be silent.
 - Migration: an entry with `origin='capture'` is readable as `extracted`, and a
   pending `capture_jobs` row survives in `capture_jobs_legacy` rather than being
@@ -462,7 +462,8 @@ nothing unless the skip count is zero.
 
 ## Migration from capture
 
-One migration, `006_events.sql`. It is the only part of this design that touches
+One migration, `007_events.sql` - `006` is the semantic-recall migration,
+which shipped first. It is the only part of this design that touches
 existing data, so each step is spelled out with what it can and cannot break.
 
 **1. New tables.** `event_kind`, `events`, `entry_events`, `entry_vectors`. Pure
