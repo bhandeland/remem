@@ -20,6 +20,18 @@ class UnsupportedScope(ValueError):
     """
 
 
+#: Recording is opt-in per project, and it is the whole privacy story for
+#: every adapter - events are stored in full, including command output and
+#: file contents, until the user names a project. A fact about remem, not
+#: about any one harness, so every install() prints the same words.
+RECORD_NOTE = (
+    "Recording is OFF until you enable it per project: "
+    "`remem record enable --project <name>`. Nothing is recorded from a "
+    "project you did not choose, and that gate is the whole privacy story - "
+    "events are stored in full, including command output and file contents."
+)
+
+
 @dataclass(slots=True)
 class Identity:
     """Who wrote a memory, and in what context."""

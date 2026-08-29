@@ -51,3 +51,17 @@ def resolve_project(start: Path | None = None) -> str | None:
     root = _repo_root(start)
     name = (root or start).name
     return name or None
+
+
+def repo_root(start: Path | None = None) -> Path:
+    """The directory a project-scoped write should land in.
+
+    The repository root when `start` is inside one (a worktree resolves to
+    the *main* repository's root, same as `resolve_project`), otherwise
+    `start` itself - a project-scoped install outside any repository still
+    has to write somewhere, and falling back to the given directory rather
+    than raising is what `resolve_project`'s docstring means by "a project
+    name is a convenience, not a dependency".
+    """
+    start = (start or Path.cwd()).resolve()
+    return _repo_root(start) or start

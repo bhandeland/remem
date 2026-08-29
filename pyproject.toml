@@ -45,6 +45,7 @@ remem = "remem.cli:app"
 
 [project.entry-points."remem.agents"]
 claude-code = "remem.agents.claude_code.adapter:ClaudeCodeAdapter"
+opencode = "remem.agents.opencode.adapter:OpenCodeAdapter"
 
 [dependency-groups]
 dev = ["pytest>=8.3", "pytest-cov>=6.0"]
@@ -66,4 +67,5 @@ testpaths = ["tests"]
 markers = [
     "db: requires a running Postgres (docker compose up -d)",
     "slow: shells out to a real build; skip with -m 'not slow'",
+    "opencode: requires opencode's plugin types installed; checks our vendored copy is fresh",
 ]

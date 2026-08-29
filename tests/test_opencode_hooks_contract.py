@@ -1,0 +1,223 @@
+"""Two questions, deliberately not one test.
+
+  1. Does the plugin subscribe to something we believe is not real?
+     (Task 4. Always runs, everywhere, no node_modules.)
+  2. Is what we believe still true?
+     (Here. Reads the installed types, and may skip.)
+
+Collapsing them produces a guard that skips on CI, which is the failure the
+`db` markers already taught this project to distrust.
+"""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+import pytest
+
+from remem.agents.opencode.hooks import (
+    HOOK_NAMES,
+    PLUGIN_TYPES_VERSION,
+    installed_hook_names,
+)
+
+#: Where a normal `opencode` install puts the plugin types.
+TYPES_ROOTS = (
+    Path.home() / ".config" / "opencode" / "node_modules",
+    Path.home() / ".opencode" / "node_modules",
+)
+
+
+def test_the_vendored_list_holds_the_hooks_we_subscribe_to():
+    """A floor, not the whole list: HOOK_NAMES is every hook opencode has,
+    and these three are the ones this adapter uses."""
+    assert {
+        "tool.execute.after",
+        "chat.message",
+        "experimental.chat.system.transform",
+    } <= HOOK_NAMES
+
+
+def test_the_vendored_list_records_where_it_came_from():
+    assert PLUGIN_TYPES_VERSION == "1.17.7"
+
+
+def test_parsing_a_hooks_interface(tmp_path):
+    """The parser, exercised without needing opencode installed."""
+    d = tmp_path / "@opencode-ai" / "plugin" / "dist"
+    d.mkdir(parents=True)
+    (d / "index.d.ts").write_text(
+        'export type Plugin = () => Promise<Hooks>;\n'
+        "export interface Hooks {\n"
+        "    event?: (input: { event: Event }) => Promise<void>;\n"
+        "    config?: (input: Config) => Promise<void>;\n"
+        '    "chat.message"?: (input: {\n'
+        "        sessionID: string;\n"
+        "    }) => Promise<void>;\n"
+        '    "tool.execute.after"?: (input: {}) => Promise<void>;\n'
+        "}\n"
+        "export interface Other {\n"
+        '    "not.a.hook"?: () => void;\n'
+        "}\n"
+    )
+
+    names = installed_hook_names(tmp_path)
+
+    assert names == {"event", "config", "chat.message", "tool.execute.after"}
+    assert "not.a.hook" not in names
+
+
+@pytest.mark.opencode
+def test_the_vendored_list_still_matches_the_installed_types():
+    """Guards our copy of an external fact, not the plugin.
+
+    This one may skip - what it protects is the freshness of HOOK_NAMES, and
+    only a machine with opencode installed can answer it.
+    """
+    for root in TYPES_ROOTS:
+        if (root / "@opencode-ai" / "plugin" / "dist" / "index.d.ts").exists():
+            break
+    else:
+        pytest.skip(
+            "opencode's plugin types are not installed; nothing to compare "
+            "the vendored hook list against"
+        )
+
+    installed = installed_hook_names(root)
+
+    assert installed == HOOK_NAMES, (
+        "opencode's Hooks interface has changed. Update HOOK_NAMES and "
+        "PLUGIN_TYPES_VERSION in src/remem/agents/opencode/hooks.py, then "
+        "check whether plugin.js should subscribe to anything new."
+    )
+
+
+def _plugin_source() -> str:
+    from importlib import resources
+
+    return (
+        resources.files("remem.agents.opencode").joinpath("plugin.js").read_text()
+    )
+
+
+#: Keys of the object plugin.js returns from `server`: a QUOTED property at
+#: one indent level. The quotes are load-bearing - allowing a bare name here
+#: also matches `if (`, `try {` and every other 4-space statement in the
+#: file, which turns the guard below into a guaranteed failure. plugin.js
+#: quotes all three hook names, and they are the only quoted-key-at-four-
+#: spaces lines in it.
+_SUBSCRIBED = re.compile(r'^\s{4}"([a-z][\w.]*)"\s*:', re.MULTILINE)
+
+
+def test_the_plugin_subscribes_only_to_hooks_opencode_emits():
+    """The regression guard. Always runs - no node_modules, no skip.
+
+    claude-mem shipped an opencode integration bound to event names opencode
+    does not emit, and it recorded nothing for months without ever failing.
+    """
+    subscribed = frozenset(_SUBSCRIBED.findall(_plugin_source()))
+
+    assert subscribed, "found no hook subscriptions in plugin.js - the parser is broken"
+    assert subscribed <= HOOK_NAMES, (
+        f"plugin.js subscribes to hooks opencode does not emit: "
+        f"{sorted(subscribed - HOOK_NAMES)}"
+    )
+
+
+def test_the_plugin_subscribes_to_exactly_the_three_hooks_the_design_names():
+    subscribed = frozenset(_SUBSCRIBED.findall(_plugin_source()))
+
+    assert subscribed == {
+        "tool.execute.after",
+        "chat.message",
+        "experimental.chat.system.transform",
+    }
+
+
+def test_the_plugin_imports_nothing():
+    """The whole point of the approach: no npm dependency at runtime, so
+    there is no version to keep in step and nothing to install."""
+    source = _plugin_source()
+
+    assert "import " not in source
+    assert "require(" not in source
+
+
+def test_the_plugin_says_it_is_generated():
+    assert _plugin_source().startswith("// generated by remem - do not edit")
+
+
+def test_the_adapter_records_only_hooks_opencode_emits():
+    """The other half of the same guard, for the Python side.
+
+    plugin.js and OpenCodeAdapter.EVENT_KINDS name hooks independently, and
+    a typo in the adapter's table is exactly as silent as a typo in the
+    plugin: the payload arrives, `EVENT_KINDS.get` misses, event() returns
+    None, and `remem record event` exits 0 having recorded nothing.
+    """
+    from remem.agents.opencode.adapter import OpenCodeAdapter
+
+    assert frozenset(OpenCodeAdapter.EVENT_KINDS) <= HOOK_NAMES
+
+
+def test_every_hook_the_adapter_records_is_one_the_plugin_sends():
+    """The seam between plugin.js and adapter.py, which nothing type-checks.
+
+    The plugin also subscribes to the injection hook, which never reaches
+    event() - so the adapter's table is a subset of the plugin's
+    subscriptions, not an equal set.
+    """
+    from remem.agents.opencode.adapter import OpenCodeAdapter
+
+    subscribed = frozenset(_SUBSCRIBED.findall(_plugin_source()))
+
+    assert frozenset(OpenCodeAdapter.EVENT_KINDS) <= subscribed
+
+
+def test_plugin_serializes_inside_try_catch():
+    """The fail-soft contract: JSON.stringify(...) must not run before entering
+    callRemem's try block, or a circular reference or BigInt in tool output
+    will escape uncaught and break the user's turn. This check covers all three
+    call sites: record() (used by tool.execute.after and chat.message) and
+    experimental.chat.system.transform's context injection.
+
+    This is a structural check: JSON.stringify(...) should appear exactly once
+    in the plugin, within the callRemem function's try block, never as an
+    argument expression to callRemem in any of the three handlers.
+    """
+    source = _plugin_source()
+    lines = source.split("\n")
+
+    # Find callRemem function boundaries
+    callremem_start = None
+    callremem_end = None
+
+    for i, line in enumerate(lines):
+        if "async function callRemem" in line:
+            callremem_start = i
+        if callremem_start is not None and callremem_end is None:
+            if line.strip().startswith("}") and i > callremem_start:
+                callremem_end = i
+                break
+
+    assert callremem_start is not None and callremem_end is not None, (
+        "Could not find callRemem function span - test is broken"
+    )
+
+    # Count JSON.stringify(...) calls, excluding comments
+    source_no_comments = re.sub(r"//.*", "", source)
+    stringify_calls = len(re.findall(r"JSON\.stringify\s*\(", source_no_comments))
+
+    assert stringify_calls == 1, (
+        f"JSON.stringify(...) should appear exactly once, found {stringify_calls}. "
+        "This breaks the fail-soft contract - stringify must be inside "
+        "callRemem's try block, never as a hook argument expression."
+    )
+
+    # Verify it's within callRemem
+    callremem_text = "\n".join(lines[callremem_start : callremem_end + 1])
+    assert "JSON.stringify" in callremem_text, (
+        "JSON.stringify(...) found outside callRemem function. "
+        "This breaks the fail-soft contract - exceptions from stringify will escape uncaught."
+    )

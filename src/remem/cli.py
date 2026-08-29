@@ -805,6 +805,79 @@ def hook_session_size():
     raise typer.Exit(main_session_size())
 
 
+@hook_app.command("context")
+def hook_context(
+    agent: Annotated[str, typer.Option("--agent")] = "claude-code",
+):
+    """Print the knowledge base block for the session on stdin.
+
+    The harness-neutral half of what SessionStart does for Claude Code. A
+    harness with no session-start hook - opencode, Cursor - calls this
+    instead, passing whatever payload it has; the adapter's identity()
+    turns that into a project.
+
+    Fail-soft like every hook: exits 0 unconditionally, and prints the
+    block and nothing else to stdout. Reasons go to stderr under
+    REMEM_HOOK_DEBUG.
+    """
+    from remem.agents import registry
+    from remem.hookio import debug
+    from remem.services import context
+
+    env = dict(os.environ)
+
+    try:
+        stdin_text = sys.stdin.read()
+        try:
+            payload = json.loads(stdin_text) if stdin_text.strip() else {}
+        except (json.JSONDecodeError, AttributeError):
+            debug(env, "stdin was not valid JSON")
+            raise typer.Exit(0)
+
+        try:
+            adapter = registry.get(agent)()
+        except registry.UnknownAgent as exc:
+            debug(env, str(exc))
+            raise typer.Exit(0)
+
+        # identity() is a required Protocol method, unlike event() - but a
+        # third-party adapter whose implementation raises must still only
+        # cost the block, not the hook, so it is caught exactly like the
+        # optional capabilities in services/settings.py are.
+        try:
+            identity = adapter.identity(env, payload)
+        except Exception as exc:
+            debug(
+                env,
+                f"{agent} adapter's identity() raised {type(exc).__name__}: {exc}",
+            )
+            raise typer.Exit(0)
+
+        if not identity.project:
+            debug(env, "the hook payload carried no project")
+            raise typer.Exit(0)
+
+        cfg = load()
+        with open_session(cfg) as s:
+            typer.echo(
+                context.block(
+                    s.store,
+                    s.owner.id,
+                    identity.project,
+                    cfg.max_chars,
+                    note=lambda reason: debug(env, reason),
+                    owner_handle=s.owner.handle,
+                ),
+                nl=False,
+            )
+    except typer.Exit:
+        raise
+    except Exception as exc:
+        debug(env, f"{type(exc).__name__}: {exc}")
+
+    raise typer.Exit(0)
+
+
 @capture_app.command("enable", hidden=True)
 def capture_enable(
     project: Annotated[Optional[str], typer.Option("--project")] = None,

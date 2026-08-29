@@ -25,6 +25,7 @@ import pytest
 SRC = Path(__file__).resolve().parent.parent / "src" / "remem"
 MIGRATIONS = SRC / "backends" / "postgres" / "migrations"
 SKILLS = SRC / "agents" / "claude_code" / "skills"
+OPENCODE_PLUGIN = SRC / "agents" / "opencode" / "plugin.js"
 
 
 @pytest.fixture(scope="module")
@@ -64,6 +65,17 @@ def test_the_wheel_ships_every_skill(wheel_names):
     }
     assert expected, "no skills found in the source tree - test is broken"
     assert expected <= wheel_names
+
+
+@pytest.mark.slow
+def test_the_wheel_ships_the_opencode_plugin(wheel_names):
+    # plugin.js is read at install time via `resources.files()`
+    # (agents/opencode/adapter.py), the exact same trap the install tests
+    # fall into for migrations and skills under an editable install: it
+    # resolves straight back to the source tree and stays green even if the
+    # wheel shipped none of it.
+    assert OPENCODE_PLUGIN.is_file(), "plugin.js missing from the source tree"
+    assert "remem/agents/opencode/plugin.js" in wheel_names
 
 
 @pytest.mark.slow

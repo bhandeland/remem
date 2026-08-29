@@ -1,7 +1,7 @@
 # opencode adapter - design
 
 Date: 2026-08-29
-Status: approved, ready for implementation planning
+Status: implemented
 Builds on: docs/superpowers/specs/2026-08-28-events-and-recall-design.md
 
 ## Purpose
@@ -43,6 +43,13 @@ Three facts about opencode shape everything below:
 3. **The plugin runs in-process.** There is no harness-imposed timeout to
    inherit, unlike the 5s and 10s the Claude Code adapter gets for free.
 
+> **Update, during implementation:** opencode upgraded itself to 1.17.7 while
+> this branch was being built, and the freshness test caught the drift on its
+> next run. The vendored list was refreshed to 1.17.7 (21 hook names). All
+> three hooks this design uses survived the jump unchanged. The table below
+> describes 1.3.5, which is what the design was reasoned from; the shipped
+> vendored list is the newer one.
+
 `experimental.session.compacting` also exists - opencode tells a plugin that a
 session is about to be compacted, which is the closest thing it has to an
 end-of-session signal and is conceptually near remem's handoff trigger.
@@ -52,7 +59,7 @@ the events-and-recall design gives - a trigger all three harnesses share.
 
 ## Requirements
 
-- `remem install --agent opencode` registers event recording and knowledge base
+- `remem install opencode` registers event recording and knowledge base
   injection, globally or per project.
 - Recorded events reach `remem record event` in the shape `services/record.py`
   already consumes, behind the existing per-project opt-in.
@@ -77,7 +84,7 @@ src/remem/agents/opencode/
   hooks.py       # the vendored hook-name list (see "The contract test")
 ```
 
-`remem install --agent opencode` writes `plugin.js` verbatim into opencode's
+`remem install opencode` writes `plugin.js` verbatim into opencode's
 plugin directory: `~/.config/opencode/plugin/` for a global install,
 `.opencode/plugin/` for a per-project one. The directory is the registration -
 opencode loads what it finds there, so **install never touches the user's

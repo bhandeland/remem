@@ -196,6 +196,45 @@ reason for an empty result to stderr:
 echo '{"cwd":"'"$PWD"'"}' | REMEM_HOOK_DEBUG=1 remem hook session-start
 ```
 
+## Install into opencode
+
+```bash
+remem install opencode --scope project   # writes .opencode/plugin/remem.js
+remem install opencode --scope user      # writes ~/.config/opencode/plugin/remem.js
+```
+
+Unlike the Claude Code adapter, this one writes a single generated file - no
+JSON to merge, no MCP registration, no skill. `remem install opencode`
+overwrites `remem.js` unconditionally; `verify` never touches it - `verify`
+is the live database round-trip only. Either way, `remem.js` is not a file
+to hand-edit.
+
+**Recording is off until you enable it per project**, exactly as above:
+
+```bash
+remem record enable --project myapp
+```
+
+An install that leaves you waiting for events that never arrive is the
+failure this whole design cares most about - opencode's own hooks run and
+call `remem record event` regardless, but nothing lands in the database for a
+project you have not opted in.
+
+**The knowledge base block is injected once per session, not once per
+turn.** opencode has no session-start hook - `experimental.chat.system.transform`
+fires on every message instead - so the plugin keeps an in-process set of
+session ids it has already injected for and skips every message after the
+first. The consequence: a memory you write mid-session is not visible to that
+session. It shows up starting with the next one.
+
+**Extraction needs its own schedule.** `remem events process` - the thing
+that turns recorded events into entries - is only ever spawned from Claude
+Code's SessionStart hook. Installing only the opencode adapter records
+events indefinitely and never extracts any of them on its own; nothing else
+in an opencode-only setup triggers it. Put `remem events process` on a cron
+(or run it by hand, or in a later Claude Code session that also has remem
+installed) or your events will pile up unread.
+
 ## Configuration
 
 Environment variable, then config file, then default.

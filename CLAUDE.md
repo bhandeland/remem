@@ -46,7 +46,11 @@ domain:     domain.py (pure dataclasses/enums, no I/O)
   statement poisons the connection and the final COMMIT becomes a ROLLBACK.
 - **`agents/base.py` + `agents/registry.py` are the pluggability seam** - adapters register
   under the `remem.agents` entry point group and load lazily; a broken third-party adapter
-  warns rather than breaking remem.
+  warns rather than breaking remem. Two adapters ship today: `claude-code` (an MCP
+  registration plus four hook entries in settings the adapter owns and merges) and
+  `opencode` (one generated file, `plugin.js`, dropped into a directory opencode scans).
+  The contrast is deliberate - the second adapter proves the seam by looking nothing like
+  the first.
 
 ### Data model
 
@@ -201,6 +205,36 @@ The SessionStart hook injects the knowledge base whose slug is exactly the sessi
 directory's name. Writes, by contrast, resolve `--project` from the git repository root
 (`project.resolve_project`, via `--git-common-dir`) so subdirectories and worktrees file
 under the repository they belong to.
+
+### The opencode adapter
+
+`plugin.js` (`src/remem/agents/opencode/plugin.js`) is hand-written and shipped as
+package data; the INSTALLED copy - `remem.js`, in the directory `plugin_dir` names for
+the chosen scope - is what is generated and machine-owned. `install()` overwrites that
+installed copy unconditionally, no merge, no version marker, no prompt. It imports
+nothing, because `$` arrives on `PluginInput`: there is no npm dependency to install,
+pin, or keep in step with opencode's own releases. A user who wants local edits to
+`remem.js` is asking for the wrong file - remem owns it.
+
+opencode has no session-start hook, so `remem hook context --agent <name>` exists as the
+harness-neutral half of what `hook.session_start` does for Claude Code: given whatever
+payload a harness has on hand, the adapter's `identity()` turns it into a project and the
+command prints the knowledge base block for that session, fail-soft like every other
+hook. The opencode plugin calls it from `experimental.chat.system.transform`, which fires
+on every message - the plugin holds an in-process `Set` of session ids so the block is
+fetched once per session, not once per turn, the same bargain Claude Code's SessionStart
+makes by construction.
+
+The hook-contract test (`tests/test_opencode_hooks_contract.py`) is deliberately two
+tests, not one: `test_the_plugin_subscribes_only_to_hooks_opencode_emits` always runs, on
+CI and everywhere else, and catches `plugin.js` subscribing to a hook name opencode does
+not emit - the exact failure mode of a competing tool's opencode integration that reported
+success for months while recording nothing. `test_the_vendored_list_still_matches_the_installed_types`
+is marked `@pytest.mark.opencode` and may skip; it only guards the freshness of remem's own
+vendored copy of opencode's `Hooks` interface (`HOOK_NAMES`, `PLUGIN_TYPES_VERSION`), which
+needs opencode's plugin types installed to check. Collapsing them into one test would
+produce a guard that skips on CI - the same failure mode the `db` markers already taught
+this project to distrust.
 
 ## Conventions
 

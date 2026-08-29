@@ -12,18 +12,15 @@ import json
 import os
 import subprocess
 import sys
-from datetime import datetime
 from typing import Mapping
-from uuid import UUID
 
 from remem import session_size as session_size_mod
 from remem.agents.claude_code.adapter import ClaudeCodeAdapter
 from remem.config import load
 from remem.extract.base import CHILD_ENV_VAR
 from remem.hookio import debug as _debug
-from remem.services import kb, record
+from remem.services import context, record
 from remem.session import open_session
-from remem.store import Store
 
 
 def session_start(stdin_text: str, env: Mapping[str, str]) -> str:
@@ -42,62 +39,18 @@ def session_start(stdin_text: str, env: Mapping[str, str]) -> str:
 
         config = load(env=env)
         with open_session(config) as s:
-            block = ""
-            try:
-                collection = kb.get(s.store, s.owner.id, identity.project)
-            except kb.CollectionNotFound:
-                _debug(
-                    env,
-                    f"no knowledge base with slug '{identity.project}' for "
-                    f"principal '{s.owner.handle}'. The hook injects the "
-                    "knowledge base whose slug matches the repository name - "
-                    f"create one with `remem kb new {identity.project}`.",
-                )
-            else:
-                entries = kb.resolve(s.store, s.owner.id, identity.project)
-                if entries:
-                    block = kb.render(collection, entries, config.max_chars)
-                else:
-                    _debug(
-                        env,
-                        f"knowledge base '{identity.project}' matched no entries",
-                    )
-
-            # Appended after render, outside max_chars on purpose: it is a
-            # fixed ~20 tokens, and making it compete with rules for the
-            # budget would be absurd. It is also emitted for a project with no
-            # knowledge base at all, which is why the block is built rather
-            # than returned early.
-            pointer = handoff_pointer(s.store, s.owner.id, identity.project)
-            return "\n".join(part for part in (block, pointer) if part)
+            return context.block(
+                s.store,
+                s.owner.id,
+                identity.project,
+                config.max_chars,
+                note=lambda reason: _debug(env, reason),
+                owner_handle=s.owner.handle,
+            )
     except Exception as exc:
         # Any failure at all - unreachable database, missing migrations, an
         # over-budget knowledge base - is silence, never a broken session.
         _debug(env, f"{type(exc).__name__}: {exc}")
-        return ""
-
-
-def handoff_pointer(
-    store: Store, owner_id: UUID, project: str, now: datetime | None = None
-) -> str:
-    """One line naming the live handoff, or "".
-
-    Never raises: session_start's caller treats any exception as silence, but
-    a helper that can throw turns a working knowledge base into no output at
-    all, which is a worse failure than a missing pointer.
-    """
-    try:
-        from remem.services import handoff
-
-        entry = handoff.latest(store, owner_id, project=project)
-        if entry is None or entry.created_at is None:
-            return ""
-        topic = handoff.topic_of(entry) or project
-        age = handoff.age_phrase(
-            entry.created_at, now or datetime.now(tz=entry.created_at.tzinfo)
-        )
-        return f"Handoff available: {topic} ({age}) - run remem-prime {topic}"
-    except Exception:
         return ""
 
 
