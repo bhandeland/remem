@@ -32,6 +32,19 @@ class Store(Protocol):
         self, query: Query, owner_id: UUID, threshold: float
     ) -> list[Hit]: ...
 
+    # vectors
+    def put_vector(
+        self, entry_id: UUID, model: str, dim: int,
+        vector: list[float], owner_id: UUID,
+    ) -> None: ...
+    def entries_missing_vectors(
+        self, owner_id: UUID, model: str, limit: int
+    ) -> list[Entry]: ...
+    def semantic_search(
+        self, query: Query, owner_id: UUID, vector: list[float],
+        model: str, threshold: float,
+    ) -> list[Hit]: ...
+
     # collections
     def put_collection(self, collection: Collection) -> Collection: ...
     def get_collection(self, slug: str, owner_id: UUID) -> Collection | None: ...

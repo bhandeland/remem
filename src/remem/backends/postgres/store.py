@@ -75,6 +75,17 @@ def _entry_filters(query: Query, owner_id: UUID) -> tuple[list[str], dict]:
     return where, params
 
 
+def _vector_literal(vector: list[float]) -> str:
+    """pgvector's text input format.
+
+    Passed as a string and cast in SQL rather than adding the pgvector-python
+    adapter: one more dependency for one type, when the literal form is
+    stable, documented, and two lines. Revisit if vectors ever need reading
+    back into Python, which no current caller does.
+    """
+    return "[" + ",".join(repr(float(x)) for x in vector) + "]"
+
+
 def _row_to_entry(row: dict) -> Entry:
     return Entry(
         id=row["id"],
@@ -350,6 +361,113 @@ class PostgresStore:
                 snippet=r["snippet"],
                 match=Match.FUZZY,
             )
+            for r in rows
+        ]
+
+    def put_vector(
+        self, entry_id: UUID, model: str, dim: int,
+        vector: list[float], owner_id: UUID,
+    ) -> None:
+        """Insert or replace one entry's vector for one model.
+
+        Ownership is checked here, inside the store, like every other write:
+        a caller that could write vectors for another principal's entries
+        would be an integrity hole no service check could close.
+        """
+        with self._cur() as cur:
+            cur.execute(
+                "select 1 from entries where id = %s and owner_id = %s",
+                (entry_id, owner_id),
+            )
+            if cur.fetchone() is None:
+                raise NotOwner(
+                    f"entry {entry_id} does not belong to {owner_id}"
+                )
+            cur.execute(
+                """
+                insert into entry_vectors (entry_id, model, dim, vector)
+                values (%(entry_id)s, %(model)s, %(dim)s, %(vector)s::vector)
+                on conflict (entry_id, model) do update
+                   set vector = excluded.vector,
+                       dim = excluded.dim,
+                       created_at = clock_timestamp()
+                """,
+                {"entry_id": entry_id, "model": model, "dim": dim,
+                 "vector": _vector_literal(vector)},
+            )
+
+    def entries_missing_vectors(
+        self, owner_id: UUID, model: str, limit: int
+    ) -> list[Entry]:
+        """Entries with no vector for this model, oldest first.
+
+        Oldest first so a long backlog makes steady, resumable progress
+        rather than re-visiting the same recent rows on every run.
+
+        Superseded entries are skipped: they are invisible to every search
+        tier, so embedding them is work whose result nothing can return.
+        """
+        with self._cur() as cur:
+            cur.execute(
+                f"""
+                select {entry_columns("e")}
+                from entries e
+                left join entry_vectors v
+                       on v.entry_id = e.id and v.model = %(model)s
+                where e.owner_id = %(owner_id)s
+                  and e.superseded_by is null
+                  and v.entry_id is null
+                order by e.created_at asc
+                limit %(limit)s
+                """,
+                {"owner_id": owner_id, "model": model, "limit": limit},
+            )
+            return [_row_to_entry(r) for r in cur.fetchall()]
+
+    def semantic_search(
+        self, query: Query, owner_id: UUID, vector: list[float],
+        model: str, threshold: float,
+    ) -> list[Hit]:
+        """Nearest neighbours by cosine similarity, above a floor.
+
+        `<=>` is pgvector's cosine DISTANCE, so similarity is 1 - distance.
+        Reported as similarity because that is the direction every other tier
+        ranks in, and a mixed convention across tiers is how a comparison
+        silently inverts.
+
+        Exact search, no index - see 006_vectors.sql for why, and for when
+        that stops being the right answer.
+
+        The join is inner: an entry with no vector for this model is
+        invisible here and reachable by the other two tiers. That is the
+        correct degradation - an un-embedded entry is not lost, only less
+        findable, and `remem embed` fixes it.
+        """
+        where, params = _entry_filters(query, owner_id)
+        params["vector"] = _vector_literal(vector)
+        params["model"] = model
+        params["threshold"] = threshold
+
+        similarity = "1 - (v.vector <=> %(vector)s::vector)"
+        where.append("v.model = %(model)s")
+        where.append(f"{similarity} >= %(threshold)s")
+
+        sql = f"""
+            select {entry_columns("e")},
+                   {similarity} as rank,
+                   left(e.body, 200) as snippet
+            from entries e
+            join entry_vectors v on v.entry_id = e.id
+            where {" and ".join(where)}
+            order by rank desc, e.created_at desc
+            limit %(limit)s
+        """
+        with self._cur() as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
+        return [
+            Hit(entry=_row_to_entry(r), rank=float(r["rank"]),
+                snippet=r["snippet"], match=Match.SEMANTIC)
             for r in rows
         ]
 
