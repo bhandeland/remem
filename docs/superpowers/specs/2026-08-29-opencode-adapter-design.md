@@ -1,7 +1,7 @@
 # opencode adapter - design
 
 Date: 2026-08-29
-Status: approved, ready for implementation planning
+Status: implemented
 Builds on: docs/superpowers/specs/2026-08-28-events-and-recall-design.md
 
 ## Purpose

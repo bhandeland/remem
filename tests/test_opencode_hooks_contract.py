@@ -40,7 +40,7 @@ def test_the_vendored_list_holds_the_hooks_we_subscribe_to():
 
 
 def test_the_vendored_list_records_where_it_came_from():
-    assert PLUGIN_TYPES_VERSION == "1.3.5"
+    assert PLUGIN_TYPES_VERSION == "1.17.7"
 
 
 def test_parsing_a_hooks_interface(tmp_path):

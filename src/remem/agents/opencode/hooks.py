@@ -9,7 +9,7 @@ So the checked-in list is what the plugin is tested against, and a separate
 `opencode`-marked test asserts this list still matches the installed types.
 The two answer different questions; see tests/test_opencode_hooks_contract.py.
 
-Transcribed from @opencode-ai/plugin 1.3.5,
+Transcribed from @opencode-ai/plugin 1.17.7,
 dist/index.d.ts, `export interface Hooks`.
 """
 
@@ -18,14 +18,16 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-PLUGIN_TYPES_VERSION = "1.3.5"
+PLUGIN_TYPES_VERSION = "1.17.7"
 
 HOOK_NAMES = frozenset(
     {
+        "dispose",
         "event",
         "config",
         "tool",
         "auth",
+        "provider",
         "chat.message",
         "chat.params",
         "chat.headers",
@@ -36,7 +38,9 @@ HOOK_NAMES = frozenset(
         "tool.execute.after",
         "experimental.chat.messages.transform",
         "experimental.chat.system.transform",
+        "experimental.provider.small_model",
         "experimental.session.compacting",
+        "experimental.compaction.autocontinue",
         "experimental.text.complete",
         "tool.definition",
     }
