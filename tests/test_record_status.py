@@ -19,7 +19,7 @@ from remem.backends.postgres.migrate import migrate
 from remem.backends.postgres.store import PostgresStore
 from remem.cli import app
 from remem.domain import Event, EventKind, JobStatus, SessionRef, new_id
-from remem.services import events, record, write
+from remem.services import events, extraction, record, write
 
 runner = CliRunner()
 
@@ -118,6 +118,33 @@ def test_status_names_sessions_still_awaiting_extraction(store, owner):
     # nothing left outstanding.
     _mark_done(store, owner, "s1", covers_through=NOW - timedelta(hours=2))
     report = events.status(store, owner.id, idle_seconds=IDLE)
+    assert report.harnesses[0].sessions_awaiting == 0
+
+
+class _AlwaysFails:
+    """An extractor that always raises, to drive a job to its attempt cap."""
+
+    def extract(self, events, project, known_titles=None):
+        raise RuntimeError("claude exploded")
+
+
+def test_status_excludes_a_session_whose_extraction_has_given_up(store, owner):
+    """`sessions_awaiting_extraction` computes watermarks from DONE jobs
+    only, so a session whose job FAILED past the attempt cap still has
+    outstanding events by that definition alone. `record status` must not
+    report that as work outstanding - it is a permanently stuck session
+    `events process` already skips, and counting it would misreport the
+    backlog. This is the same "given up" rule `extraction._gave_up` applies
+    to `process`, now shared via `extraction.awaiting_sessions` rather than
+    re-derived - see the comment on `services.events.status`."""
+    store.put_event(an_event(owner, at=NOW - timedelta(hours=2), session="s1"))
+    boom = _AlwaysFails()
+
+    for _ in range(extraction.MAX_ATTEMPTS + 1):
+        extraction.process(store, owner.id, boom, idle_seconds=IDLE, limit=10)
+
+    report = events.status(store, owner.id, idle_seconds=IDLE)
+
     assert report.harnesses[0].sessions_awaiting == 0
 
 

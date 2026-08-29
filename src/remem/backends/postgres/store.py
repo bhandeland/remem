@@ -693,10 +693,8 @@ class PostgresStore:
             )
             return [r["project"] for r in cur.fetchall()]
 
-    def event_stats(
-        self, owner_id: UUID, idle_seconds: int, max_attempts: int
-    ) -> list[HarnessStats]:
-        """Per-harness recording health for `remem record status`.
+    def event_stats(self, owner_id: UUID) -> list[HarnessStats]:
+        """Per-harness recent volume for `remem record status`.
 
         Only harnesses with at least one recorded event ever appear in the
         result - there is no harness name to key a zero row on for one that
@@ -704,68 +702,29 @@ class PostgresStore:
         exists to catch. `services.events.render` turns an empty list into a
         visible "no events" line rather than an absent section.
 
-        `sessions_awaiting` reuses `sessions_awaiting_extraction`'s own
-        definition of outstanding work verbatim (same watermark CTE, same
-        idle threshold) so the two commands can never disagree about what
-        "awaiting" means. It also excludes sessions whose extraction has
-        already given up (`attempts > max_attempts`, mirroring
-        `extraction._gave_up`) - those sit in the backlog permanently and
-        `events process` skips them, so counting them here would report
-        stuck work as outstanding work.
+        `sessions_awaiting` is deliberately not computed here: that count
+        depends on the "given up" rule, which is a policy decision that
+        belongs in `services.extraction` (`_gave_up`/`awaiting_sessions`),
+        not duplicated into SQL. `services.events.status` fills it in after
+        this call by tallying `extraction.awaiting_sessions` per harness -
+        see the comment there for why, and the task-8 review this answers.
         """
         with self._cur() as cur:
             cur.execute(
                 """
-                with watermarks as (
-                  select project, harness, session_id, max(covers_through) as mark
-                    from extract_jobs
-                   where owner_id = %(owner_id)s and status = 'done'
-                   group by project, harness, session_id
-                ), gave_up as (
-                  select project, harness, session_id
-                    from extract_jobs
-                   where owner_id = %(owner_id)s and status = 'failed'
-                     and attempts > %(max_attempts)s
-                ), pending as (
-                  select e.project, e.harness, e.session_id,
-                         max(e.occurred_at) as last_event_at
-                    from events e
-                    left join watermarks w
-                           on w.project = e.project and w.harness = e.harness
-                          and w.session_id = e.session_id
-                   where e.owner_id = %(owner_id)s
-                     and (w.mark is null or e.occurred_at > w.mark)
-                   group by e.project, e.harness, e.session_id
-                  having max(e.occurred_at)
-                           < clock_timestamp() - make_interval(secs => %(idle)s)
-                ), awaiting as (
-                  select p.harness, count(*) as n
-                    from pending p
-                   where not exists (
-                     select 1 from gave_up g
-                      where g.project = p.project and g.harness = p.harness
-                        and g.session_id = p.session_id
-                   )
-                   group by p.harness
-                )
-                select e.harness,
+                select harness,
                        count(*) filter (
-                         where e.occurred_at
+                         where occurred_at
                                  >= clock_timestamp() - interval '24 hours'
                        ) as events_24h,
-                       max(e.occurred_at) as last_event_at,
-                       coalesce(max(aw.n), 0) as sessions_awaiting
-                  from events e
-                  left join awaiting aw on aw.harness = e.harness
-                 where e.owner_id = %(owner_id)s
-                 group by e.harness
-                 order by e.harness
+                       max(occurred_at) as last_event_at,
+                       0 as sessions_awaiting
+                  from events
+                 where owner_id = %(owner_id)s
+                 group by harness
+                 order by harness
                 """,
-                {
-                    "owner_id": owner_id,
-                    "idle": idle_seconds,
-                    "max_attempts": max_attempts,
-                },
+                {"owner_id": owner_id},
             )
             return [_row_to_harness_stats(r) for r in cur.fetchall()]
 

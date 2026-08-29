@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
-from remem.domain import Event, ExtractJob, JobStatus, Origin, Query
+from remem.domain import Event, ExtractJob, JobStatus, Origin, Query, SessionRef
 from remem.extract.base import ExtractedEntry, ExtractionFailed, Extractor
 from remem.services.write import remember
 from remem.store import Store
@@ -294,6 +294,34 @@ def _gave_up(job: ExtractJob | None) -> bool:
     )
 
 
+def awaiting_sessions(
+    store: Store, owner_id: UUID, idle_seconds: int, limit: int
+) -> list[SessionRef]:
+    """Sessions genuinely awaiting extraction: quiet long enough, and not a
+    session whose extraction has already given up.
+
+    The one place the "given up" rule is evaluated. `sessions_awaiting_extraction`
+    only knows about DONE jobs (see its own docstring), so a session whose
+    job FAILED past the attempt cap still looks like outstanding work by
+    that definition alone and would be rediscovered forever - `_gave_up` is
+    what excludes it, and every caller that needs a true "awaiting" count
+    goes through this function rather than re-deriving the rule. `process`
+    and `remem record status` used to apply this in two places (Python here,
+    a hand-copied SQL predicate in `event_stats`) and could silently drift
+    out of step - exactly the failure this pipeline exists to make visible,
+    reintroduced one level up. One function, two callers, no way to drift.
+
+    `limit` bounds the underlying discovery query, not the number returned -
+    a session excluded here still cost a slot in that fetch, same as before
+    this was extracted out of `process`.
+    """
+    fetched = store.sessions_awaiting_extraction(owner_id, idle_seconds, limit)
+    return [
+        session for session in fetched
+        if not _gave_up(store.extract_job_for_session(owner_id, session))
+    ]
+
+
 def _tally(report: ExtractReport, succeeded: bool, written: int) -> None:
     report.claimed += 1
     if succeeded:
@@ -319,19 +347,17 @@ def process(
     cron run that swallowed it would report a clean sweep of nothing.
     """
     report = ExtractReport()
-    # Over-fetch, then stop at `limit` sessions actually claimed. Skipping a
-    # dead session after discovery keeps it from being re-run, but on its own
-    # it still lets one occupy a slot in the batch - and dead sessions sort
-    # first (see _gave_up), so a small `--limit` would be filled by them
-    # while live sessions waited behind. The window is bounded rather than
-    # unbounded: a backlog deeper in dead sessions than this is a state worth
-    # noticing in `status`, not one worth scanning the whole events table for.
-    fetched = store.sessions_awaiting_extraction(
-        owner_id, idle_seconds, limit * DISCOVERY_OVERFETCH
+    # Over-fetch, then stop at `limit` sessions actually claimed. A dead
+    # session excluded by `awaiting_sessions` still occupied a slot in the
+    # underlying fetch, and dead sessions sort first (see _gave_up), so a
+    # small `--limit` would be filled by them while live sessions waited
+    # behind. The window is bounded rather than unbounded: a backlog deeper
+    # in dead sessions than this is a state worth noticing in `status`, not
+    # one worth scanning the whole events table for.
+    fetched = awaiting_sessions(
+        store, owner_id, idle_seconds, limit * DISCOVERY_OVERFETCH
     )
     for session in fetched:
-        if _gave_up(store.extract_job_for_session(owner_id, session)):
-            continue
         job = store.claim_extract_job(owner_id, session)
         _tally(report, *_run_job(store, owner_id, extractor, job))
         if report.claimed >= limit:

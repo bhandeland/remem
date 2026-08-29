@@ -73,13 +73,11 @@ class Store(Protocol):
     #: The retired capture spool, counted once so it is visible rather than
     #: mysterious. See 010_retire_capture_jobs.sql.
     def pending_legacy_capture_jobs(self, owner_id: UUID) -> int: ...
-    #: Per-harness recording health for `remem record status`. `idle_seconds`
-    #: and `max_attempts` are threaded through rather than read from config
-    #: here so this stays in step with `sessions_awaiting_extraction` and
-    #: extraction's own give-up rule - see the Postgres implementation.
-    def event_stats(
-        self, owner_id: UUID, idle_seconds: int, max_attempts: int
-    ) -> list[HarnessStats]: ...
+    #: Per-harness recent volume for `remem record status`. Deliberately
+    #: silent on backlog: `sessions_awaiting` comes back 0 here always, and
+    #: `services.events.status` fills it in via `services.extraction`'s
+    #: "given up" rule rather than the store re-deriving that policy.
+    def event_stats(self, owner_id: UUID) -> list[HarnessStats]: ...
 
     # events
     def put_event(self, event: Event) -> Event: ...

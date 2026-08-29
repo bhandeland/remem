@@ -14,8 +14,17 @@ from uuid import UUID
 
 from remem.config import load as load_config
 from remem.domain import ExtractJob, HarnessStats, ProvenanceRow
-from remem.services.extraction import MAX_ATTEMPTS
+from remem.services import extraction
 from remem.store import Store
+
+# How many awaiting-extraction sessions `status` will look at when tallying
+# `sessions_awaiting` per harness. `process`'s own limit is a batch size -
+# how much work to *do* per run - and bounding `status` the same way would
+# make a large backlog undercount itself in the one place meant to reveal
+# it. Generous rather than unbounded: remem's scale is tens of sessions
+# between prunes, not thousands, so a four-figure ceiling costs nothing in
+# practice while still refusing to scan forever for a pathological owner.
+STATUS_AWAITING_LIMIT = 1000
 
 _WINDOW_RE = re.compile(r"^([1-9][0-9]*)([dhm])$")
 
@@ -129,9 +138,28 @@ def status(store: Store, owner_id: UUID, idle_seconds: int) -> StatusReport:
     and the older `capture status`) would resolve, and a caller with no
     `Config` object handy - a test, an MCP tool - still gets a real answer
     instead of a required argument nothing passes.
+
+    `sessions_awaiting` per harness is filled in here, after the store call,
+    by tallying `extraction.awaiting_sessions` - not computed in SQL inside
+    `event_stats`. That function is the one place the "has this session's
+    extraction given up" rule is evaluated (`extraction._gave_up`); this
+    used to be duplicated as a second, hand-copied SQL predicate here, which
+    is exactly the kind of silent disagreement this whole command exists to
+    catch, one level up. The cost is one `extract_job_for_session` lookup
+    per candidate session, bounded by `STATUS_AWAITING_LIMIT` - at remem's
+    scale (tens of sessions) that is nothing.
     """
+    harnesses = store.event_stats(owner_id)
+    awaiting_counts: dict[str, int] = {}
+    for session in extraction.awaiting_sessions(
+        store, owner_id, idle_seconds, STATUS_AWAITING_LIMIT
+    ):
+        awaiting_counts[session.harness] = awaiting_counts.get(session.harness, 0) + 1
+    for h in harnesses:
+        h.sessions_awaiting = awaiting_counts.get(h.harness, 0)
+
     return StatusReport(
-        harnesses=store.event_stats(owner_id, idle_seconds, MAX_ATTEMPTS),
+        harnesses=harnesses,
         enabled_projects=store.enabled_record_projects(owner_id),
         job_counts=store.extract_job_counts(owner_id),
         recent_failures=store.recent_failed_extract_jobs(owner_id),
