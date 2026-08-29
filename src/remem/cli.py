@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated, Optional
 from uuid import UUID
@@ -862,6 +863,60 @@ def events_process(
     typer.echo(
         f"claimed {report.claimed}, succeeded {report.succeeded}, "
         f"failed {report.failed}, entries written {report.entries_written}"
+    )
+
+
+@events_app.command("prune")
+def events_prune(
+    before: Annotated[
+        Optional[str], typer.Option("--before", help="e.g. 30d, 12h, 90m")
+    ] = None,
+    force: Annotated[bool, typer.Option("--force")] = False,
+    as_json: Annotated[bool, typer.Option("--json")] = False,
+):
+    """Delete raw events older than a window, if they have been extracted.
+
+    There is no default window: `--before` must always be something the
+    user typed, so a configured retention number can never quietly delete
+    history. An event that has not been extracted yet is never deleted
+    unless `--force` says so - for a session whose extraction is never
+    going to finish.
+    """
+    from remem.services import events
+
+    if before is None:
+        typer.echo(
+            "--before is required (e.g. --before 30d) - there is no default "
+            "retention window.",
+            err=True,
+        )
+        raise typer.Exit(1)
+    try:
+        window = events.parse_window(before)
+    except events.BadWindow as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1)
+
+    with _session() as s:
+        cutoff = datetime.now(timezone.utc) - window
+        try:
+            report = events.prune(s.store, s.owner.id, before=cutoff, force=force)
+        except events.PruneRefused as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(1)
+
+    if as_json:
+        typer.echo(json.dumps({
+            "deleted": report.deleted,
+            "kept_unextracted": report.kept_unextracted,
+            "dangling": report.dangling,
+        }, indent=2))
+        return
+    # The dangling count prints even when it is zero - its absence would be
+    # indistinguishable from a prune that never reported it at all.
+    typer.echo(
+        f"deleted {report.deleted} events, kept {report.kept_unextracted} "
+        f"unextracted, left {report.dangling} provenance rows dangling"
     )
 
 

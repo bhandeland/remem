@@ -805,6 +805,70 @@ class PostgresStore:
                 for r in cur.fetchall()
             ]
 
+    def prune_events(
+        self, owner_id: UUID, before: datetime, force: bool
+    ) -> tuple[int, int, int]:
+        """Delete raw events older than `before`, and say what that cost.
+
+        "Extracted" uses the same watermark rule as
+        `sessions_awaiting_extraction` - the newest `covers_through` among a
+        session's DONE jobs - so prune and process can never disagree about
+        what has already been extracted. `--force` (the `force` argument)
+        drops that condition entirely rather than widening it: an unextracted
+        event is raw that produced nothing, and losing it is the outcome the
+        whole pipeline exists to prevent, so overriding that is a deliberate
+        act, not a wider window.
+
+        The dangling count is taken from `entry_events` before the delete
+        runs, in the same statement - after the delete the rows are already
+        dangling and counting them then would just be re-deriving what this
+        statement did. `kept_unextracted` is the other side of the refusal:
+        how many events in the window survived only because they had not
+        been extracted yet.
+        """
+        with self._cur() as cur:
+            cur.execute(
+                """
+                with watermarks as (
+                  select project, harness, session_id, max(covers_through) as mark
+                    from extract_jobs
+                   where owner_id = %(owner_id)s and status = 'done'
+                   group by project, harness, session_id
+                ), scoped as (
+                  select e.id,
+                         (w.mark is not null and e.occurred_at <= w.mark)
+                           as extracted
+                    from events e
+                    left join watermarks w
+                           on w.project = e.project and w.harness = e.harness
+                          and w.session_id = e.session_id
+                   where e.owner_id = %(owner_id)s
+                     and e.occurred_at < %(before)s
+                ), candidates as (
+                  select id from scoped where %(force)s or extracted
+                ), dangling as (
+                  select count(*) as n from entry_events
+                   where event_id in (select id from candidates)
+                ), deleted as (
+                  delete from events where id in (select id from candidates)
+                  returning id
+                )
+                select (select count(*) from deleted) as deleted,
+                       (select n from dangling) as dangling,
+                       -- Under --force nothing is "kept" for lack of
+                       -- extraction - it was deleted along with everything
+                       -- else in the window, so this is unconditionally 0
+                       -- rather than a count of rows that no longer exist.
+                       (case when %(force)s then 0
+                             else (select count(*) from scoped
+                                    where not extracted) end)
+                         as kept_unextracted
+                """,
+                {"owner_id": owner_id, "before": before, "force": force},
+            )
+            row = cur.fetchone()
+            return (row["deleted"], row["dangling"], row["kept_unextracted"])
+
     # ---------------- extraction spool ----------------
 
     def get_extract_job(self, job_id: UUID, owner_id: UUID) -> ExtractJob | None:

@@ -79,7 +79,6 @@ def test_another_principals_events_are_invisible(store, owner):
     ) == []
 
 
-@pytest.mark.xfail(reason="prune_events lands in Task 7", strict=True)
 def test_provenance_survives_the_events_it_names(store, owner):
     entry = write.remember(store, owner.id, title="t", body="b")
     event = store.put_event(an_event(owner))

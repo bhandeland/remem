@@ -85,6 +85,9 @@ class Store(Protocol):
     def provenance(
         self, entry_id: UUID, owner_id: UUID
     ) -> list[tuple[UUID, str, str, bool]]: ...
+    def prune_events(
+        self, owner_id: UUID, before: datetime, force: bool
+    ) -> tuple[int, int, int]: ...
 
     # extraction spool
     def sessions_awaiting_extraction(
