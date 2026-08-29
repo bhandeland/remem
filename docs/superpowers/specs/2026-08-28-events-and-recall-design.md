@@ -450,7 +450,7 @@ overlapping:
 - Migration: an entry with `origin='capture'` is readable as `extracted`, and a
   pending `capture_jobs` row survives in `capture_jobs_legacy` rather than being
   translated or dropped.
-- Migration: a project opted in before `006` is still opted in after it, and
+- Migration: a project opted in before `007` is still opted in after it, and
   `record event` writes for it. The `capture_settings` rename touches the gate
   that decides whether anything is recorded at all, and a missed call site fails
   soft and silently.
