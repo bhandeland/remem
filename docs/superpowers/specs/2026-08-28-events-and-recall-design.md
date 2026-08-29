@@ -450,6 +450,10 @@ overlapping:
 - Migration: an entry with `origin='capture'` is readable as `extracted`, and a
   pending `capture_jobs` row survives in `capture_jobs_legacy` rather than being
   translated or dropped.
+- Migration: a project opted in before `006` is still opted in after it, and
+  `record event` writes for it. The `capture_settings` rename touches the gate
+  that decides whether anything is recorded at all, and a missed call site fails
+  soft and silently.
 - Forensic lookup of a pruned event reports "event pruned", not "not found", and
   no ordinary read path joins `entry_events` to `events`.
 
@@ -505,7 +509,23 @@ pre-migration collection still resolves to the same entries afterwards. This is
 the single highest-risk line in the migration; it is also the one a reader would
 never think to look for, which is why it gets its own step.
 
-**5. Names outside the database.** `REMEM_CAPTURE_MODEL` becomes
+**5. `capture_settings` becomes `record_settings` - a live table, renamed in
+one commit.** Unlike `capture_jobs`, this table is not dead: it holds the
+per-project opt-in, which the retention decision above promoted into the entire
+privacy story, and it is read on the path of every recorded event. Its shape is
+unchanged - `(owner_id, project, enabled)` - so this is a bare `alter table
+rename`, with no data transformation and nothing to get wrong in SQL.
+
+The risk is not the rename, it is a partial one. Three statements in
+`backends/postgres/store.py` name the table in string SQL, where no type checker
+will catch a miss, and the enabled-check is the gate that decides whether
+recording happens at all. A missed call site does not error usefully; it fails
+the opt-in lookup, and a fail-soft hook then records nothing, silently - the
+exact failure this design was written to prevent. So: rename and update all
+three call sites in the same commit, and let the round-trip test in "Failure
+visibility" be what proves the gate still answers.
+
+**6. Names outside the database.** `REMEM_CAPTURE_MODEL` becomes
 `REMEM_EXTRACT_MODEL`; the old name is read as a fallback for one release and
 warns. `remem capture *` becomes `remem record *` and `remem events *`, with the
 old spellings kept as hidden aliases that warn. `CHILD_ENV_VAR`
@@ -513,7 +533,7 @@ old spellings kept as hidden aliases that warn. `CHILD_ENV_VAR`
 renamed on every side in the same commit or not at all, per the standing warning
 in CLAUDE.md.
 
-**6. Forward-only, and loud about it.** remem is installed per-user with
+**7. Forward-only, and loud about it.** remem is installed per-user with
 `uv tool install`, so binary and database move together - there is no rolling
 deploy to stage this for. The real exposure is the opposite direction: an *older*
 `remem` from another checkout or worktree pointed at a migrated database. It will
