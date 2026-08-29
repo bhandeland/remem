@@ -243,21 +243,18 @@ def search(
     --handoff also searches session handoffs, which are excluded by default.
     """
     with _session() as s:
-        # Best effort. Search without the optional dependency installed is
-        # two tiers, not an error - so an unavailable embedder is a None, not
-        # an exit. `remem embed` is where this is loud.
-        try:
-            embedder = load_embedder(s.config.embed_model)
-        except EmbedderUnavailable:
-            embedder = None
+        # No embedder is passed. The service builds one only if the semantic
+        # tier is reached, and decides for itself that an unavailable one is
+        # a None rather than an error - both of which are policy, and neither
+        # of which a frontend should be restating.
         hits = find(
             s.store, s.owner.id,
             Query(text=query, kinds=list(kind or []), project=project,
                   tags=list(tag or []), limit=limit),
             fuzzy_threshold=s.config.fuzzy_threshold,
             include_handoffs=handoff,
-            embedder=embedder,
             semantic_threshold=s.config.semantic_threshold,
+            embed_model=s.config.embed_model,
         )
     if as_json:
         payload = []

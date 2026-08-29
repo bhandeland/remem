@@ -13,6 +13,8 @@ import uuid
 import psycopg
 import pytest
 
+from remem.embed import DEFAULT_EMBED_MODEL
+
 ADMIN_DSN = os.environ.get(
     "REMEM_TEST_DSN", "postgresql://remem:remem@localhost:5433/remem"
 )
@@ -107,3 +109,24 @@ def _reset_live_db(request):
                 "restart identity cascade"
             )
     yield
+
+
+@pytest.fixture(autouse=True)
+def _no_shared_embedder(monkeypatch):
+    """No test ever builds the real embedder through the shared accessor.
+
+    `services.search.find` builds one on demand when the caller does not
+    supply an embedder, memoising it in a module-level dict. That is right in
+    production and wrong in a test suite: it would make a run depend on a
+    ~130MB model download, and the cache would carry one test's embedder into
+    the next.
+
+    Replacing the cache with a fresh dict per test kills the leak, and
+    seeding it with None for the default model means an unspecified embedder
+    behaves like an uninstalled one - the two-tier degradation. Tests that
+    want a semantic tier pass their own stub explicitly, which never touches
+    this cache.
+    """
+    monkeypatch.setattr(
+        "remem.services.search._EMBEDDERS", {DEFAULT_EMBED_MODEL: None}
+    )

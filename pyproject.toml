@@ -12,9 +12,12 @@ dependencies = [
     "tomli-w>=1.2.0",
 ]
 
-# Optional, not a hard dependency. onnxruntime is tens of megabytes, and a
-# user who only writes and reads entries never needs it. `remem embed` says
-# how to install it when it is missing; search degrades to two tiers.
+# Optional, not a hard dependency. It pulls roughly twenty-two transitive
+# packages (onnxruntime, huggingface-hub, tokenizers, numpy, pillow, protobuf
+# and friends) for about 216MB of venv, and then downloads ~130MB of model
+# weights from HuggingFace on first use - and a user who only writes and reads
+# entries never needs any of it. `remem embed` says how to install it when it
+# is missing; search degrades to two tiers.
 [project.optional-dependencies]
 embed = ["fastembed>=0.7.0"]
 

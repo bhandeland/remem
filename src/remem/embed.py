@@ -4,10 +4,13 @@ Same shape as store.py and for the same reason: the thing behind this
 interface is a plausible future substitution, and naming the interface now
 costs nothing while retrofitting one later costs every call site.
 
-The shipped implementation is local and ONNX-based. No API key, no network on
-any read path, no per-call cost, and every existing entry backfillable
-without asking anyone's permission. A hosted embedder is a configuration
-question for someone else's package, not a dependency of this one.
+The shipped implementation is local and ONNX-based. No API key, no per-call
+cost, and every existing entry backfillable without asking anyone's
+permission. Network use is confined to the first construction of a
+LocalEmbedder, which downloads the model weights; after that there is none,
+and nothing constructs one unless it is about to embed something. A hosted
+embedder is a configuration question for someone else's package, not a
+dependency of this one.
 """
 
 from __future__ import annotations
@@ -48,8 +51,15 @@ class LocalEmbedder:
     fastembed pulls onnxruntime, which is tens of megabytes and takes a
     noticeable moment to import. Every `remem` invocation would pay that -
     including the hooks, which are meant to be invisible - if this were a
-    module-level import. It is deferred to first use, which is the embed
-    command and the semantic search tier.
+    module-level import.
+
+    Constructing one is more expensive still: the ONNX session is built here
+    and the dimension probe below is a real inference call, and on a machine
+    with no cached weights the model download is ~130MB. So construction is
+    deferred to the point of use, which is `remem embed` and the semantic
+    search tier - and the semantic tier runs only when exact full-text
+    search returned nothing, so a search that finds its answer never gets
+    here at all.
     """
 
     def __init__(self, model_name: str = DEFAULT_EMBED_MODEL) -> None:

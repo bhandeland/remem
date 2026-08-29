@@ -3,6 +3,7 @@ import pytest
 from remem.backends.postgres.migrate import migrate
 from remem.backends.postgres.store import PostgresStore
 from remem.domain import Hit, Query
+from remem.embed import EmbedderUnavailable
 from remem.services.search import find
 from remem.services.write import remember
 
@@ -147,3 +148,58 @@ def test_empty_query_text_skips_both_fallbacks():
 
     assert store.called == ["exact"]
     assert hits == []
+
+
+def test_an_exact_match_never_constructs_an_embedder(monkeypatch):
+    # The cost of building the local embedder is a model download on a cold
+    # machine and an ONNX session on a warm one, and an exact match needs
+    # neither. Blowing up in load_embedder is the only way to assert that it
+    # was not called anywhere down the chain.
+    def explode(model_name):
+        raise AssertionError(f"built an embedder for {model_name!r}")
+
+    monkeypatch.setattr("remem.services.search.load_embedder", explode)
+    monkeypatch.setattr("remem.services.search._EMBEDDERS", {})
+    store = StubStore(exact=[_hit()])
+
+    hits = find(store, new_id(), Query(text="q"))
+
+    assert [h.match for h in hits] == [Match.EXACT]
+
+
+def test_the_semantic_tier_builds_the_shared_embedder_once(monkeypatch):
+    calls = []
+
+    def build(model_name):
+        calls.append(model_name)
+        return StubEmbedder()
+
+    monkeypatch.setattr("remem.services.search.load_embedder", build)
+    monkeypatch.setattr("remem.services.search._EMBEDDERS", {})
+    store = StubStore(semantic=[_hit(Match.SEMANTIC)])
+
+    for _ in range(3):
+        find(store, new_id(), Query(text="q"), embed_model="m")
+
+    assert calls == ["m"]
+
+
+def test_an_unavailable_embedder_is_a_none_and_is_not_retried(monkeypatch):
+    # The policy the frontends used to each restate: search degrades, and it
+    # degrades once. Re-attempting the fastembed import on every search would
+    # repay the failure without ever changing the answer.
+    calls = []
+
+    def unavailable(model_name):
+        calls.append(model_name)
+        raise EmbedderUnavailable("no extra")
+
+    monkeypatch.setattr("remem.services.search.load_embedder", unavailable)
+    monkeypatch.setattr("remem.services.search._EMBEDDERS", {})
+    store = StubStore(fuzzy=[_hit(Match.FUZZY)])
+
+    for _ in range(3):
+        hits = find(store, new_id(), Query(text="q"), embed_model="m")
+
+    assert calls == ["m"]
+    assert [h.match for h in hits] == [Match.FUZZY]

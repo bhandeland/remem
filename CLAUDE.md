@@ -35,7 +35,7 @@ domain:     domain.py (pure dataclasses/enums, no I/O)
 ```
 
 - **Frontends parse and format; they never decide.** A rule enforced in a service is one
-  every frontend gets for free (query clamping, fuzzy fallback, capture opt-in checks). If
+  every frontend gets for free (query clamping, the search tier chain, capture opt-in checks). If
   you find yourself adding a policy branch in `cli.py`, it belongs in `services/`.
 - **`store.py` is the portability seam** - a `Protocol`, with Postgres as the only
   implementation. Ownership is enforced *inside* the store (`NotOwner`), not by callers.
@@ -55,10 +55,26 @@ domain:     domain.py (pure dataclasses/enums, no I/O)
 (project + tags + kinds) plus explicitly pinned entries. An empty query matches *nothing*,
 forever - `kb.advisories()` exists to say so at creation time.
 
-Search is exact full-text (`tsvector` generated column, weighted title/body/tags), falling
-back to trigram similarity **only when exact returns nothing**, never blended. Fuzzy hits
-are marked `Hit.fuzzy=True` and every frontend must surface that marker - an agent handed
-an unmarked approximate match cites it as certain.
+Search is three tiers - exact full-text (`tsvector` generated column, weighted
+title/body/tags), then semantic (pgvector cosine distance over `entry_vectors`), then
+trigram similarity - and each runs **only when the one above returned nothing**, never
+blended. Semantic sits above trigram because a query that matches nothing lexically is
+far more often a different wording than a typo.
+
+Every hit carries `Hit.match` (`Match.EXACT`/`SEMANTIC`/`FUZZY`) and every frontend must
+surface it - `~`/`?` markers in the CLI, `"match"` in `--json` and in MCP `recall`. An
+agent handed an unmarked approximate match cites it as certain. There is no compatibility
+shim for the `Hit.fuzzy` boolean this replaced, and a test asserts its absence.
+
+The embedder is an **optional dependency** (the `[embed]` extra) and vectors are written
+only by `remem embed`. Missing either one costs the middle tier and nothing else: search
+degrades to the two tiers it always had, silently and exiting 0. `remem embed` is the
+opposite - fail-loud - because an unavailable embedder is its entire job failing.
+`services/search.shared_embedder()` owns both halves of that policy, memoises the
+embedder per model name, and is called **from inside the semantic tier**: constructing a
+`LocalEmbedder` imports fastembed, builds an ONNX session and can download ~130MB, and a
+search the exact tier answers must never pay for any of it. Frontends pass `embed_model`,
+never an embedder.
 
 ### Migrations
 

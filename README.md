@@ -49,11 +49,34 @@ succeeded and the entry simply never appeared in the knowledge base.)
 `rule` is shorthand for `remember --kind rule`. Rules are injected into every
 session and never truncated, so they are the ones worth writing down.
 
-Search is exact by default. When a query matches nothing, remem retries with
-typo-tolerant matching and marks those results — `~` in terminal output,
-`"fuzzy": true` in `--json` and in the MCP `recall` response. Fuzzy results
-appear only when there were no exact ones, so they never dilute a good result
-set. `REMEM_FUZZY_THRESHOLD` (default `0.3`) controls how close a match must be.
+Search has three tiers, tried in order and never blended: exact full-text,
+then semantic (related meaning, different words), then typo-tolerant trigram
+matching. Each runs only when the one above returned nothing, so approximate
+results never dilute a good result set. Every result says which tier found it -
+unmarked, `~`, or `?` in terminal output, and `"match": "exact" | "semantic" |
+"fuzzy"` in `--json` and in the MCP `recall` response. (There was no `match`
+before the semantic tier; the key it replaced, `"fuzzy": true`, is gone rather
+than aliased.) `REMEM_FUZZY_THRESHOLD` (default `0.3`) and
+`REMEM_SEMANTIC_THRESHOLD` (default `0.55`) control how close a match must be
+in the tier each names.
+
+The semantic tier needs two things you have to opt into, and does nothing
+without both:
+
+```bash
+uv tool install --editable '.[embed]'   # the local embedding model
+remem embed                             # embed entries that have no vector
+```
+
+The `[embed]` extra installs a local ONNX embedder - no API key, no per-call
+cost, and the first run downloads about 130MB of model weights. `remem embed`
+is idempotent and only does what is missing, so re-run it after writing entries
+or from cron; entries written since the last run have no vector and are
+invisible to the semantic tier until it is. Without the extra, search is the
+two tiers it has always been - exact, then trigram - and it says nothing about
+it, because a missing optional dependency is not an error at search time.
+Changing `REMEM_EMBED_MODEL` makes every existing vector stale and means
+re-running `remem embed`.
 
 ## Automatic capture
 
@@ -65,8 +88,8 @@ remem capture enable          # this directory
 remem capture status
 ```
 
-When a session ends, a hook records it in a queue. Distillation happens later —
-on your next session, or when you run `remem capture drain` — by asking
+When a session ends, a hook records it in a queue. Distillation happens later -
+on your next session, or when you run `remem capture drain` - by asking
 `claude -p` to extract at most five durable facts. Captured entries have
 `origin='capture'`, appear in `remem search` and the MCP `recall` tool, and are
 deliberately **excluded from knowledge base context blocks** so machine-written
@@ -92,7 +115,7 @@ A knowledge base collects entries two ways: everything matching its query
 (`--project` and `--tag`) plus anything pinned into it with
 `remem kb pin <slug> <entry-id>`. A knowledge base created with neither
 `--project` nor `--tag` has an empty query and matches nothing until you pin
-something — `remem kb new` warns when it creates one.
+something - `remem kb new` warns when it creates one.
 
 Change a query later with `remem kb query <slug> --tag X --project Y`, or
 `--clear` it so the knowledge base holds only what you pinned. Pinned entries
@@ -172,6 +195,8 @@ Environment variable, then config file, then default.
 | config file | `REMEM_CONFIG` | platform config dir, `remem/config.toml` |
 | context budget | `REMEM_MAX_CHARS` | `6000` |
 | fuzzy match threshold | `REMEM_FUZZY_THRESHOLD` | `0.3` |
+| semantic match threshold | `REMEM_SEMANTIC_THRESHOLD` | `0.55` |
+| embedding model | `REMEM_EMBED_MODEL` | `BAAI/bge-small-en-v1.5` |
 | distillation model | `REMEM_CAPTURE_MODEL` | `sonnet` |
 | hook diagnostics | `REMEM_HOOK_DEBUG` | unset (silent) |
 | session-size warning | `REMEM_TURN_WARN_AT` | `150` |
