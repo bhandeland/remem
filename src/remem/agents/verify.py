@@ -84,20 +84,39 @@ def round_trip(
                 )
             finally:
                 # Runs on every path out of the block above - the happy
-                # path, the "could not read it back" return, and any
-                # exception - because the reserved project must never be
-                # left recording, and the test event it wrote must never
-                # be left behind, however the round-trip went.
+                # path, the "could not record" return, the "could not read
+                # it back" return, and any exception - because the reserved
+                # project must never be left recording, and the test event
+                # it wrote must never be left behind, however the
+                # round-trip went.
                 #
                 # Scoped to exactly this (owner, project, harness,
                 # session) - never `services.events.prune`, whose
                 # contract is a time window over every event this owner
                 # has ever recorded, in every project, and which a
                 # `force=True` call here would have deleted wholesale.
-                s.store.delete_session_events(
-                    s.owner.id, VERIFY_PROJECT, agent_name, session_id
-                )
-                record_service.disable(s.store, s.owner.id, VERIFY_PROJECT)
+                #
+                # The two statements are guarded separately, and that is
+                # the point: they are independent obligations, and a
+                # failure to delete one scratch row in a project nothing
+                # reads must not be why recording is left enabled. The
+                # disable is the more important of the two.
+                try:
+                    s.store.delete_session_events(
+                        s.owner.id, VERIFY_PROJECT, agent_name, session_id
+                    )
+                except Exception as exc:
+                    report.warnings.append(
+                        "install verification could not delete its test "
+                        f"event: {type(exc).__name__}: {exc}"
+                    )
+                try:
+                    record_service.disable(s.store, s.owner.id, VERIFY_PROJECT)
+                except Exception as exc:
+                    report.warnings.append(
+                        "install verification could not disable recording "
+                        f"for '{VERIFY_PROJECT}': {type(exc).__name__}: {exc}"
+                    )
     except Exception as exc:
         report.warnings.append(
             f"could not verify the install: {type(exc).__name__}: {exc}"
