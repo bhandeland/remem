@@ -36,7 +36,7 @@ reference, never a runtime dependency.
   with.
 - Hook names this adapter subscribes to, verbatim, and no others:
   `tool.execute.after`, `chat.message`, `experimental.chat.system.transform`.
-- Vendored types reference version: `@opencode-ai/plugin` **1.3.5**.
+- Vendored types reference version: `@opencode-ai/plugin` **1.17.7** (was 1.3.5; opencode upgraded itself mid-branch and the freshness test caught it).
 - Every task ends green: `uv run pytest` with a **zero skip count** while
   Postgres is up (`docker compose up -d`, port 5433). A green run with skips is
   not a green run.
