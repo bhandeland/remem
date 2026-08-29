@@ -12,6 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from remem.agents.base import UnsupportedScope
+from remem.project import repo_root
 
 
 def plugin_dir(scope: str, home: Path, cwd: Path) -> Path:
@@ -31,7 +32,16 @@ def plugin_dir(scope: str, home: Path, cwd: Path) -> Path:
     if scope == "user":
         return home / ".config" / "opencode" / "plugin"
     if scope == "project":
-        return cwd / ".opencode" / "plugin"
+        # `repo_root`, not raw `cwd`: opencode is the first adapter with a
+        # project scope at all, and a project-scoped install run from a
+        # subdirectory has to land beside the repository, not beside the
+        # subdirectory, or opencode never finds the plugin it just wrote.
+        # This is the same resolution `identity()` already does for writes
+        # (via `resolve_project`), extended to cover where the file itself
+        # goes. `repo_root` falls back to `cwd` outside a repository rather
+        # than raising - a plugin directory in a non-repo project directory
+        # is still meaningful.
+        return repo_root(cwd) / ".opencode" / "plugin"
     raise UnsupportedScope(
         f"scope '{scope}' is not supported; opencode supports 'user' or 'project'"
     )
