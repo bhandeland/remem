@@ -5,13 +5,21 @@ from __future__ import annotations
 import os
 import shutil
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from importlib import resources
 from pathlib import Path
 from typing import Mapping
 
 from remem import jsonfile
-from remem.agents.base import EnvVar, Identity, InstallReport, UnsupportedScope
+from remem.agents.base import (
+    EnvVar,
+    HarnessEvent,
+    Identity,
+    InstallReport,
+    UnsupportedScope,
+)
 from remem.agents.claude_code.env_vars import CLAUDE_CODE_ENV_VARS
+from remem.domain import EventKind
 from remem.project import resolve_project
 
 HOOK_COMMAND = "remem hook session-start"
@@ -89,6 +97,15 @@ def resolve_paths(home: Path, env: Mapping[str, str]) -> ClaudePaths:
 
 class ClaudeCodeAdapter:
     name = "claude-code"
+
+    #: Claude Code hook events this adapter records, mapped to event kinds.
+    #: Anything not in this table returns None - an adapter that recorded
+    #: every hook it was ever handed would fill `events` with lifecycle
+    #: noise the extractor then has to read past.
+    EVENT_KINDS = {
+        "PostToolUse": EventKind.TOOL_CALL,
+        "SessionEnd": EventKind.SESSION_END,
+    }
 
     def install(
         self,
@@ -216,3 +233,28 @@ class ClaudeCodeAdapter:
         services/settings.py. The adapter only answers what exists.
         """
         return CLAUDE_CODE_ENV_VARS
+
+    def event(self, env: Mapping[str, str], payload: dict) -> HarnessEvent | None:
+        """Read one Claude Code hook payload as an event, or None.
+
+        The payload is passed through WHOLE. Picking fields out here would
+        make this adapter the thing that decides what the extractor is
+        allowed to see, and the extractor is the half of this pipeline meant
+        to be fixable and re-runnable without re-recording anything.
+        """
+        kind = self.EVENT_KINDS.get(payload.get("hook_event_name", ""))
+        if kind is None:
+            return None
+        identity = self.identity(env, payload)
+        if not identity.session_id:
+            # Without a session id the event cannot be grouped for
+            # extraction, so recording it would be storage with no reader.
+            return None
+        return HarnessEvent(
+            kind=kind,
+            session_id=identity.session_id,
+            project=identity.project,
+            tool=payload.get("tool_name"),
+            payload=payload,
+            occurred_at=datetime.now(timezone.utc),
+        )

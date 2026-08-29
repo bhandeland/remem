@@ -4,9 +4,12 @@ and register it under the 'remem.agents' entry point group."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
 from typing import Mapping, Protocol
+
+from remem.domain import EventKind
 
 
 class UnsupportedScope(ValueError):
@@ -24,6 +27,24 @@ class Identity:
     agent: str
     session_id: str | None = None
     project: str | None = None
+
+
+@dataclass(slots=True)
+class HarnessEvent:
+    """One event, as an adapter read it out of its harness's payload.
+
+    Deliberately not an `Event`: the domain type carries an id, an owner and
+    a harness name, none of which an adapter is entitled to decide. The
+    adapter answers what happened and when; the service answers whether it
+    may be recorded and under whose name.
+    """
+
+    kind: EventKind
+    session_id: str
+    project: str | None
+    tool: str | None = None
+    payload: dict = field(default_factory=dict)
+    occurred_at: datetime | None = None
 
 
 @dataclass(slots=True)
@@ -114,3 +135,15 @@ class AgentAdapter(Protocol):
     # never falls back to another agent's file. env is passed for the same
     # reason install() takes it, and so that CLAUDE_CONFIG_DIR and its
     # equivalents are honoured without the service knowing they exist.
+    #
+    #     def event(self, env: Mapping[str, str], payload: dict) -> HarnessEvent | None: ...
+    #
+    # `event()` is what makes `remem record event` harness-neutral. An
+    # adapter that does not implement it records nothing, and the CLI says
+    # so rather than guessing at a payload shape it does not understand.
+    # Returning None is an ordinary answer - "this payload is not an event
+    # worth recording" - and is how an adapter filters its harness's noise
+    # without the service growing a per-harness branch. Same degradation
+    # contract as env_settings()/settings_path(): a capability that raises
+    # warns and continues; a broken third-party adapter must never be why
+    # recording stops for everyone.

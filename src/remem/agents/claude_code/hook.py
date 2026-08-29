@@ -18,23 +18,10 @@ from remem import session_size as session_size_mod
 from remem.agents.claude_code.adapter import ClaudeCodeAdapter
 from remem.config import load
 from remem.distill.base import CHILD_ENV_VAR
+from remem.hookio import debug as _debug
 from remem.services import kb
 from remem.session import open_session
 from remem.store import Store
-
-
-def _debug(env: Mapping[str, str], reason: str) -> None:
-    """Explain an empty result, but only when REMEM_HOOK_DEBUG is set.
-
-    Wrapped in its own try/except: an opt-in diagnostic must not be able to
-    turn fail-soft into a failure. Nothing here ever writes to stdout - that
-    stream is the context block and nothing else.
-    """
-    try:
-        if env.get("REMEM_HOOK_DEBUG"):
-            sys.stderr.write(f"remem hook: {reason}\n")
-    except Exception:
-        pass
 
 
 def session_start(stdin_text: str, env: Mapping[str, str]) -> str:

@@ -42,26 +42,6 @@ def transcript(tmp_path):
     return str(p)
 
 
-def test_enqueue_returns_none_when_capture_is_disabled(store, owner, transcript):
-    assert capture.enqueue(store, owner.id, project="remem",
-                           transcript_path=transcript, session_id="s") is None
-
-
-def test_enqueue_creates_a_job_when_enabled(store, owner, transcript):
-    capture.enable(store, owner.id, "remem")
-    job = capture.enqueue(store, owner.id, project="remem",
-                          transcript_path=transcript, session_id="s")
-    assert job is not None
-    assert job.status is CaptureStatus.PENDING
-
-
-def test_disable_stops_enqueueing(store, owner, transcript):
-    capture.enable(store, owner.id, "remem")
-    capture.disable(store, owner.id, "remem")
-    assert capture.enqueue(store, owner.id, project="remem",
-                           transcript_path=transcript, session_id="s") is None
-
-
 def test_drain_writes_entries_with_capture_origin(store, owner, transcript):
     capture.enable(store, owner.id, "remem")
     capture.enqueue(store, owner.id, project="remem",

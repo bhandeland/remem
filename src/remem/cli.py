@@ -35,6 +35,9 @@ app.add_typer(kb_app, name="kb")
 capture_app = typer.Typer(help="Automatic capture of session knowledge.")
 app.add_typer(capture_app, name="capture")
 
+record_app = typer.Typer(help="Record raw events from a harness.")
+app.add_typer(record_app, name="record")
+
 handoff_app = typer.Typer(help="Session handoffs.")
 app.add_typer(handoff_app, name="handoff")
 
@@ -839,6 +842,123 @@ def capture_drain(
         f"claimed {report.claimed}, succeeded {report.succeeded}, "
         f"failed {report.failed}, entries written {report.entries_written}"
     )
+
+
+@record_app.command("enable")
+def record_enable(
+    project: Annotated[Optional[str], typer.Option("--project")] = None,
+):
+    """Turn on event recording for a project (defaults to this directory)."""
+    from remem.services import record
+
+    name = project or _default_project()
+    with _session() as s:
+        record.enable(s.store, s.owner.id, name)
+        model = s.config.capture_model
+    typer.echo(f"recording enabled for '{name}'")
+    # Same cost note as capture's, and for the same reason: state the
+    # tradeoff at the moment it is actionable. REMEM_CAPTURE_MODEL is the old
+    # name - task 10 renames it to REMEM_EXTRACT_MODEL along with the rest of
+    # that variable, and until then this prints the name that actually works.
+    typer.echo(
+        f"distillation runs `claude -p --model {model}` once per session, "
+        f"roughly $0.10-0.25 each.\n"
+        f"change it with REMEM_CAPTURE_MODEL (e.g. haiku for less, "
+        f"opus for more)."
+    )
+
+
+@record_app.command("disable")
+def record_disable(
+    project: Annotated[Optional[str], typer.Option("--project")] = None,
+):
+    """Turn off event recording for a project."""
+    from remem.services import record
+
+    name = project or _default_project()
+    with _session() as s:
+        record.disable(s.store, s.owner.id, name)
+    typer.echo(f"recording disabled for '{name}'")
+
+
+@record_app.command("event")
+def record_event(
+    agent: Annotated[str, typer.Option("--agent")] = "claude-code",
+    strict: Annotated[bool, typer.Option("--strict")] = False,
+):
+    """Record one harness event read from stdin.
+
+    A hook entry point in everything but name: it runs once per tool call,
+    so it exits 0 unconditionally and prints nothing to stdout. Every early
+    return explains itself through the same REMEM_HOOK_DEBUG channel the
+    Claude Code hooks use - see remem/hookio.py.
+
+    The one loud case is unreadable stdin, and only when a human is
+    plausibly the one who typed the command: interactively, or with
+    --strict. From a hook, even that stays silent.
+    """
+    from remem.agents import registry
+    from remem.hookio import debug
+    from remem.services import record
+
+    env = dict(os.environ)
+    loud = strict or sys.stdin.isatty()
+    stdin_text = sys.stdin.read()
+
+    try:
+        payload = json.loads(stdin_text) if stdin_text.strip() else {}
+    except (json.JSONDecodeError, AttributeError):
+        debug(env, "stdin was not valid JSON")
+        if loud:
+            typer.echo("stdin was not valid JSON", err=True)
+            raise typer.Exit(1)
+        raise typer.Exit(0)
+
+    try:
+        adapter = registry.get(agent)()
+    except registry.UnknownAgent as exc:
+        debug(env, str(exc))
+        raise typer.Exit(0)
+
+    # event() is an optional capability, probed exactly like
+    # env_settings()/settings_path() in services/settings.py: an adapter
+    # that lacks it, or whose implementation raises, must never be why
+    # recording stops - it just cannot record, which is what "None" and a
+    # caught exception both mean here.
+    event_of = getattr(adapter, "event", None)
+    if event_of is None:
+        debug(env, f"agent '{agent}' does not support recording events")
+        raise typer.Exit(0)
+
+    try:
+        harness_event = event_of(env, payload)
+    except Exception as exc:
+        debug(
+            env,
+            f"{agent} adapter's event() raised {type(exc).__name__}: {exc}",
+        )
+        raise typer.Exit(0)
+
+    if harness_event is None:
+        debug(env, "payload was not an event worth recording")
+        raise typer.Exit(0)
+
+    try:
+        cfg = load()
+        with open_session(cfg) as s:
+            result = record.record(s.store, s.owner.id, harness_event, adapter.name)
+    except Exception as exc:
+        debug(env, f"{type(exc).__name__}: {exc}")
+        raise typer.Exit(0)
+
+    if result is None:
+        debug(
+            env,
+            f"recording is not enabled for project "
+            f"{harness_event.project!r}. Enable it with `remem record "
+            f"enable --project {harness_event.project}`.",
+        )
+    raise typer.Exit(0)
 
 
 @handoff_app.command("write")
