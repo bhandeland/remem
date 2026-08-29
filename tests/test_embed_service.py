@@ -114,3 +114,46 @@ def test_max_entries_bounds_the_run(store):
                       max_entries=3)
 
     assert result.embedded == 3
+
+
+# --- cron safety ------------------------------------------------------------
+
+
+def test_a_second_embed_run_does_nothing_while_the_lock_is_held(
+    live_dsn, monkeypatch, tmp_path
+):
+    """`remem embed` already claims idempotently, but two overlapping runs
+    embed the same backlog twice and pay for it twice. Silence and exit 0,
+    for the same reason `events process` does."""
+    import psycopg
+    from typer.testing import CliRunner
+
+    from remem.cli import app
+
+    with psycopg.connect(live_dsn) as c:
+        migrate(c)
+        store = PostgresStore(c)
+        owner = store.ensure_principal("brandon")
+        _entries(store, owner.id, 2)
+        c.commit()
+
+    monkeypatch.setenv("REMEM_DSN", live_dsn)
+    monkeypatch.setenv("REMEM_USER_ID", "brandon")
+    monkeypatch.setenv("REMEM_CONFIG", str(tmp_path / "none.toml"))
+    embedder = FakeEmbedder()
+    monkeypatch.setattr("remem.cli.load_embedder", lambda model: embedder)
+
+    holder = psycopg.connect(live_dsn)
+    try:
+        assert holder.execute(
+            "select pg_try_advisory_lock(hashtext('embed'), hashtext(%s))",
+            (str(owner.id),),
+        ).fetchone()[0] is True
+
+        result = CliRunner().invoke(app, ["embed"])
+
+        assert result.exit_code == 0
+        assert result.stdout == ""
+        assert embedder.batches == []
+    finally:
+        holder.close()

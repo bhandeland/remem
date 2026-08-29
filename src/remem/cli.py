@@ -315,6 +315,12 @@ def embed(
         raise typer.Exit(1)
 
     with _session() as s:
+        if not s.store.try_advisory_lock("embed", s.owner.id):
+            # A previous run is still going. Silence and exit 0 - a cron
+            # command that mails the user about a working system is a cron
+            # command they will turn off. The same rule as `events process`:
+            # every command in this pipeline is expected to overlap itself.
+            raise typer.Exit(0)
         result = backfill(s.store, s.owner.id, embedder,
                           batch_size=batch, max_entries=limit)
 
