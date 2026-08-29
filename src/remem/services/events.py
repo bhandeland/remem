@@ -164,7 +164,7 @@ def status(store: Store, owner_id: UUID, idle_seconds: int) -> StatusReport:
         job_counts=store.extract_job_counts(owner_id),
         recent_failures=store.recent_failed_extract_jobs(owner_id),
         legacy_pending=store.pending_legacy_capture_jobs(owner_id),
-        extract_model=load_config().capture_model,
+        extract_model=load_config().extract_model,
     )
 
 

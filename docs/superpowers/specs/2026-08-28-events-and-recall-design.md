@@ -422,7 +422,7 @@ overlapping:
 | Malformed event payload | rejected loudly by `record event`; the hook still exits 0 |
 | Extractor returns unusable output | job fails, records reason and raw output, retries to `MAX_ATTEMPTS` |
 | No embedder available | `embed` exits non-zero; search degrades to two tiers |
-| Prune would delete unextracted events | refuses without `--force` |
+| Prune's window matches only unextracted events | refuses without `--force`; a window that also matches extracted events deletes those and silently skips the rest |
 | Prune run with no `--before` | refuses; there is no default retention window |
 | Adapter capability raises | warn, degrade, continue |
 

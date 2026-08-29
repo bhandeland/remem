@@ -33,8 +33,11 @@ kb_app = typer.Typer(help="Knowledge bases.")
 app.add_typer(db_app, name="db")
 app.add_typer(kb_app, name="kb")
 
-capture_app = typer.Typer(help="Automatic capture of session knowledge.")
-app.add_typer(capture_app, name="capture")
+# Hidden, not removed: `capture` is muscle memory and it is in people's shell
+# history. A command that has moved should say where, once, rather than
+# failing with a usage error that does not name the new spelling.
+capture_app = typer.Typer(help="Deprecated - see `remem record` and `remem events`.")
+app.add_typer(capture_app, name="capture", hidden=True)
 
 record_app = typer.Typer(help="Record raw events from a harness.")
 app.add_typer(record_app, name="record")
@@ -802,22 +805,24 @@ def hook_session_size():
     raise typer.Exit(main_session_size())
 
 
-@capture_app.command("enable")
+@capture_app.command("enable", hidden=True)
 def capture_enable(
     project: Annotated[Optional[str], typer.Option("--project")] = None,
 ):
-    """Turn on automatic capture for a project (defaults to this directory)."""
+    """Deprecated: use `remem record enable`."""
+    typer.echo("`capture enable` is renamed to `remem record enable`.")
     from remem.services import record
 
     name = project or _default_project()
     with _session() as s:
         record.enable(s.store, s.owner.id, name)
-        model = s.config.capture_model
+        model = s.config.extract_model
     typer.echo(f"capture enabled for '{name}'")
     # State the cost at the moment the tradeoff is actionable. Measured on a
     # real session: roughly 20 cents per extraction on sonnet, a third of
     # that on haiku - which returned noticeably worse judgement about what was
-    # worth keeping.
+    # worth keeping. This deprecated command keeps naming the deprecated
+    # variable - `remem record enable` is where the current name is taught.
     typer.echo(
         f"extraction runs `claude -p --model {model}` once per session, "
         f"roughly $0.10-0.25 each.\n"
@@ -826,11 +831,12 @@ def capture_enable(
     )
 
 
-@capture_app.command("disable")
+@capture_app.command("disable", hidden=True)
 def capture_disable(
     project: Annotated[Optional[str], typer.Option("--project")] = None,
 ):
-    """Turn off automatic capture for a project."""
+    """Deprecated: use `remem record disable`."""
+    typer.echo("`capture disable` is renamed to `remem record disable`.")
     from remem.services import record
 
     name = project or _default_project()
@@ -839,15 +845,17 @@ def capture_disable(
     typer.echo(f"capture disabled for '{name}'")
 
 
-@capture_app.command("status")
+@capture_app.command("status", hidden=True)
 def capture_status(
     as_json: Annotated[bool, typer.Option("--json")] = False,
 ):
-    """Show what extraction has run, done, and failed."""
+    """Deprecated: use `remem record status`."""
+    # stderr, not stdout: --json below must stay parseable on its own.
+    typer.echo("`capture status` is renamed to `remem record status`.", err=True)
     with _session() as s:
         counts = s.store.extract_job_counts(s.owner.id)
         failures = s.store.recent_failed_extract_jobs(s.owner.id)
-        model = s.config.capture_model
+        model = s.config.extract_model
         projects = s.store.enabled_record_projects(s.owner.id)
 
     if as_json:
@@ -870,6 +878,16 @@ def capture_status(
         typer.echo("Jobs: none yet")
     for f in failures:
         typer.echo(f"  failed {f.id} [{f.project}]: {f.error}")
+
+
+@capture_app.command("drain", hidden=True)
+def capture_drain(
+    limit: Annotated[int, typer.Option("--limit")] = 10,
+    job: Annotated[Optional[str], typer.Option("--job")] = None,
+):
+    """Deprecated: use `remem events process`."""
+    typer.echo("`capture drain` is renamed to `remem events process`.")
+    events_process(limit=limit, job=job)
 
 
 @events_app.command("process")
@@ -901,7 +919,7 @@ def events_process(
             # command that mails the user about a working system is a cron
             # command they will turn off.
             raise typer.Exit(0)
-        extractor = ClaudeCliExtractor(model=s.config.capture_model)
+        extractor = ClaudeCliExtractor(model=s.config.extract_model)
         if job_id is not None:
             try:
                 report = extraction.process_job(s.store, s.owner.id, job_id,
@@ -1027,16 +1045,14 @@ def record_enable(
     name = project or _default_project()
     with _session() as s:
         record.enable(s.store, s.owner.id, name)
-        model = s.config.capture_model
+        model = s.config.extract_model
     typer.echo(f"recording enabled for '{name}'")
     # Same cost note as capture's, and for the same reason: state the
-    # tradeoff at the moment it is actionable. REMEM_CAPTURE_MODEL is the old
-    # name - task 10 renames it to REMEM_EXTRACT_MODEL along with the rest of
-    # that variable, and until then this prints the name that actually works.
+    # tradeoff at the moment it is actionable.
     typer.echo(
         f"extraction runs `claude -p --model {model}` once per session, "
         f"roughly $0.10-0.25 each.\n"
-        f"change it with REMEM_CAPTURE_MODEL (e.g. haiku for less, "
+        f"change it with REMEM_EXTRACT_MODEL (e.g. haiku for less, "
         f"opus for more)."
     )
 

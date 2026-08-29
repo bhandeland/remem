@@ -12,7 +12,7 @@ import os
 import subprocess
 from typing import Mapping
 
-from remem.config import DEFAULT_CAPTURE_MODEL
+from remem.config import DEFAULT_EXTRACT_MODEL
 from remem.domain import Event
 from remem.extract.base import (
     CHILD_ENV_VAR,
@@ -144,7 +144,7 @@ def build_prompt(known_titles: list[str] | None = None) -> str:
     )
 
 
-def build_command(prompt: str, model: str = DEFAULT_CAPTURE_MODEL) -> list[str]:
+def build_command(prompt: str, model: str = DEFAULT_EXTRACT_MODEL) -> list[str]:
     """Always pin the model.
 
     Without --model, `claude -p` inherits the user's session model, so
@@ -168,7 +168,7 @@ def build_env(base: Mapping[str, str]) -> dict[str, str]:
 
 class ClaudeCliExtractor:
     def __init__(
-        self, timeout: int = 180, model: str = DEFAULT_CAPTURE_MODEL
+        self, timeout: int = 180, model: str = DEFAULT_EXTRACT_MODEL
     ) -> None:
         self._timeout = timeout
         self._model = model

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,7 +25,7 @@ DEFAULT_FUZZY_THRESHOLD = 0.3
 # durable rule - while Sonnet and Opus each returned 2 of 2. Haiku's JSON was
 # valid every time; what it got wrong was judgment. Deciding what will still be
 # true in a month is not a compression task.
-DEFAULT_CAPTURE_MODEL = "sonnet"
+DEFAULT_EXTRACT_MODEL = "sonnet"
 
 # A session past this many turns is expensive to keep going and cheap to hand
 # off. 150/50 matches the shell hook this replaced.
@@ -54,7 +55,7 @@ class Config:
     user_handle: str
     max_chars: int
     fuzzy_threshold: float
-    capture_model: str
+    extract_model: str
     turn_warn_at: int
     turn_warn_every: int
     idle_minutes: int
@@ -107,12 +108,35 @@ def load(
         # above 1 matches nothing. Fall back rather than silently disable search.
         threshold = DEFAULT_FUZZY_THRESHOLD
 
-    capture_model = str(
-        pick("REMEM_CAPTURE_MODEL", "capture_model", DEFAULT_CAPTURE_MODEL)
-    ).strip()
-    if not capture_model:
+    # REMEM_CAPTURE_MODEL is read for one release, and warns. The two silent
+    # options are both wrong: reading it quietly leaves a user believing
+    # they pinned a model when the name they set no longer exists, and
+    # ignoring it quietly switches their model without telling them.
+    # stderr, not stdout - a hook's stdout is the context block.
+    if "REMEM_EXTRACT_MODEL" in env:
+        extract_model = str(env["REMEM_EXTRACT_MODEL"])
+    elif "REMEM_CAPTURE_MODEL" in env:
+        print(
+            "REMEM_CAPTURE_MODEL is renamed to REMEM_EXTRACT_MODEL; "
+            "set REMEM_EXTRACT_MODEL instead.",
+            file=sys.stderr,
+        )
+        extract_model = str(env["REMEM_CAPTURE_MODEL"])
+    elif "extract_model" in data:
+        extract_model = str(data["extract_model"])
+    elif "capture_model" in data:
+        print(
+            "capture_model in config.toml is renamed to extract_model; "
+            "set extract_model instead.",
+            file=sys.stderr,
+        )
+        extract_model = str(data["capture_model"])
+    else:
+        extract_model = DEFAULT_EXTRACT_MODEL
+    extract_model = extract_model.strip()
+    if not extract_model:
         # An empty value would become `--model ''`, which claude rejects.
-        capture_model = DEFAULT_CAPTURE_MODEL
+        extract_model = DEFAULT_EXTRACT_MODEL
 
     def positive_int(env_key: str, file_key: str, default: int) -> int:
         value = pick(env_key, file_key, default)
@@ -153,7 +177,7 @@ def load(
         semantic = DEFAULT_SEMANTIC_THRESHOLD
 
     return Config(
-        capture_model=capture_model,
+        extract_model=extract_model,
         fuzzy_threshold=threshold,
         dsn=str(pick("REMEM_DSN", "dsn", DEFAULT_DSN)),
         user_handle=str(pick("REMEM_USER_ID", "user_handle", DEFAULT_HANDLE)),

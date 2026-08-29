@@ -160,4 +160,4 @@ def test_record_enable_states_the_model_and_cost(env):
     assert result.exit_code == 0
     out = result.stdout.lower()
     assert "sonnet" in out
-    assert "REMEM_CAPTURE_MODEL".lower() in out
+    assert "REMEM_EXTRACT_MODEL".lower() in out

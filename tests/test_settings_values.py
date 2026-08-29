@@ -133,8 +133,8 @@ def test_a_remem_numeric_key_refuses_an_empty_string():
 
 
 def test_a_remem_string_key_still_accepts_an_empty_string():
-    # Only the numeric keys are refused: an empty capture model or DSN is a
+    # Only the numeric keys are refused: an empty extract model or DSN is a
     # legitimate way to blank a file value, and config.load() has its own
     # fallback for it.
-    var = REMEM_VARS["REMEM_CAPTURE_MODEL"]
+    var = REMEM_VARS["REMEM_EXTRACT_MODEL"]
     assert coerce(var, "", Target.REMEM) == ""

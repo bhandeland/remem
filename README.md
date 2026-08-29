@@ -78,26 +78,36 @@ it, because a missing optional dependency is not an error at search time.
 Changing `REMEM_EMBED_MODEL` makes every existing vector stale and means
 re-running `remem embed`.
 
-## Automatic capture
+## Events and extraction
 
-remem can distil finished sessions into entries by itself. It is **off** until
-you turn it on for a project:
+remem can turn finished sessions into entries by itself, from raw events it
+records as you work. It is **off** until you turn it on for a project:
 
 ```bash
-remem capture enable          # this directory
-remem capture status
+remem record enable          # this directory
+remem record status
 ```
 
-When a session ends, a hook records it in a queue. Distillation happens later -
-on your next session, or when you run `remem capture drain` - by asking
-`claude -p` to extract at most five durable facts. Captured entries have
-`origin='capture'`, appear in `remem search` and the MCP `recall` tool, and are
-deliberately **excluded from knowledge base context blocks** so machine-written
-text never crowds out rules you wrote. Promote a good one with `remem kb pin`.
+```
+harness hook / plugin   ->  remem record event      one INSERT, fail-soft
+cron (or SessionStart)  ->  remem events process    extract -> entries + provenance
+cron                    ->  remem embed              entries lacking a current vector
+on request              ->  remem events prune       extracted events, explicit window
+```
 
-Nothing is captured from a project you have not enabled.
+A hook records one event per tool call - the raw payload, in full, kept
+**indefinitely**. Nothing prunes on a schedule; `remem events prune --before 30d`
+is the only thing that ever deletes one, and only when you ask. Once a session
+has gone quiet for `REMEM_IDLE_MINUTES` (default 20), `remem events process`
+asks `claude -p` to extract at most five durable facts from its events.
+Extracted entries have `origin='extracted'`, appear in `remem search` and the
+MCP `recall` tool, and are deliberately **excluded from knowledge base context
+blocks** so machine-written text never crowds out rules you wrote. Promote a
+good one with `remem kb pin`.
 
-Distillation runs `claude -p` with the model pinned by `REMEM_CAPTURE_MODEL`
+Nothing is recorded from a project you have not enabled.
+
+Extraction runs `claude -p` with the model pinned by `REMEM_EXTRACT_MODEL`
 (default `sonnet`), roughly $0.10-0.25 per session. It is pinned rather than
 inherited so cost and behaviour do not change when you switch your own session
 model. Measured on a real 40KB transcript, `haiku` cost about a third as much
@@ -106,10 +116,10 @@ recorded as a durable rule - where `sonnet` and `opus` each returned two out of
 two. Deciding what will still be true in a month is a judgement task, not a
 compression one, so the cheap tier costs more than it saves.
 
-`remem capture status` lists failures with the reason recorded against each
+`remem record status` lists failures with the reason recorded against each
 job, including the model's own output when it returned something that could
 not be read as entries. A job that has failed too many times stops being
-retried automatically; retry it by id with `remem capture drain --job ID`.
+retried automatically; retry it by id with `remem events process --job ID`.
 
 A knowledge base collects entries two ways: everything matching its query
 (`--project` and `--tag`) plus anything pinned into it with
@@ -197,7 +207,8 @@ Environment variable, then config file, then default.
 | fuzzy match threshold | `REMEM_FUZZY_THRESHOLD` | `0.3` |
 | semantic match threshold | `REMEM_SEMANTIC_THRESHOLD` | `0.55` |
 | embedding model | `REMEM_EMBED_MODEL` | `BAAI/bge-small-en-v1.5` |
-| distillation model | `REMEM_CAPTURE_MODEL` | `sonnet` |
+| extraction model | `REMEM_EXTRACT_MODEL` | `sonnet` |
+| extraction idle wait | `REMEM_IDLE_MINUTES` | `20` |
 | hook diagnostics | `REMEM_HOOK_DEBUG` | unset (silent) |
 | session-size warning | `REMEM_TURN_WARN_AT` | `150` |
 | warning interval | `REMEM_TURN_WARN_EVERY` | `50` |
@@ -211,4 +222,5 @@ uv run pytest
 
 Database tests skip with an explanatory message when Postgres is not running.
 
-Design: `docs/superpowers/specs/2026-08-26-remem-design.md`
+Design: `docs/superpowers/specs/2026-08-26-remem-design.md`,
+`docs/superpowers/specs/2026-08-28-events-and-recall-design.md`

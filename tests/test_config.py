@@ -42,7 +42,7 @@ def test_malformed_config_file_does_not_crash(tmp_path):
     assert cfg.dsn == DEFAULT_DSN
 
 
-def test_capture_model_defaults_to_sonnet():
+def test_extract_model_defaults_to_sonnet():
     """Pinned rather than inherited from the session model.
 
     `claude -p` with no --model uses whatever the user's default is, so
@@ -52,33 +52,33 @@ def test_capture_model_defaults_to_sonnet():
     durable rule); Sonnet and Opus produced 2 of 2. Extraction is a judgment
     task, not a compression one.
     """
-    from remem.config import DEFAULT_CAPTURE_MODEL, load
+    from remem.config import DEFAULT_EXTRACT_MODEL, load
 
     cfg = load(env={}, config_path=Path("/nonexistent"))
-    assert cfg.capture_model == DEFAULT_CAPTURE_MODEL == "sonnet"
+    assert cfg.extract_model == DEFAULT_EXTRACT_MODEL == "sonnet"
 
 
-def test_capture_model_from_env():
+def test_extract_model_from_env():
     from remem.config import load
 
-    cfg = load(env={"REMEM_CAPTURE_MODEL": "opus"}, config_path=Path("/nonexistent"))
-    assert cfg.capture_model == "opus"
+    cfg = load(env={"REMEM_EXTRACT_MODEL": "opus"}, config_path=Path("/nonexistent"))
+    assert cfg.extract_model == "opus"
 
 
-def test_capture_model_from_config_file(tmp_path):
+def test_extract_model_from_config_file(tmp_path):
     from remem.config import load
 
     p = tmp_path / "config.toml"
-    p.write_text('capture_model = "haiku"\n')
-    assert load(env={}, config_path=p).capture_model == "haiku"
+    p.write_text('extract_model = "haiku"\n')
+    assert load(env={}, config_path=p).extract_model == "haiku"
 
 
-def test_a_blank_capture_model_falls_back_to_the_default():
+def test_a_blank_extract_model_falls_back_to_the_default():
     """An empty value must not produce `--model ''`, which claude rejects."""
-    from remem.config import DEFAULT_CAPTURE_MODEL, load
+    from remem.config import DEFAULT_EXTRACT_MODEL, load
 
-    cfg = load(env={"REMEM_CAPTURE_MODEL": "   "}, config_path=Path("/nonexistent"))
-    assert cfg.capture_model == DEFAULT_CAPTURE_MODEL
+    cfg = load(env={"REMEM_EXTRACT_MODEL": "   "}, config_path=Path("/nonexistent"))
+    assert cfg.extract_model == DEFAULT_EXTRACT_MODEL
 
 
 def test_turn_thresholds_come_from_the_environment(tmp_path):

@@ -95,7 +95,7 @@ def coerce(var: EnvVar, raw: str, target: Target) -> str:
     # then thrown away by config.load()'s int(), which is the accepted-then-
     # ignored write this whole command exists to prevent. Refuse it and name
     # the operation the user actually wanted. Free-form remem keys (the DSN,
-    # the capture model) keep the permissive behaviour: blanking a file value
+    # the extract model) keep the permissive behaviour: blanking a file value
     # there is meaningful and config.load() has its own fallback for it.
     if raw == "":
         if target is Target.REMEM and var.kind in (Kind.INT, Kind.FLOAT):
@@ -219,10 +219,15 @@ REMEM_VARS: Mapping[str, EnvVar] = {
         minimum=0.0, maximum=1.0, exclusive_minimum=True,
         default=str(remem_config.DEFAULT_FUZZY_THRESHOLD),
     ),
-    "REMEM_CAPTURE_MODEL": EnvVar(
-        "REMEM_CAPTURE_MODEL", Kind.STR,
-        "Model used to distil captured sessions.",
-        default=remem_config.DEFAULT_CAPTURE_MODEL,
+    "REMEM_EXTRACT_MODEL": EnvVar(
+        "REMEM_EXTRACT_MODEL", Kind.STR,
+        "Model used to extract entries from recorded events.",
+        default=remem_config.DEFAULT_EXTRACT_MODEL,
+    ),
+    "REMEM_IDLE_MINUTES": EnvVar(
+        "REMEM_IDLE_MINUTES", Kind.INT,
+        "Minutes a session must be quiet before extraction reads it.",
+        minimum=1, default=str(remem_config.DEFAULT_IDLE_MINUTES),
     ),
     "REMEM_EMBED_MODEL": EnvVar(
         "REMEM_EMBED_MODEL", Kind.STR,

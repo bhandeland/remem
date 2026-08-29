@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 docker compose up -d           # Postgres 18 + pgvector on localhost:5433
 uv sync
 uv run pytest                  # full suite
-uv run pytest tests/test_capture_service.py::test_name   # one test
+uv run pytest tests/test_extraction_service.py::test_name   # one test
 uv run pytest -m 'not db'      # skip everything that needs Postgres
 uv tool install --editable .   # puts `remem` on PATH (see below)
 remem db up                    # create the database and run migrations
@@ -29,20 +29,20 @@ Strict layering, and the seams are deliberate. Each layer may call downward only
 
 ```
 frontends:  cli.py (Typer)  mcp_server.py (FastMCP)  agents/claude_code/hook.py
-services:   services/{write,search,kb,capture}.py    <- every policy decision lives here
+services:   services/{write,search,kb,record,extraction}.py <- every policy decision lives here
 store:      store.py (Protocol)  -> backends/postgres/store.py (all SQL)
 domain:     domain.py (pure dataclasses/enums, no I/O)
 ```
 
 - **Frontends parse and format; they never decide.** A rule enforced in a service is one
-  every frontend gets for free (query clamping, the search tier chain, capture opt-in checks). If
+  every frontend gets for free (query clamping, the search tier chain, record opt-in checks). If
   you find yourself adding a policy branch in `cli.py`, it belongs in `services/`.
 - **`store.py` is the portability seam** - a `Protocol`, with Postgres as the only
   implementation. Ownership is enforced *inside* the store (`NotOwner`), not by callers.
 - **`session.open_session()` is the only way to reach the database.** It connects, runs
   migrations, ensures the principal, and hands back a `Session`. Nothing outside
   `session.py`/`backends/` should import psycopg. `autocommit=True` is for long-running
-  work that records its own progress (the capture drain) - in a single transaction a failed
+  work that records its own progress (`remem events process`) - in a single transaction a failed
   statement poisons the connection and the final COMMIT becomes a ROLLBACK.
 - **`agents/base.py` + `agents/registry.py` are the pluggability seam** - adapters register
   under the `remem.agents` entry point group and load lazily; a broken third-party adapter
@@ -50,7 +50,7 @@ domain:     domain.py (pure dataclasses/enums, no I/O)
 
 ### Data model
 
-`Entry` (kind: memory/doc/rule, origin: human/agent/capture) is the unit of knowledge.
+`Entry` (kind: note/doc/rule, origin: human/agent/extracted/handoff) is the unit of knowledge.
 `Collection` ("knowledge base") membership is two things unioned: a smart `CollectionQuery`
 (project + tags + kinds) plus explicitly pinned entries. An empty query matches *nothing*,
 forever - `kb.advisories()` exists to say so at creation time.
@@ -87,28 +87,59 @@ Timestamps use `clock_timestamp()`, not `now()`: tests run inside one rolled-bac
 transaction, where `now()` gives every row an identical `created_at` and makes
 `order by created_at desc` non-deterministic.
 
-### Capture
+### Events and extraction
 
-Automatic distillation of finished sessions. Opt-in per project - that gate is the entire
-safety story, and it is checked in `services/capture.enqueue`.
+Raw per-tool-call events, recorded from a harness and extracted into entries later.
+Supersedes capture - `remem capture enable|disable|status|drain` still work as hidden
+aliases that warn once and delegate, for muscle memory and shell history, but the
+real commands are `remem record` and `remem events`.
 
-Flow: SessionEnd hook does exactly one INSERT into `capture_jobs` (everything fragile is
-deferred), then a later SessionStart or `remem capture drain` claims jobs, runs
-`claude -p` via `distill/claude_cli.py`, and writes entries with `origin='capture'`.
+Recording is opt-in per project - that gate is the entire safety story, and it is
+checked in `services/record.py`. Events are stored **in full** and kept
+**indefinitely**; nothing prunes them on a schedule. `remem events prune --before`
+is the only thing that ever deletes one, and only on request.
+
+Flow: a harness hook (or plugin) does exactly one INSERT via `remem record event`
+(everything fragile is deferred), and `remem events process` - run from cron or a
+later SessionStart - extracts entries from sessions that have gone quiet, via
+`claude -p` in `extract/claude_cli.py`, writing entries with `origin='extracted'`
+and `entry_events` provenance rows.
+
+Extraction is triggered by **idleness**, not a session-end hook: a session is
+extractable once it has unextracted events and none newer than
+`REMEM_IDLE_MINUTES` (default 20). Two of the three harnesses remem targets have
+no end-of-session hook, so a clock is the only trigger all of them share; a hook
+that never fires would strand a session forever, while a clock always ticks. The
+attempt-cap "gave up" rule lives in exactly one place, `extraction.awaiting_sessions`
+- both `remem events process` and `remem record status` route through it, so they
+cannot disagree about which sessions are stuck.
 
 Invariants worth not breaking:
-- Captured entries are **excluded from knowledge base context blocks** (`kb.resolve`
-  filters `Origin.CAPTURE`) so machine text never crowds out hand-written rules. They do
-  appear in `search`/`recall`. Promote one with `remem kb pin`.
-- `distill/base.py` treats all model output as untrusted: shape-checked, capped
+- `entry_events.event_id` has **no foreign key**, deliberately, and no read path may
+  dereference it: pruning must be able to delete an event out from under its
+  provenance row without touching `entries`, leaving the row visibly dangling rather
+  than blocked or cascading. `covers_through` (not `entry_events`) is what makes
+  "already extracted" answerable **per event** rather than per session.
+- Extracted entries are **excluded from knowledge base context blocks** (`kb.resolve`
+  filters `Origin.EXTRACTED`) so machine text never crowds out hand-written rules.
+  They do appear in `search`/`recall`. Promote one with `remem kb pin`.
+  `search.DEFAULT_ORIGINS` must gain any future origin or that origin silently
+  vanishes from search.
+- `extract/base.py` treats all model output as untrusted: shape-checked, capped
   (`MAX_ENTRIES`/`MAX_TITLE`/`MAX_BODY`), filtered before it reaches the store.
-- The distillation model is **pinned** (`REMEM_CAPTURE_MODEL`, default `sonnet`), not
+- The extraction model is **pinned** (`REMEM_EXTRACT_MODEL`, default `sonnet`), not
   inherited from the session, so cost/behaviour do not drift. Haiku was measured and
-  rejected on judgment, not JSON validity.
-- `CHILD_ENV_VAR` (`REMEM_CAPTURE_CHILD`) is set on the spawned `claude -p` so its own
-  hooks refuse to recurse. Both hooks check it. Do not rename it on one side only.
-- Jobs stop retrying after `MAX_ATTEMPTS`; `remem capture drain --job ID` retries by id.
-  Failures record the reason *and* the model's raw output, both separately truncated.
+  rejected on judgment, not JSON validity. `REMEM_CAPTURE_MODEL` is read for one
+  release and warns to stderr naming the replacement - never both silently.
+- `CHILD_ENV_VAR` (`REMEM_EXTRACT_CHILD`) is set on the spawned `claude -p` so its own
+  hooks refuse to recurse. Three hooks check it. **Rename it on every side in the
+  same commit or not at all** - renaming one side leaves the extractor's own child
+  recording events, which the next extraction reads, without bound.
+- Jobs stop retrying after `MAX_ATTEMPTS`; `remem events process --job ID` retries by
+  id. Failures record the reason *and* the model's raw output, both separately
+  truncated.
+- `install()` performs a live database round-trip (it proves the record/extract
+  path actually works), which is why the install tests are marked `db`.
 
 ### Handoffs
 

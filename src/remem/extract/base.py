@@ -24,7 +24,7 @@ MAX_BODY = 4000
 # Defined here (not in the hook module) because base.py is layer-neutral: both
 # the extractor and the agent hook can import it without depending on each
 # other. This string MUST match wherever the child process checks it.
-CHILD_ENV_VAR = "REMEM_CAPTURE_CHILD"
+CHILD_ENV_VAR = "REMEM_EXTRACT_CHILD"
 
 
 class ExtractionFailed(Exception):

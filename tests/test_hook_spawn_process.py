@@ -41,7 +41,7 @@ def test_spawn_process_does_not_block_on_the_child(monkeypatch):
 def test_spawn_process_is_skipped_inside_an_extraction_child(monkeypatch):
     called = []
     monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: called.append(1))
-    assert hook.spawn_process({"REMEM_CAPTURE_CHILD": "1"}) is False
+    assert hook.spawn_process({"REMEM_EXTRACT_CHILD": "1"}) is False
     assert called == []
 
 

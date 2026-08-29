@@ -45,7 +45,7 @@ def test_env_sets_the_recursion_guard():
     """claude -p is itself a Claude Code session; without this its own hooks
     record the extraction's events, which the next extraction reads, and the
     whole thing compounds forever."""
-    assert build_env({"PATH": "/usr/bin"})["REMEM_CAPTURE_CHILD"] == "1"
+    assert build_env({"PATH": "/usr/bin"})["REMEM_EXTRACT_CHILD"] == "1"
 
 
 def test_env_preserves_the_caller_environment():
@@ -274,7 +274,7 @@ def test_the_extractor_passes_its_configured_model(monkeypatch):
 
 
 def test_the_extractor_defaults_to_the_configured_default(monkeypatch):
-    from remem.config import DEFAULT_CAPTURE_MODEL
+    from remem.config import DEFAULT_EXTRACT_MODEL
 
     seen = {}
 
@@ -284,7 +284,7 @@ def test_the_extractor_defaults_to_the_configured_default(monkeypatch):
 
     monkeypatch.setattr(subprocess, "run", fake_run)
     ClaudeCliExtractor().extract([an_event()], "remem")
-    assert seen["cmd"][seen["cmd"].index("--model") + 1] == DEFAULT_CAPTURE_MODEL
+    assert seen["cmd"][seen["cmd"].index("--model") + 1] == DEFAULT_EXTRACT_MODEL
 
 
 def test_one_event_larger_than_the_whole_budget_is_cut(monkeypatch):
