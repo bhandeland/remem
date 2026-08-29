@@ -267,8 +267,55 @@ def test_the_attempt_cap_stops_a_job_and_process_job_overrides_it(
     report = extraction.process_job(store, owner.id, job.id,
                                     FakeExtractor([an_entry()]))
 
+
     assert (report.claimed, report.succeeded, report.entries_written) == (1, 1, 1)
     assert store.get_extract_job(job.id, owner.id).status is JobStatus.DONE
+
+
+def test_a_session_that_gave_up_leaves_the_backlog(conn, store, owner):
+    """The failure mode discovery introduces: `sessions_awaiting_extraction`
+    computes watermarks from DONE jobs only, so a session whose job failed
+    still looks outstanding. Without the skip, every later run reclaims it,
+    records "gave up" again, and reports `failed 1` forever - and because
+    discovery is oldest-first, dead sessions sort ahead of live ones and
+    fill the batch."""
+    record.enable(store, owner.id, "remem")
+    three_events(store, owner)
+    boom = FakeExtractor(error=RuntimeError("claude exploded"))
+
+    for _ in range(extraction.MAX_ATTEMPTS + 1):
+        extraction.process(store, owner.id, boom, idle_seconds=IDLE, limit=10)
+    [job] = _all_jobs(conn, store, owner)
+    assert job.status is JobStatus.FAILED
+    attempts_at_giving_up = job.attempts
+
+    report = extraction.process(store, owner.id, boom,
+                                idle_seconds=IDLE, limit=10)
+
+    assert (report.claimed, report.failed, report.succeeded) == (0, 0, 0)
+    after = store.get_extract_job(job.id, owner.id)
+    assert after.attempts == attempts_at_giving_up
+    assert after.error == job.error
+
+
+def test_a_dead_session_does_not_crowd_out_a_live_one(conn, store, owner):
+    """Discovery is ordered oldest-event-first, so a session that has given
+    up sorts ahead of a newer one. With --limit 1 it would take the whole
+    batch, every run, and the newer session would never be extracted."""
+    record.enable(store, owner.id, "remem")
+    three_events(store, owner, session_id="dead", base=NOW - timedelta(hours=5))
+    boom = FakeExtractor(error=RuntimeError("claude exploded"))
+    for _ in range(extraction.MAX_ATTEMPTS + 1):
+        extraction.process(store, owner.id, boom, idle_seconds=IDLE, limit=1)
+
+    three_events(store, owner, session_id="live", base=NOW - timedelta(hours=2))
+    good = FakeExtractor([an_entry()])
+
+    report = extraction.process(store, owner.id, good, idle_seconds=IDLE,
+                                limit=1)
+
+    assert (report.claimed, report.succeeded, report.entries_written) == (1, 1, 1)
+    assert [e.session_id for e in good.seen[0]] == ["live", "live", "live"]
 
 
 def test_process_job_rejects_an_unknown_id(store, owner):

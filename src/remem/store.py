@@ -90,6 +90,9 @@ class Store(Protocol):
     def sessions_awaiting_extraction(
         self, owner_id: UUID, idle_seconds: int, limit: int
     ) -> list[SessionRef]: ...
+    def extract_job_for_session(
+        self, owner_id: UUID, session: SessionRef
+    ) -> ExtractJob | None: ...
     def claim_extract_job(self, owner_id: UUID, session: SessionRef) -> ExtractJob: ...
     def claim_extract_job_by_id(
         self, job_id: UUID, owner_id: UUID

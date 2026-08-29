@@ -36,6 +36,12 @@ MAX_REASON_IN_ERROR = 200
 # read itself expensive.
 MAX_EVENTS_PER_JOB = 500
 
+# How many sessions discovery looks at per `limit` it will actually claim.
+# See the comment in `process`: sessions that have given up are skipped, and
+# without a window wider than the batch they would still crowd live sessions
+# out of it.
+DISCOVERY_OVERFETCH = 5
+
 
 class ExtractJobNotFound(Exception):
     """No extract job with that id belongs to this owner."""
@@ -262,6 +268,32 @@ def _run_job(
         return False, 0
 
 
+def _gave_up(job: ExtractJob | None) -> bool:
+    """True when this session's job has already given up and must be skipped.
+
+    Discovery is what makes this necessary, and it is not how the capture
+    spool behaved: `claim_capture_jobs` only ever took pending and stale
+    rows, so a job that gave up simply dropped out of the backlog.
+    `sessions_awaiting_extraction` computes its watermarks from DONE jobs
+    only, so a session whose job failed still has outstanding events and is
+    rediscovered by every later run - which would claim it again, record
+    "gave up" again, and report `failed 1` for the life of the session.
+
+    Worse than the noise: discovery is ordered oldest-event-first, so dead
+    sessions sort AHEAD of live ones. Ten of them fill a default `--limit 10`
+    batch and no new session is ever extracted again. Giving up has to
+    remove the session from the backlog, not merely stop calling the model.
+
+    Skipped, not tallied: there was no work, and a run with nothing to do
+    must be able to say so. `process_job` is the deliberate way back.
+    """
+    return (
+        job is not None
+        and job.status is JobStatus.FAILED
+        and job.attempts > MAX_ATTEMPTS
+    )
+
+
 def _tally(report: ExtractReport, succeeded: bool, written: int) -> None:
     report.claimed += 1
     if succeeded:
@@ -287,9 +319,23 @@ def process(
     cron run that swallowed it would report a clean sweep of nothing.
     """
     report = ExtractReport()
-    for session in store.sessions_awaiting_extraction(owner_id, idle_seconds, limit):
+    # Over-fetch, then stop at `limit` sessions actually claimed. Skipping a
+    # dead session after discovery keeps it from being re-run, but on its own
+    # it still lets one occupy a slot in the batch - and dead sessions sort
+    # first (see _gave_up), so a small `--limit` would be filled by them
+    # while live sessions waited behind. The window is bounded rather than
+    # unbounded: a backlog deeper in dead sessions than this is a state worth
+    # noticing in `status`, not one worth scanning the whole events table for.
+    fetched = store.sessions_awaiting_extraction(
+        owner_id, idle_seconds, limit * DISCOVERY_OVERFETCH
+    )
+    for session in fetched:
+        if _gave_up(store.extract_job_for_session(owner_id, session)):
+            continue
         job = store.claim_extract_job(owner_id, session)
         _tally(report, *_run_job(store, owner_id, extractor, job))
+        if report.claimed >= limit:
+            break
     return report
 
 

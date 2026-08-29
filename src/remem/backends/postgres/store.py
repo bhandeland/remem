@@ -881,6 +881,28 @@ class PostgresStore:
             )
             return bool(cur.fetchone()["pg_try_advisory_lock"])
 
+    def extract_job_for_session(
+        self, owner_id: UUID, session: SessionRef
+    ) -> ExtractJob | None:
+        """The job this session already has, if any. Reads nothing else.
+
+        Deliberately status-blind: what to do with a job that has given up
+        is a policy question, and policy lives in services/. This just says
+        what the row is.
+        """
+        with self._cur() as cur:
+            cur.execute(
+                f"""
+                select {extract_job_columns()} from extract_jobs
+                 where owner_id = %s and project = %s and harness = %s
+                   and session_id = %s
+                """,
+                (owner_id, session.project, session.harness,
+                 session.session_id),
+            )
+            row = cur.fetchone()
+        return _row_to_extract_job(row) if row else None
+
     def claim_extract_job(self, owner_id: UUID, session: SessionRef) -> ExtractJob:
         """Upsert on the session key, so a retried session reuses its row
         and its attempt count instead of accumulating one row per attempt."""
