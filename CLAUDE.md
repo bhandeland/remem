@@ -208,11 +208,13 @@ under the repository they belong to.
 
 ### The opencode adapter
 
-`plugin.js` (`src/remem/agents/opencode/plugin.js`) is generated, not written by hand -
-`install()` overwrites it unconditionally, no merge, no version marker, no prompt. It
-imports nothing, because `$` arrives on `PluginInput`: there is no npm dependency to
-install, pin, or keep in step with opencode's own releases. A user who wants local edits
-to it is asking for the wrong file - remem owns `remem.js`.
+`plugin.js` (`src/remem/agents/opencode/plugin.js`) is hand-written and shipped as
+package data; the INSTALLED copy - `remem.js`, in the directory `plugin_dir` names for
+the chosen scope - is what is generated and machine-owned. `install()` overwrites that
+installed copy unconditionally, no merge, no version marker, no prompt. It imports
+nothing, because `$` arrives on `PluginInput`: there is no npm dependency to install,
+pin, or keep in step with opencode's own releases. A user who wants local edits to
+`remem.js` is asking for the wrong file - remem owns it.
 
 opencode has no session-start hook, so `remem hook context --agent <name>` exists as the
 harness-neutral half of what `hook.session_start` does for Claude Code: given whatever
