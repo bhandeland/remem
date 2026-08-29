@@ -118,7 +118,7 @@ def _find_array_candidates(raw: str) -> list[list[object]]:
 
 
 def parse_entries(raw: str) -> list[ExtractedEntry]:
-    """Read a extractor's raw output into validated entries.
+    """Read an extractor's raw output into validated entries.
 
     Accepts a bare JSON array, or one embedded in prose or a fenced block -
     models prepend explanations however firmly the prompt asks them not to.

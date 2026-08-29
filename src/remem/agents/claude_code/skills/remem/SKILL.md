@@ -39,7 +39,7 @@ one directly.
 
 4. **Answer** in plain language. Do not dump raw search output at the user.
 
-## When to write a memory
+## When to write an entry
 
 This is the discipline that keeps the store useful. Write when:
 
@@ -79,7 +79,7 @@ Do **not** write:
   stored version is now wrong.
 
 ```bash
-remem remember "Postgres pool sizing" --body "..." --kind memory --project myapp
+remem remember "Postgres pool sizing" --body "..." --kind note --project myapp
 remem remember "Never use em dashes" --body "..." --kind rule --project myapp
 ```
 

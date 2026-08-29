@@ -16,7 +16,7 @@ makes session boundaries cheap.
 ## Steps
 
 1. **Pick the topic slug** for this session's work - `gitlab-ci`, `search`,
-   `capture`. It defaults to the project name, which is right for a repository
+   `extraction`. It defaults to the project name, which is right for a repository
    with one workstream. Ask only if genuinely ambiguous.
 
 2. **Write the handoff.** Four sections, in this order, always all four:
@@ -47,7 +47,7 @@ makes session boundaries cheap.
    need to clean up old ones.
 
 3. **Fold durable facts into remem proper.** A gotcha that will still be true
-   next month belongs in a memory or a rule, not in a handoff that the next
+   next month belongs in a note or a rule, not in a handoff that the next
    handoff supersedes:
 
    ```bash

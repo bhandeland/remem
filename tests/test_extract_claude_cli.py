@@ -10,6 +10,7 @@ from remem.extract.base import ExtractionFailed
 from remem.extract.claude_cli import (
     MAX_PROMPT_BYTES,
     PROMPT,
+    TRUNCATION_NOTE,
     ClaudeCliExtractor,
     build_command,
     build_env,
@@ -168,7 +169,15 @@ def test_a_large_batch_of_events_is_bounded_to_its_tail(monkeypatch):
 
     monkeypatch.setattr(subprocess, "run", fake_run)
     ClaudeCliExtractor().extract(events_of_size(MAX_PROMPT_BYTES * 3), "remem")
-    assert len(seen["input"]) < MAX_PROMPT_BYTES * 2
+    # Tight, deliberately. The comment above MAX_PROMPT_BYTES calls oversized
+    # input "the dangerous one: it does not announce itself" - this is the
+    # test that announces it, so it must not have the slack to sleep through
+    # a doubling. What stdin can legitimately hold is the rendered tail
+    # (bounded at MAX_PROMPT_BYTES), the truncation note in front of it, and
+    # the small header extract() adds. The prompt itself travels in argv.
+    header = "Project: remem\n\nEvents:\n"
+    ceiling = MAX_PROMPT_BYTES + len(TRUNCATION_NOTE) + len(header)
+    assert len(seen["input"]) <= ceiling
 
 
 def test_bounding_keeps_the_end_not_the_beginning():
