@@ -38,6 +38,8 @@ TRUNCATION_NOTE = (
     "[This is the TAIL of a longer session; earlier events were truncated.]\n"
 )
 
+EVENT_CUT_NOTE = " ...[this event's payload was cut short]"
+
 
 def _render_event(event: Event) -> str:
     """One event, one line: when, what, which tool, and the raw payload."""
@@ -69,7 +71,10 @@ def render_events(events: list[Event], limit: int = MAX_PROMPT_BYTES) -> str:
     Truncation is by whole lines from the front, not by character: cutting
     mid-JSON would hand the model a fragment it has to guess the shape of,
     and the first thing it would guess is that the payload means something
-    other than what it says.
+    other than what it says. The exception is a single event bigger than the
+    whole budget - one `Read` of a large file will do it - where keeping the
+    line whole would defeat the bound entirely. That one gets cut, and told
+    that it was.
     """
     lines = [_render_event(e) for e in events]
     rendered = "\n".join(lines)
@@ -82,7 +87,7 @@ def render_events(events: list[Event], limit: int = MAX_PROMPT_BYTES) -> str:
         size += len(line) + 1
         if size > limit and kept:
             break
-        kept.append(line)
+        kept.append(line[:limit] + EVENT_CUT_NOTE if len(line) > limit else line)
     kept.reverse()
     return TRUNCATION_NOTE + "\n".join(kept)
 

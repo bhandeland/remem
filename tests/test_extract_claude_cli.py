@@ -285,3 +285,11 @@ def test_the_extractor_defaults_to_the_configured_default(monkeypatch):
     monkeypatch.setattr(subprocess, "run", fake_run)
     ClaudeCliExtractor().extract([an_event()], "remem")
     assert seen["cmd"][seen["cmd"].index("--model") + 1] == DEFAULT_CAPTURE_MODEL
+
+
+def test_one_event_larger_than_the_whole_budget_is_cut(monkeypatch):
+    """A single Read of a large file would otherwise defeat the bound: the
+    line-at-a-time rule keeps whole lines, and one line can be the session."""
+    text = render_events([an_event({"content": "y" * (MAX_PROMPT_BYTES * 2)})])
+    assert len(text) < MAX_PROMPT_BYTES * 2
+    assert "cut short" in text

@@ -280,7 +280,11 @@ def process(
 ) -> ExtractReport:
     """Extract from every session quiet for `idle_seconds`, up to `limit`.
 
-    Never raises: a failing job records its reason and the loop continues.
+    A failing job records its reason and the loop continues to the next
+    session - one bad session must not strand the rest of the backlog. A
+    database failure while discovering or claiming sessions does propagate:
+    at that point there is nothing left to record an outcome against, and a
+    cron run that swallowed it would report a clean sweep of nothing.
     """
     report = ExtractReport()
     for session in store.sessions_awaiting_extraction(owner_id, idle_seconds, limit):
