@@ -224,6 +224,21 @@ REMEM_VARS: Mapping[str, EnvVar] = {
         "Model used to distil captured sessions.",
         default=remem_config.DEFAULT_CAPTURE_MODEL,
     ),
+    "REMEM_EMBED_MODEL": EnvVar(
+        "REMEM_EMBED_MODEL", Kind.STR,
+        "Embedding model recorded in entry_vectors.model.",
+        default=remem_config.DEFAULT_EMBED_MODEL,
+    ),
+    # The bounds mirror config.load()'s own guard exactly, for the same
+    # reason as REMEM_FUZZY_THRESHOLD above: below or at 0 the semantic tier
+    # is meaningless and above 1 it matches nothing, so config.load()
+    # discards anything outside the range.
+    "REMEM_SEMANTIC_THRESHOLD": EnvVar(
+        "REMEM_SEMANTIC_THRESHOLD", Kind.FLOAT,
+        "Cosine similarity floor for the semantic tier (0 < t <= 1).",
+        minimum=0.0, maximum=1.0, exclusive_minimum=True,
+        default=str(remem_config.DEFAULT_SEMANTIC_THRESHOLD),
+    ),
     "REMEM_TURN_WARN_AT": EnvVar(
         "REMEM_TURN_WARN_AT", Kind.INT,
         "Turn count at which the handoff reminder first fires.",
