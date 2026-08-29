@@ -12,6 +12,7 @@ from typing import Mapping
 
 from remem import jsonfile
 from remem.agents.base import (
+    RECORD_NOTE,
     EnvVar,
     HarnessEvent,
     Identity,
@@ -34,13 +35,6 @@ VERIFY_PROJECT = "__remem_verify__"
 SLUG_CONVENTION = (
     "The SessionStart hook injects the knowledge base whose slug matches the "
     "session's repository name - create one with `remem kb new <repo-name>`. A subdirectory or a worktree resolves to the same name."
-)
-
-RECORD_NOTE = (
-    "Recording is OFF until you enable it per project: "
-    "`remem record enable --project <name>`. Nothing is recorded from a "
-    "project you did not choose, and that gate is the whole privacy story - "
-    "events are stored in full, including command output and file contents."
 )
 
 HANDOFF_NOTE = (

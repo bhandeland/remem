@@ -9,11 +9,14 @@ corrupt.
 
 from __future__ import annotations
 
+import os
 from datetime import datetime, timezone
+from importlib import resources
 from pathlib import Path
 from typing import Mapping
 
-from remem.agents.base import HarnessEvent, Identity
+from remem.agents.base import RECORD_NOTE, HarnessEvent, Identity, InstallReport
+from remem.agents.opencode.install import plugin_dir
 from remem.domain import EventKind
 from remem.project import resolve_project
 
@@ -34,6 +37,34 @@ class OpenCodeAdapter:
         "tool.execute.after": EventKind.TOOL_CALL,
         "chat.message": EventKind.MESSAGE,
     }
+
+    def install(
+        self,
+        scope: str = "user",
+        home: Path | None = None,
+        env: Mapping[str, str] | None = None,
+    ) -> InstallReport:
+        """Write the plugin, unconditionally, to the directory the scope names.
+
+        No merge, no version marker, no prompt: `plugin_dir` raises for a
+        scope it does not know, so by the time this runs the only question
+        left is whether a file is already there, and the answer does not
+        matter. remem owns remem.js - a user who wants to keep local edits
+        should not put them there.
+        """
+        home = home or Path.home()
+        env = os.environ if env is None else env
+        target_dir = plugin_dir(scope, home=home, cwd=Path.cwd())
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        target = target_dir / "remem.js"
+        source = resources.files("remem.agents.opencode") / "plugin.js"
+        target.write_text(source.read_text())
+
+        report = InstallReport(agent=self.name)
+        report.actions.append(f"Installed the opencode plugin in {target}")
+        report.notes.append(RECORD_NOTE)
+        return report
 
     def identity(self, env: Mapping[str, str], payload: dict) -> Identity:
         cwd = payload.get("cwd")
