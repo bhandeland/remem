@@ -56,6 +56,21 @@ def test_the_reason_for_an_empty_block_is_reported(store, owner):
     assert any("nothing-here" in line for line in said)
 
 
+def test_the_reason_names_the_principal_when_the_caller_provides_it(store, owner):
+    """A wrong or unexpected REMEM_USER_ID is one of the likeliest reasons
+    for silent injection, so the diagnostic should name the principal it
+    looked under - when the caller has one to give. The service has no
+    handle of its own; only owner_id, which is not human-readable."""
+    said: list[str] = []
+
+    context.block(
+        store, owner.id, "nothing-here", max_chars=10_000,
+        note=said.append, owner_handle="brandon",
+    )
+
+    assert any("brandon" in line for line in said)
+
+
 def test_the_handoff_pointer_is_appended_outside_max_chars(store, owner):
     """The pointer is a fixed ~20 tokens appended after render, so it must
     survive even a max_chars budget too small to hold the knowledge base

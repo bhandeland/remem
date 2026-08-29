@@ -866,6 +866,7 @@ def hook_context(
                     identity.project,
                     cfg.max_chars,
                     note=lambda reason: debug(env, reason),
+                    owner_handle=s.owner.handle,
                 ),
                 nl=False,
             )

@@ -25,6 +25,7 @@ def block(
     project: str,
     max_chars: int,
     note: Callable[[str], None] | None = None,
+    owner_handle: str | None = None,
 ) -> str:
     """The knowledge base context block for one project, or "".
 
@@ -38,6 +39,15 @@ def block(
     output. So the service says what happened and the frontend decides
     where it goes: the Claude Code hook passes its `_debug`, the CLI passes
     its own, and a test passes a list's `append`.
+
+    `owner_handle` is optional, separately from `note`, because it is data
+    the service does not otherwise need - the caller already has an open
+    session with the owner's handle on it (`s.owner.handle`), and naming the
+    principal in the "no such knowledge base" message is the single most
+    useful diagnostic there is for it: a wrong or unexpected
+    REMEM_USER_ID is one of the likeliest reasons for silent injection.
+    Passing "" or leaving it unset just drops that clause; it never changes
+    whether a caller is told anything.
     """
     say = note or (lambda _reason: None)
 
@@ -45,8 +55,9 @@ def block(
     try:
         collection = kb.get(store, owner_id, project)
     except kb.CollectionNotFound:
+        for_principal = f" for principal '{owner_handle}'" if owner_handle else ""
         say(
-            f"no knowledge base with slug '{project}' for this principal. "
+            f"no knowledge base with slug '{project}'{for_principal}. "
             "The hook injects the knowledge base whose slug matches the "
             f"repository name - create one with `remem kb new {project}`.",
         )

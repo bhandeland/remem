@@ -45,6 +45,7 @@ def session_start(stdin_text: str, env: Mapping[str, str]) -> str:
                 identity.project,
                 config.max_chars,
                 note=lambda reason: _debug(env, reason),
+                owner_handle=s.owner.handle,
             )
     except Exception as exc:
         # Any failure at all - unreachable database, missing migrations, an
