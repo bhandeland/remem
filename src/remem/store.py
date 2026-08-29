@@ -85,6 +85,15 @@ class Store(Protocol):
         self, owner_id: UUID, project: str, harness: str, session_id: str,
         since: datetime | None = None, limit: int = 500,
     ) -> list[Event]: ...
+    #: Deletes every event for one (owner, project, harness, session) -
+    #: nothing wider. Exists for install verification's cleanup, which must
+    #: not be able to touch anything outside the reserved project it wrote
+    #: to even in principle; `prune_events` is an operator command whose
+    #: contract is a time window over everything an owner has, and reaching
+    #: for it to delete one known event was reaching for the wrong tool.
+    def delete_session_events(
+        self, owner_id: UUID, project: str, harness: str, session_id: str
+    ) -> int: ...
     def link_entry_events(
         self, entry_id: UUID, events: list[Event], owner_id: UUID
     ) -> None: ...

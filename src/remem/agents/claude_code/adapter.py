@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import shutil
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from importlib import resources
 from pathlib import Path
 from typing import Mapping
@@ -304,7 +304,6 @@ class ClaudeCodeAdapter:
         still finishes.
         """
         from remem.config import load
-        from remem.services import events as events_service
         from remem.services import record as record_service
         from remem.session import open_session
 
@@ -345,19 +344,25 @@ class ClaudeCodeAdapter:
                         )
                         return report
 
-                    events_service.prune(
-                        s.store,
-                        s.owner.id,
-                        before=stored.occurred_at + timedelta(seconds=1),
-                        force=True,
-                    )
                     report.actions.append(
                         "Verified the install with a live round-trip: "
                         "recorded, read back, and deleted a test event"
                     )
                 finally:
-                    # However the round-trip went, the project must not be
-                    # left able to record - nobody chose to enable it.
+                    # Runs on every path out of the block above - the happy
+                    # path, the "could not read it back" return, and any
+                    # exception - because the reserved project must never be
+                    # left recording, and the test event it wrote must never
+                    # be left behind, however the round-trip went.
+                    #
+                    # Scoped to exactly this (owner, project, harness,
+                    # session) - never `services.events.prune`, whose
+                    # contract is a time window over every event this owner
+                    # has ever recorded, in every project, and which a
+                    # `force=True` call here would have deleted wholesale.
+                    s.store.delete_session_events(
+                        s.owner.id, VERIFY_PROJECT, self.name, session_id
+                    )
                     record_service.disable(s.store, s.owner.id, VERIFY_PROJECT)
         except Exception as exc:
             report.warnings.append(

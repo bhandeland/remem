@@ -79,6 +79,55 @@ def test_another_principals_events_are_invisible(store, owner):
     ) == []
 
 
+def test_delete_session_events_is_scoped_to_all_four_keys(store, owner):
+    """This is install verification's cleanup primitive - it exists because
+    `prune_events` deletes by owner and a time window, and reaching for that
+    to clean up one known event would take every other event this owner has
+    recorded with it. Every dimension it does not name must survive."""
+    target = store.put_event(an_event(owner, session="s1"))
+    other_session = store.put_event(an_event(owner, session="s2"))
+    other_project = store.put_event(
+        Event(
+            id=new_id(),
+            owner_id=owner.id,
+            project="other-project",
+            harness="claude-code",
+            session_id="s1",
+            kind=EventKind.TOOL_CALL,
+            tool="Bash",
+            payload={},
+            occurred_at=NOW,
+        )
+    )
+    other_harness = store.put_event(
+        Event(
+            id=new_id(),
+            owner_id=owner.id,
+            project="remem",
+            harness="cursor",
+            session_id="s1",
+            kind=EventKind.TOOL_CALL,
+            tool="Bash",
+            payload={},
+            occurred_at=NOW,
+        )
+    )
+
+    deleted = store.delete_session_events(owner.id, "remem", "claude-code", "s1")
+
+    assert deleted == 1
+    assert store.events_for_session(owner.id, "remem", "claude-code", "s1") == []
+    survivors = {
+        e.id
+        for e in (
+            store.events_for_session(owner.id, "remem", "claude-code", "s2")
+            + store.events_for_session(owner.id, "other-project", "claude-code", "s1")
+            + store.events_for_session(owner.id, "remem", "cursor", "s1")
+        )
+    }
+    assert survivors == {other_session.id, other_project.id, other_harness.id}
+
+
 def test_provenance_survives_the_events_it_names(store, owner):
     entry = write.remember(store, owner.id, title="t", body="b")
     event = store.put_event(an_event(owner))

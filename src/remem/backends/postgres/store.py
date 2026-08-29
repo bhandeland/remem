@@ -795,6 +795,28 @@ class PostgresStore:
             )
             return [_row_to_event(r) for r in cur.fetchall()]
 
+    def delete_session_events(
+        self, owner_id: UUID, project: str, harness: str, session_id: str
+    ) -> int:
+        """Delete every event for one session. Scoped by all four keys, not
+        just owner_id and a time window - see the Protocol docstring for why
+        `prune_events` is the wrong tool for this."""
+        with self._cur() as cur:
+            cur.execute(
+                """
+                delete from events
+                 where owner_id = %(owner_id)s and project = %(project)s
+                   and harness = %(harness)s and session_id = %(session_id)s
+                """,
+                {
+                    "owner_id": owner_id,
+                    "project": project,
+                    "harness": harness,
+                    "session_id": session_id,
+                },
+            )
+            return cur.rowcount
+
     def link_entry_events(
         self, entry_id: UUID, events: list[Event], owner_id: UUID
     ) -> None:

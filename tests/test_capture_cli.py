@@ -11,6 +11,7 @@ from remem.cli import app
 runner = CliRunner()
 
 
+@pytest.mark.db
 def test_installer_registers_the_session_end_hook(tmp_path):
     """SessionEnd now points at the same command PostToolUse does - the
     idle trigger replaced it as the requirement, and it is kept only as a
@@ -25,6 +26,7 @@ def test_installer_registers_the_session_end_hook(tmp_path):
     assert any("remem hook record-event" in c for c in commands)
 
 
+@pytest.mark.db
 def test_installing_twice_leaves_one_session_end_hook(tmp_path):
     ClaudeCodeAdapter().install(scope="user", home=tmp_path)
     ClaudeCodeAdapter().install(scope="user", home=tmp_path)
@@ -32,6 +34,7 @@ def test_installing_twice_leaves_one_session_end_hook(tmp_path):
     assert len(settings["hooks"]["SessionEnd"]) == 1
 
 
+@pytest.mark.db
 def test_install_report_says_capture_is_off_by_default(tmp_path):
     report = ClaudeCodeAdapter().install(scope="user", home=tmp_path)
     combined = " ".join(report.actions + report.notes).lower()

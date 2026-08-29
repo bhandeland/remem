@@ -57,6 +57,48 @@ def test_install_verification_cleans_up_after_itself(env, tmp_path):
         assert enabled is None or enabled[0] is False
 
 
+def test_install_verification_does_not_touch_events_outside_the_verify_project(
+    env, tmp_path
+):
+    """The bug this test exists to catch: cleanup scoped only to
+    (owner_id, before) rather than to the reserved project, harness, and
+    session would delete every event this owner has ever recorded, not just
+    the one verification wrote. A second, unrelated, older event for the
+    same owner in a different project must survive the round-trip."""
+    from remem.backends.postgres.store import PostgresStore
+    from remem.domain import Event, EventKind, new_id
+    from datetime import datetime, timedelta, timezone
+
+    with psycopg.connect(env["REMEM_DSN"]) as c:
+        store = PostgresStore(c)
+        owner = store.ensure_principal("brandon")
+        other = store.put_event(
+            Event(
+                id=new_id(),
+                owner_id=owner.id,
+                project="some-real-project",
+                harness="claude-code",
+                session_id="s-real",
+                kind=EventKind.TOOL_CALL,
+                tool="Bash",
+                payload={"command": "ls"},
+                occurred_at=datetime.now(timezone.utc) - timedelta(days=1),
+            )
+        )
+        c.commit()
+
+    ClaudeCodeAdapter().verify(env=env, home=tmp_path)
+
+    with psycopg.connect(env["REMEM_DSN"]) as c:
+        row = c.execute(
+            "select id from events where id = %s", (other.id,)
+        ).fetchone()
+        assert row is not None, (
+            "verify()'s cleanup deleted an event outside the reserved "
+            "verification project"
+        )
+
+
 def test_install_verification_reports_a_failure_rather_than_raising():
     """An unreachable database becomes a warning naming what could not be
     demonstrated - never an exception, and the caller still finishes."""

@@ -7,6 +7,7 @@ from remem.agents.claude_code.adapter import ClaudeCodeAdapter
 from remem.jsonfile import backup
 
 
+@pytest.mark.db
 def test_install_writes_the_mcp_server_entry(tmp_path):
     report = ClaudeCodeAdapter().install(scope="user", home=tmp_path)
     config = json.loads((tmp_path / ".claude.json").read_text())
@@ -16,6 +17,7 @@ def test_install_writes_the_mcp_server_entry(tmp_path):
     assert any("mcp" in a.lower() for a in report.actions)
 
 
+@pytest.mark.db
 def test_install_preserves_existing_config(tmp_path):
     existing = {"mcpServers": {"other": {"command": "other"}}, "theme": "dark"}
     (tmp_path / ".claude.json").write_text(json.dumps(existing))
@@ -26,6 +28,7 @@ def test_install_preserves_existing_config(tmp_path):
     assert config["theme"] == "dark"
 
 
+@pytest.mark.db
 def test_install_backs_up_before_overwriting(tmp_path):
     (tmp_path / ".claude.json").write_text('{"theme": "dark"}')
     ClaudeCodeAdapter().install(scope="user", home=tmp_path)
@@ -34,6 +37,7 @@ def test_install_backs_up_before_overwriting(tmp_path):
     assert json.loads(backups[0].read_text()) == {"theme": "dark"}
 
 
+@pytest.mark.db
 def test_install_copies_the_skill(tmp_path):
     ClaudeCodeAdapter().install(scope="user", home=tmp_path)
     skill = tmp_path / ".claude" / "skills" / "remem" / "SKILL.md"
@@ -41,6 +45,7 @@ def test_install_copies_the_skill(tmp_path):
     assert "remem search" in skill.read_text()
 
 
+@pytest.mark.db
 def test_install_registers_the_session_start_hook(tmp_path):
     ClaudeCodeAdapter().install(scope="user", home=tmp_path)
     settings = json.loads((tmp_path / ".claude" / "settings.json").read_text())
@@ -49,6 +54,7 @@ def test_install_registers_the_session_start_hook(tmp_path):
     assert "remem hook session-start" in command
 
 
+@pytest.mark.db
 def test_install_is_idempotent(tmp_path):
     ClaudeCodeAdapter().install(scope="user", home=tmp_path)
     ClaudeCodeAdapter().install(scope="user", home=tmp_path)
@@ -67,6 +73,7 @@ def test_install_is_idempotent(tmp_path):
     assert len(list((tmp_path / ".claude").glob("settings.json.bak*"))) == 0
 
 
+@pytest.mark.db
 def test_install_backs_up_hand_edits_made_between_installs(tmp_path):
     (tmp_path / ".claude.json").write_text(json.dumps({"theme": "dark"}))
     ClaudeCodeAdapter().install(scope="user", home=tmp_path)
@@ -81,6 +88,7 @@ def test_install_backs_up_hand_edits_made_between_installs(tmp_path):
     assert hand_edited in contents
 
 
+@pytest.mark.db
 def test_install_backs_up_settings_before_overwriting(tmp_path):
     claude_dir = tmp_path / ".claude"
     claude_dir.mkdir()
@@ -108,6 +116,7 @@ def test_backup_filenames_are_collision_safe(tmp_path):
     assert second.exists()
 
 
+@pytest.mark.db
 def test_corrupt_existing_config_is_reported_not_silently_replaced(tmp_path):
     (tmp_path / ".claude.json").write_text("{not valid json")
     report = ClaudeCodeAdapter().install(scope="user", home=tmp_path)
@@ -115,6 +124,7 @@ def test_corrupt_existing_config_is_reported_not_silently_replaced(tmp_path):
     assert list((tmp_path).glob(".claude.json.bak*"))
 
 
+@pytest.mark.db
 def test_the_install_registers_a_posttooluse_hook(tmp_path):
     ClaudeCodeAdapter().install(scope="user", home=tmp_path)
     settings = json.loads((tmp_path / ".claude" / "settings.json").read_text())
@@ -122,6 +132,7 @@ def test_the_install_registers_a_posttooluse_hook(tmp_path):
     assert "remem hook record-event" in command
 
 
+@pytest.mark.db
 def test_the_install_still_registers_session_start(tmp_path):
     """Context injection is untouched by this change."""
     ClaudeCodeAdapter().install(scope="user", home=tmp_path)
@@ -130,6 +141,7 @@ def test_the_install_still_registers_session_start(tmp_path):
     assert "remem hook session-start" in command
 
 
+@pytest.mark.db
 def test_the_posttooluse_hook_is_registered_once(tmp_path):
     ClaudeCodeAdapter().install(scope="user", home=tmp_path)
     ClaudeCodeAdapter().install(scope="user", home=tmp_path)
@@ -137,6 +149,7 @@ def test_the_posttooluse_hook_is_registered_once(tmp_path):
     assert len(settings["hooks"]["PostToolUse"]) == 1
 
 
+@pytest.mark.db
 def test_install_registers_the_session_size_hook(tmp_path):
     ClaudeCodeAdapter().install(scope="user", home=tmp_path)
     settings = json.loads((tmp_path / ".claude" / "settings.json").read_text())
@@ -144,6 +157,7 @@ def test_install_registers_the_session_size_hook(tmp_path):
     assert "remem hook session-size" in command
 
 
+@pytest.mark.db
 def test_the_session_size_hook_is_registered_once(tmp_path):
     ClaudeCodeAdapter().install(scope="user", home=tmp_path)
     ClaudeCodeAdapter().install(scope="user", home=tmp_path)
@@ -153,6 +167,7 @@ def test_the_session_size_hook_is_registered_once(tmp_path):
     assert len(settings["hooks"]["UserPromptSubmit"]) == 1
 
 
+@pytest.mark.db
 def test_install_copies_every_bundled_skill(tmp_path):
     ClaudeCodeAdapter().install(scope="user", home=tmp_path)
     skills = tmp_path / ".claude" / "skills"
@@ -162,6 +177,7 @@ def test_install_copies_every_bundled_skill(tmp_path):
     assert (skills / "remem-capture" / "SKILL.md").exists()
 
 
+@pytest.mark.db
 def test_the_capture_skill_leads_with_the_opt_in_gate(tmp_path):
     ClaudeCodeAdapter().install(scope="user", home=tmp_path)
     text = (tmp_path / ".claude" / "skills" / "remem-capture" / "SKILL.md").read_text()
@@ -171,6 +187,7 @@ def test_the_capture_skill_leads_with_the_opt_in_gate(tmp_path):
     assert "remem capture enable" in text
 
 
+@pytest.mark.db
 def test_the_capture_skill_explains_the_context_block_exclusion(tmp_path):
     ClaudeCodeAdapter().install(scope="user", home=tmp_path)
     text = (tmp_path / ".claude" / "skills" / "remem-capture" / "SKILL.md").read_text()
@@ -180,6 +197,7 @@ def test_the_capture_skill_explains_the_context_block_exclusion(tmp_path):
     assert "remem kb pin" in text
 
 
+@pytest.mark.db
 def test_the_capture_skill_points_at_the_failure_surface(tmp_path):
     ClaudeCodeAdapter().install(scope="user", home=tmp_path)
     text = (tmp_path / ".claude" / "skills" / "remem-capture" / "SKILL.md").read_text()
@@ -189,12 +207,14 @@ def test_the_capture_skill_points_at_the_failure_surface(tmp_path):
     assert "--job" in text
 
 
+@pytest.mark.db
 def test_the_handoff_skill_drives_the_cli(tmp_path):
     ClaudeCodeAdapter().install(scope="user", home=tmp_path)
     text = (tmp_path / ".claude" / "skills" / "remem-handoff" / "SKILL.md").read_text()
     assert "remem handoff write" in text
 
 
+@pytest.mark.db
 def test_the_prime_skill_reads_the_latest_handoff(tmp_path):
     ClaudeCodeAdapter().install(scope="user", home=tmp_path)
     text = (tmp_path / ".claude" / "skills" / "remem-prime" / "SKILL.md").read_text()
@@ -223,6 +243,7 @@ def test_install_rejects_project_scope(tmp_path):
     assert not (tmp_path / ".claude.json").exists()
 
 
+@pytest.mark.db
 def test_install_states_the_hook_slug_convention(tmp_path):
     report = ClaudeCodeAdapter().install(scope="user", home=tmp_path)
     text = "\n".join(report.notes)
@@ -244,6 +265,7 @@ def test_install_states_the_hook_slug_convention(tmp_path):
 # silently - the hooks are fail-soft and the MCP server simply never starts.
 
 
+@pytest.mark.db
 def test_install_honours_claude_config_dir(tmp_path):
     alt = tmp_path / "elsewhere"
     ClaudeCodeAdapter().install(
@@ -254,6 +276,7 @@ def test_install_honours_claude_config_dir(tmp_path):
     assert (alt / "skills" / "remem" / "SKILL.md").exists()
 
 
+@pytest.mark.db
 def test_install_writes_nothing_to_home_when_relocated(tmp_path):
     alt = tmp_path / "elsewhere"
     ClaudeCodeAdapter().install(
@@ -263,6 +286,7 @@ def test_install_writes_nothing_to_home_when_relocated(tmp_path):
     assert not (tmp_path / ".claude").exists()
 
 
+@pytest.mark.db
 def test_install_falls_back_when_claude_config_dir_is_empty(tmp_path):
     # An empty value is an unset value, not a request to write to the current
     # working directory, which is where Path("") would land.
@@ -273,6 +297,7 @@ def test_install_falls_back_when_claude_config_dir_is_empty(tmp_path):
     assert (tmp_path / ".claude" / "settings.json").exists()
 
 
+@pytest.mark.db
 def test_install_reports_the_relocated_directory(tmp_path):
     alt = tmp_path / "elsewhere"
     report = ClaudeCodeAdapter().install(
@@ -283,6 +308,7 @@ def test_install_reports_the_relocated_directory(tmp_path):
     assert any("CLAUDE_CONFIG_DIR" in n for n in report.notes)
 
 
+@pytest.mark.db
 def test_install_mentions_the_config_command(tmp_path):
     # The install report is where someone learns what remem can do for them
     # next; a command nobody is pointed at is a command nobody runs.
