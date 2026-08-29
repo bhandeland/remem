@@ -67,4 +67,5 @@ testpaths = ["tests"]
 markers = [
     "db: requires a running Postgres (docker compose up -d)",
     "slow: shells out to a real build; skip with -m 'not slow'",
+    "opencode: requires opencode's plugin types installed; checks our vendored copy is fresh",
 ]
