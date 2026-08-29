@@ -136,6 +136,31 @@ silent partly by discipline and partly because the harness kills them at 5s or
 10s. Nothing kills a hung in-process plugin hook, so an unbounded `remem` call
 here does not degrade the session, it stops it.
 
+### Injection has to become harness-neutral first
+
+Recording already is: `remem record event --agent <name>` resolves an adapter
+through the registry and probes `event()` with `getattr`, so a new harness needs
+no CLI work at all. **Injection is not.** `remem hook session-start` reads a
+Claude Code payload, is hard-wired to `ClaudeCodeAdapter`, and builds the context
+block inside `hook.py` - which is a frontend, holding a decision the layering
+says belongs in a service. A second harness can therefore record events today
+but cannot be told anything.
+
+So this change also:
+
+- moves the block-building into `services/context.py`, with the handoff pointer
+  that goes with it, and
+- adds `remem hook context --agent <name>`, the neutral half of what
+  SessionStart does, which reads whatever payload the harness has and turns it
+  into a project through the adapter's `identity()` - a required Protocol
+  method, so every adapter already has one.
+
+`session_start` becomes a thin wrapper over the same service the opencode plugin
+reaches through the CLI. This is not scope creep bolted onto an adapter: without
+it the plugin's third hook has nothing to call, and the alternative - a second
+opencode-specific block builder - would be the duplication the seam exists to
+prevent.
+
 ### The Python side
 
 `OpenCodeAdapter.event()` parses the opencode payload into the shape
