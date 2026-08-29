@@ -28,12 +28,14 @@ const injected = new Set();
 // What must never happen is the user's turn hanging on a knowledge tool,
 // and returning on schedule is what prevents it.
 //
-// Every failure is swallowed. This is the same fail-soft contract the
-// Python hooks hold, except that nothing here inherits a harness timeout,
-// so the plugin has to impose its own.
-async function callRemem($, args, stdinText, timeoutMs) {
+// Every failure - including JSON.stringify - is swallowed inside the try
+// block. This is the same fail-soft contract the Python hooks hold, except
+// that nothing here inherits a harness timeout, so the plugin has to impose
+// its own. The serialisation must run inside the try, not before it.
+async function callRemem($, args, stdinData, timeoutMs) {
   let timer;
   try {
+    const stdinText = JSON.stringify(stdinData);
     const running = $`remem ${args} < ${new Response(stdinText)}`
       .quiet()
       .nothrow();
@@ -54,7 +56,7 @@ async function record($, cwd, payload) {
   await callRemem(
     $,
     ["record", "event", "--agent", "opencode"],
-    JSON.stringify({ ...payload, cwd }),
+    { ...payload, cwd },
     RECORD_TIMEOUT_MS,
   );
 }
@@ -108,7 +110,7 @@ export const server = async ({ $, directory, worktree }) => {
       const block = await callRemem(
         $,
         ["hook", "context", "--agent", "opencode"],
-        JSON.stringify({ sessionID: id, cwd }),
+        { sessionID: id, cwd },
         CONTEXT_TIMEOUT_MS,
       );
       if (block && block.trim()) output.system.push(block.trim());

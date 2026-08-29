@@ -173,3 +173,39 @@ def test_every_hook_the_adapter_records_is_one_the_plugin_sends():
     subscribed = frozenset(_SUBSCRIBED.findall(_plugin_source()))
 
     assert frozenset(OpenCodeAdapter.EVENT_KINDS) <= subscribed
+
+
+def test_plugin_serializes_inside_try_catch():
+    """The fail-soft contract: JSON.stringify must not run before entering
+    callRemem's try block, or a circular reference or BigInt in tool output
+    will escape uncaught and break the user's turn.
+
+    This is a structural check: JSON.stringify should only appear inside the
+    callRemem function definition, never as a hook argument expression.
+    """
+    source = _plugin_source()
+    lines = source.split("\n")
+
+    # Find the callRemem function to know where to stop checking for violations
+    in_callRemem = False
+    in_hook_handlers = False
+
+    for i, line in enumerate(lines):
+        if "async function callRemem" in line:
+            in_callRemem = True
+            continue
+        if in_callRemem and line.strip().startswith("}"):
+            in_callRemem = False
+            continue
+
+        # After callRemem ends, we enter the server export and hook handlers
+        if "export const server" in line:
+            in_hook_handlers = True
+            continue
+
+        # In hook handlers, JSON.stringify should not appear (it's called inside callRemem)
+        if in_hook_handlers and "JSON.stringify" in line:
+            raise AssertionError(
+                f"JSON.stringify appears outside callRemem at line {i + 1}: {line}\n"
+                "This breaks the fail-soft contract - exceptions from stringify will escape uncaught."
+            )
