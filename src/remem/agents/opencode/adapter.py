@@ -17,6 +17,7 @@ from typing import Mapping
 
 from remem.agents.base import RECORD_NOTE, HarnessEvent, Identity, InstallReport
 from remem.agents.opencode.install import plugin_dir
+from remem.agents.verify import round_trip
 from remem.domain import EventKind
 from remem.project import resolve_project
 
@@ -64,7 +65,30 @@ class OpenCodeAdapter:
         report = InstallReport(agent=self.name)
         report.actions.append(f"Installed the opencode plugin in {target}")
         report.notes.append(RECORD_NOTE)
+
+        # Verification is the last step, deliberately, and never raises - a
+        # failure here becomes a warning folded into this same report,
+        # exactly as the Claude Code adapter does it. See verify()'s
+        # docstring for what this is guarding against.
+        verification = self.verify(env=env, home=home)
+        report.actions.extend(verification.actions)
+        report.warnings.extend(verification.warnings)
         return report
+
+    def verify(
+        self, env: Mapping[str, str] | None = None, home: Path | None = None
+    ) -> InstallReport:
+        """Record an event, read it back, delete it.
+
+        `home` is accepted for symmetry with `install()` but unused: this is
+        a database round-trip, not a file-system one. The round-trip itself
+        - what it proves and why it is shaped the way it is - lives in
+        `remem.agents.verify.round_trip`, shared with every adapter.
+
+        claude-mem's opencode integration reported success for months while
+        recording nothing; this is the check that would have caught it.
+        """
+        return round_trip(self.name, env)
 
     def identity(self, env: Mapping[str, str], payload: dict) -> Identity:
         cwd = payload.get("cwd")
