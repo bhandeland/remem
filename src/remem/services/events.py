@@ -12,6 +12,9 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from uuid import UUID
 
+from remem.config import load as load_config
+from remem.domain import ExtractJob, HarnessStats, ProvenanceRow
+from remem.services.extraction import MAX_ATTEMPTS
 from remem.store import Store
 
 _WINDOW_RE = re.compile(r"^([1-9][0-9]*)([dhm])$")
@@ -94,3 +97,148 @@ def prune(
     return PruneReport(
         deleted=deleted, dangling=dangling, kept_unextracted=kept_unextracted
     )
+
+
+# ---------------- status: making silence visible ----------------
+
+
+@dataclass(slots=True)
+class StatusReport:
+    """Everything `remem record status` shows, gathered in one read-only
+    pass.
+
+    Bundled here rather than assembled piecemeal in the CLI so that `--json`
+    and the human-readable form can never disagree about the numbers: both
+    `render` and `to_dict` are thin formatters over the same report, and
+    neither one computes anything the other doesn't see.
+    """
+
+    harnesses: list[HarnessStats]
+    enabled_projects: list[str]
+    job_counts: dict[str, int]
+    recent_failures: list[ExtractJob]
+    legacy_pending: int
+    extract_model: str
+
+
+def status(store: Store, owner_id: UUID, idle_seconds: int) -> StatusReport:
+    """Gather the numbers behind `remem record status`. Read-only.
+
+    `extract_model` is resolved from `config.load()` rather than taken as a
+    parameter: it is the same value every command that reports it (this one,
+    and the older `capture status`) would resolve, and a caller with no
+    `Config` object handy - a test, an MCP tool - still gets a real answer
+    instead of a required argument nothing passes.
+    """
+    return StatusReport(
+        harnesses=store.event_stats(owner_id, idle_seconds, MAX_ATTEMPTS),
+        enabled_projects=store.enabled_record_projects(owner_id),
+        job_counts=store.extract_job_counts(owner_id),
+        recent_failures=store.recent_failed_extract_jobs(owner_id),
+        legacy_pending=store.pending_legacy_capture_jobs(owner_id),
+        extract_model=load_config().capture_model,
+    )
+
+
+def render(report: StatusReport) -> str:
+    """Human-readable `remem record status`. See `to_dict` for `--json` -
+    both read off the same `StatusReport`, so they cannot disagree about
+    what "awaiting" or "no events" means.
+    """
+    lines = [
+        "Recording enabled for: "
+        + (", ".join(report.enabled_projects) or "no projects"),
+        f"Extraction model: {report.extract_model}",
+    ]
+    if not report.harnesses:
+        # This is the failure the whole command exists for: an adapter
+        # bound to hook names its harness never emits records nothing and
+        # looks exactly like a quiet day. Say so explicitly rather than
+        # leaving the harness section out - absence must not be how "no
+        # events" is displayed.
+        lines.append("no events recorded from any harness yet")
+    else:
+        for h in report.harnesses:
+            last = h.last_event_at.isoformat() if h.last_event_at else "never"
+            lines.append(
+                f"  {h.harness}: {h.events_24h} event(s) in the last 24h "
+                f"(last at {last}), {h.sessions_awaiting} session(s) "
+                f"awaiting extraction"
+            )
+    if report.job_counts:
+        lines.append(
+            "Jobs: "
+            + ", ".join(f"{k}={v}" for k, v in sorted(report.job_counts.items()))
+        )
+    else:
+        lines.append("Jobs: none yet")
+    for f in report.recent_failures:
+        lines.append(f"  failed {f.id} [{f.project}]: {f.error}")
+    if report.legacy_pending:
+        lines.append(
+            f"{report.legacy_pending} job(s) stranded in the retired "
+            "capture_jobs_legacy table - see 010_retire_capture_jobs.sql"
+        )
+    return "\n".join(lines)
+
+
+def to_dict(report: StatusReport) -> dict:
+    """The `--json` half of `render`. Same `StatusReport`, same numbers."""
+    return {
+        "extract_model": report.extract_model,
+        "enabled_projects": report.enabled_projects,
+        "harnesses": [
+            {
+                "harness": h.harness,
+                "events_24h": h.events_24h,
+                "last_event_at": (
+                    h.last_event_at.isoformat() if h.last_event_at else None
+                ),
+                "sessions_awaiting": h.sessions_awaiting,
+            }
+            for h in report.harnesses
+        ],
+        "job_counts": report.job_counts,
+        "recent_failures": [
+            {"id": str(f.id), "project": f.project, "error": f.error}
+            for f in report.recent_failures
+        ],
+        "legacy_pending": report.legacy_pending,
+    }
+
+
+# ---------------- forensics: the entry -> events lookup ----------------
+
+
+def forensics(store: Store, owner_id: UUID, entry_id: UUID) -> list[ProvenanceRow]:
+    """The forensic lookup behind `remem events show`.
+
+    `Store.provenance` returns bare 4-tuples - Task 7's tests assert against
+    that shape directly, so its signature is left alone - and this is the
+    domain boundary that turns them into a named type before they cross into
+    a frontend.
+    """
+    return [
+        ProvenanceRow(event_id=eid, session_id=session_id, harness=harness,
+                      present=present)
+        for eid, session_id, harness, present in store.provenance(entry_id, owner_id)
+    ]
+
+
+def render_provenance(rows: list[ProvenanceRow]) -> str:
+    """`remem events show` output.
+
+    No rows at all is an ordinary answer, not an error: a hand-written entry
+    has no events and never will. A row with `present=False` says "event
+    pruned", never "not found" - "we recorded where this came from and then
+    deleted the raw" and "we never recorded anything" are different facts,
+    and a user who cannot tell them apart concludes provenance was never
+    recorded at all.
+    """
+    if not rows:
+        return "no events recorded for this entry (written directly, not extracted)"
+    lines = []
+    for row in rows:
+        note = "" if row.present else " - event pruned"
+        lines.append(f"  {row.event_id} [{row.harness}/{row.session_id}]{note}")
+    return "\n".join(lines)

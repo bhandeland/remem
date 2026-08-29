@@ -12,6 +12,7 @@ from remem.domain import (
     Entry,
     Event,
     ExtractJob,
+    HarnessStats,
     Hit,
     JobStatus,
     Principal,
@@ -72,6 +73,13 @@ class Store(Protocol):
     #: The retired capture spool, counted once so it is visible rather than
     #: mysterious. See 010_retire_capture_jobs.sql.
     def pending_legacy_capture_jobs(self, owner_id: UUID) -> int: ...
+    #: Per-harness recording health for `remem record status`. `idle_seconds`
+    #: and `max_attempts` are threaded through rather than read from config
+    #: here so this stays in step with `sessions_awaiting_extraction` and
+    #: extraction's own give-up rule - see the Postgres implementation.
+    def event_stats(
+        self, owner_id: UUID, idle_seconds: int, max_attempts: int
+    ) -> list[HarnessStats]: ...
 
     # events
     def put_event(self, event: Event) -> Event: ...

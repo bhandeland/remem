@@ -225,6 +225,39 @@ class Event:
 
 
 @dataclass(slots=True)
+class HarnessStats:
+    """Per-harness recording health, as `remem record status` reports it.
+
+    Only a harness that has recorded at least one event can appear here -
+    there is no name to key a zero row on for one that never has. That is
+    exactly the failure `record status` exists to catch (an adapter bound to
+    hook names its harness never emits records nothing and looks like a
+    quiet day), so `services.events.render` turns an empty list of these
+    into a visible "no events" line rather than an absent section.
+    """
+
+    harness: str
+    events_24h: int
+    last_event_at: datetime | None
+    sessions_awaiting: int
+
+
+@dataclass(slots=True)
+class ProvenanceRow:
+    """One event behind an entry, as `remem events show` reports it.
+
+    `present` is what lets the forensic lookup tell "we recorded where this
+    came from and then deleted the raw" apart from "we never recorded
+    anything" - see `Store.provenance`, the left join this is built from.
+    """
+
+    event_id: UUID
+    session_id: str
+    harness: str
+    present: bool
+
+
+@dataclass(slots=True)
 class SessionRef:
     """A session with events, as the idle trigger sees it.
 

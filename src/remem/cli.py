@@ -920,6 +920,49 @@ def events_prune(
     )
 
 
+@events_app.command("show")
+def events_show(
+    entry_id: Annotated[str, typer.Argument()],
+):
+    """Show the raw events an entry was extracted from - the forensic lookup.
+
+    No provenance at all is an ordinary answer for a hand-written entry, not
+    an error. A pruned event is reported as "event pruned", never "not
+    found" - those mean different things and look identical to a user who
+    is only told one of them.
+    """
+    from remem.services import events
+
+    eid = _entry_id(entry_id)
+    with _session() as s:
+        rows = events.forensics(s.store, s.owner.id, eid)
+    typer.echo(events.render_provenance(rows))
+
+
+@record_app.command("status")
+def record_status(
+    as_json: Annotated[bool, typer.Option("--json")] = False,
+):
+    """Show what's been recorded, per harness, and what's stuck.
+
+    This is the fail-loud half of a fail-soft pipeline: hooks and the idle
+    trigger never raise, so this is the one place a harness that has quietly
+    recorded nothing - wrong hook names, a broken adapter, opt-in never
+    turned on - becomes visible on demand rather than never.
+    """
+    from remem.services import events
+
+    with _session() as s:
+        report = events.status(
+            s.store, s.owner.id, idle_seconds=s.config.idle_minutes * 60
+        )
+
+    if as_json:
+        typer.echo(json.dumps(events.to_dict(report), indent=2))
+        return
+    typer.echo(events.render(report))
+
+
 @record_app.command("enable")
 def record_enable(
     project: Annotated[Optional[str], typer.Option("--project")] = None,
