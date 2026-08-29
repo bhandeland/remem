@@ -1,8 +1,10 @@
-"""Turning a session transcript into candidate entries.
+"""Turning a session's recorded events into candidate entries.
 
-The validator here does not trust the model. Everything a extractor returns is
-untrusted text: it gets shape-checked, capped, and filtered before any of it
-reaches the store.
+The validator here does not trust the model. Everything an extractor returns
+is untrusted text: it gets shape-checked, capped, and filtered before any of
+it reaches the store. That contract is unchanged by where the input comes
+from - only the input changed, from a transcript file to a list of event
+rows.
 """
 
 from __future__ import annotations
@@ -11,14 +13,14 @@ import json
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from remem.domain import Kind
+from remem.domain import Event, Kind
 
 MAX_ENTRIES = 5
 MAX_TITLE = 200
 MAX_BODY = 4000
 
 # Set on the environment of a spawned `claude -p` extraction child so its own
-# hooks can detect they're running inside a capture and refuse to recurse.
+# hooks can detect they're running inside an extraction and refuse to recurse.
 # Defined here (not in the hook module) because base.py is layer-neutral: both
 # the extractor and the agent hook can import it without depending on each
 # other. This string MUST match wherever the child process checks it.
@@ -29,8 +31,8 @@ class ExtractionFailed(Exception):
     """The extractor produced output that could not be read as entries.
 
     `raw` carries the model's actual output where we have it. A user cannot
-    fix a prompt whose failing response they never see, so the drain records
-    it against the job.
+    fix a prompt whose failing response they never see, so the extraction
+    run records it against the job.
     """
 
     def __init__(self, message: str, raw: str | None = None):
@@ -49,11 +51,11 @@ class ExtractedEntry:
 class Extractor(Protocol):
     def extract(
         self,
-        transcript: str,
+        events: list[Event],
         project: str,
         known_titles: list[str] | None = None,
     ) -> list[ExtractedEntry]:
-        """Extract durable entries from a session transcript.
+        """Extract durable entries from one session's events, oldest first.
 
         `known_titles` is what this project already holds - the extractor is
         expected not to re-record them. Optional so a simpler implementation
@@ -134,8 +136,8 @@ def parse_entries(raw: str) -> list[ExtractedEntry]:
     candidate array is non-empty and none of them yields a valid entry, that's
     different: the model produced output, and none of it was usable. That's a
     extraction failure, not a quiet clean session, so it raises rather than
-    silently returning [] - it needs to show up in `remem capture status`
-    instead of being indistinguishable from a week with nothing to capture.
+    silently returning [] - it needs to show up as a failed job instead of
+    being indistinguishable from a week with nothing worth extracting.
     """
     candidates = _find_array_candidates(raw or "")
     if not candidates:
