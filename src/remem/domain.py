@@ -178,3 +178,52 @@ class CaptureJob:
     entries_written: int = 0
     created_at: datetime | None = None
     updated_at: datetime | None = None
+
+
+class EventKind(StrEnum):
+    """What a harness handed us. Small and closed on purpose.
+
+    Everything harness-specific lives in the payload, unparsed: a harness
+    that changes its payload shape must not be able to break the write path.
+    A fourth value is deliberately deferred until something writes one -
+    adding an enum value later is cheap, and guessing now invites a label
+    nothing ever produces.
+    """
+
+    TOOL_CALL = "tool_call"
+    MESSAGE = "message"
+    SESSION_END = "session_end"
+
+
+@dataclass(slots=True)
+class Event:
+    """One thing that happened, as raw as it reached us."""
+
+    id: UUID
+    owner_id: UUID
+    project: str
+    harness: str
+    session_id: str
+    kind: EventKind
+    payload: dict
+    tool: str | None = None
+    occurred_at: datetime | None = None
+    recorded_at: datetime | None = None
+
+
+@dataclass(slots=True)
+class SessionRef:
+    """A session with events, as the idle trigger sees it.
+
+    `extract_from` is the watermark: the newest `covers_through` of a done
+    extract job for this session, or None when nothing has ever extracted
+    it. Events at or before it have already produced whatever they were
+    going to produce.
+    """
+
+    project: str
+    harness: str
+    session_id: str
+    event_count: int
+    last_event_at: datetime
+    extract_from: datetime | None = None

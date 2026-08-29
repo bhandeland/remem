@@ -3,10 +3,20 @@ would implement this same protocol."""
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
-from remem.domain import CaptureJob, CaptureStatus, Collection, Entry, Hit, Principal, Query
+from remem.domain import (
+    CaptureJob,
+    CaptureStatus,
+    Collection,
+    Entry,
+    Event,
+    Hit,
+    Principal,
+    Query,
+)
 
 
 class NotOwner(PermissionError):
@@ -65,3 +75,16 @@ class Store(Protocol):
     def capture_job_counts(self, owner_id: UUID) -> dict[str, int]: ...
     def recent_failed_capture_jobs(self, owner_id: UUID, limit: int = 5) -> list[CaptureJob]: ...
     def enabled_record_projects(self, owner_id: UUID) -> list[str]: ...
+
+    # events
+    def put_event(self, event: Event) -> Event: ...
+    def events_for_session(
+        self, owner_id: UUID, project: str, harness: str, session_id: str,
+        since: datetime | None = None, limit: int = 500,
+    ) -> list[Event]: ...
+    def link_entry_events(
+        self, entry_id: UUID, events: list[Event], owner_id: UUID
+    ) -> None: ...
+    def provenance(
+        self, entry_id: UUID, owner_id: UUID
+    ) -> list[tuple[UUID, str, str, bool]]: ...

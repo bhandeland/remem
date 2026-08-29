@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from uuid import UUID
 
 import psycopg
@@ -14,6 +15,8 @@ from remem.domain import (
     Collection,
     CollectionQuery,
     Entry,
+    Event,
+    EventKind,
     Hit,
     Kind,
     Match,
@@ -148,6 +151,21 @@ def _row_to_capture_job(row: dict) -> CaptureJob:
         entries_written=row["entries_written"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
+    )
+
+
+def _row_to_event(row: dict) -> Event:
+    return Event(
+        id=row["id"],
+        owner_id=row["owner_id"],
+        project=row["project"],
+        harness=row["harness"],
+        session_id=row["session_id"],
+        kind=EventKind(row["kind"]),
+        tool=row["tool"],
+        payload=row["payload"],
+        occurred_at=row["occurred_at"],
+        recorded_at=row["recorded_at"],
     )
 
 
@@ -769,3 +787,125 @@ class PostgresStore:
                 (owner_id,),
             )
             return [r["project"] for r in cur.fetchall()]
+
+    # ---------------- events ----------------
+
+    def put_event(self, event: Event) -> Event:
+        """One INSERT. This is the hot path - it runs per tool call."""
+        with self._cur() as cur:
+            cur.execute(
+                """
+                insert into events (
+                  id, owner_id, project, harness, session_id,
+                  kind, tool, payload, occurred_at
+                ) values (
+                  %(id)s, %(owner_id)s, %(project)s, %(harness)s,
+                  %(session_id)s, %(kind)s::event_kind, %(tool)s,
+                  %(payload)s::jsonb, %(occurred_at)s
+                )
+                returning recorded_at
+                """,
+                {
+                    "id": event.id,
+                    "owner_id": event.owner_id,
+                    "project": event.project,
+                    "harness": event.harness,
+                    "session_id": event.session_id,
+                    "kind": str(event.kind),
+                    "tool": event.tool,
+                    "payload": json.dumps(event.payload),
+                    # A NOT NULL column with no default is how a fail-soft hook
+                    # turns into a lost event, so we default here rather than
+                    # trust every caller to have set occurred_at.
+                    "occurred_at": event.occurred_at or datetime.now(timezone.utc),
+                },
+            )
+            event.recorded_at = cur.fetchone()["recorded_at"]
+        return event
+
+    def events_for_session(
+        self,
+        owner_id: UUID,
+        project: str,
+        harness: str,
+        session_id: str,
+        since: datetime | None = None,
+        limit: int = 500,
+    ) -> list[Event]:
+        with self._cur() as cur:
+            cur.execute(
+                """
+                select id, owner_id, project, harness, session_id, kind,
+                       tool, payload, occurred_at, recorded_at
+                  from events
+                 where owner_id = %(owner_id)s and project = %(project)s
+                   and harness = %(harness)s and session_id = %(session_id)s
+                   and (%(since)s::timestamptz is null or occurred_at > %(since)s)
+                 order by occurred_at
+                 limit %(limit)s
+                """,
+                {
+                    "owner_id": owner_id,
+                    "project": project,
+                    "harness": harness,
+                    "session_id": session_id,
+                    "since": since,
+                    "limit": limit,
+                },
+            )
+            return [_row_to_event(r) for r in cur.fetchall()]
+
+    def link_entry_events(
+        self, entry_id: UUID, events: list[Event], owner_id: UUID
+    ) -> None:
+        # Ownership is checked here, like every other write: the entry must
+        # belong to this principal before we record anything about where it
+        # came from.
+        with self._cur() as cur:
+            cur.execute(
+                "select 1 from entries where id = %s and owner_id = %s",
+                (entry_id, owner_id),
+            )
+            if cur.fetchone() is None:
+                raise NotOwner(
+                    f"entry {entry_id} does not belong to {owner_id}"
+                )
+            for event in events:
+                cur.execute(
+                    """
+                    insert into entry_events (entry_id, event_id, session_id, harness)
+                    values (%s, %s, %s, %s)
+                    -- Re-running an extraction must not fail on provenance
+                    -- it already wrote.
+                    on conflict (entry_id, event_id) do nothing
+                    """,
+                    (entry_id, event.id, event.session_id, event.harness),
+                )
+
+    def provenance(
+        self, entry_id: UUID, owner_id: UUID
+    ) -> list[tuple[UUID, str, str, bool]]:
+        """The forensic lookup, and the only query allowed to follow event_id.
+
+        A left join, never an inner one: a pruned event must come back as a
+        row with `present = False`, because "we recorded where this came
+        from and then deleted the raw" and "we never recorded anything" are
+        different answers and the user needs to be able to tell them apart.
+        """
+        with self._cur() as cur:
+            cur.execute(
+                """
+                select ee.event_id, ee.session_id, ee.harness,
+                       (ev.id is not null) as present
+                  from entry_events ee
+                  join entries e on e.id = ee.entry_id
+             left join events ev on ev.id = ee.event_id
+                 where ee.entry_id = %s and e.owner_id = %s
+                 order by ee.event_id
+                """,
+                (entry_id, owner_id),
+            )
+            return [
+                (r["event_id"], r["session_id"], r["harness"], r["present"])
+                for r in cur.fetchall()
+            ]
