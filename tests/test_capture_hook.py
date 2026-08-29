@@ -1,3 +1,13 @@
+"""The SessionEnd hook, which no longer queues anything.
+
+Extraction runs on an idle timer, so a session ending is not what starts it.
+The command stays registered because an installed settings.json names it, and
+a hook command that does not exist is an error on every session close - so
+what is asserted here is that it stays silent, exits zero, and writes nothing.
+Task 9 gives it a job again: recording a `session_end` event, which shortens
+the idle wait without being required by it.
+"""
+
 import io
 import json
 
@@ -5,19 +15,13 @@ import psycopg
 import pytest
 
 from remem.agents.claude_code import hook
-from remem.agents.claude_code.adapter import ClaudeCodeAdapter
 from remem.backends.postgres.migrate import migrate
-from remem.backends.postgres.store import PostgresStore
-from remem.services import capture
 
 
 def _payload(cwd, transcript, session_id="sess-1"):
     return json.dumps(
         {"cwd": cwd, "transcript_path": transcript, "session_id": session_id}
     )
-
-
-# --- fail-soft, no database needed ------------------------------------------
 
 
 def test_session_end_is_silent_on_malformed_stdin(capsys):
@@ -41,7 +45,7 @@ def test_main_session_end_always_exits_zero(monkeypatch, capsys):
     assert capsys.readouterr().out == ""
 
 
-def test_main_session_end_exits_zero_when_stdin_raises(monkeypatch, capsys):
+def test_main_session_end_exits_zero_when_stdin_raises(monkeypatch):
     class Exploding:
         def read(self):
             raise OSError("gone")
@@ -50,40 +54,10 @@ def test_main_session_end_exits_zero_when_stdin_raises(monkeypatch, capsys):
     assert hook.main_session_end() == 0
 
 
-def test_the_recursion_guard_stops_the_hook_before_any_work(monkeypatch, tmp_path):
-    """claude -p starts a session whose SessionEnd hook would enqueue another
-    job, spawning another claude, without bound.
-
-    Asserting on `identity` rather than on `enqueue`: with the guard removed,
-    an unreachable database would ALSO prevent an enqueue, so an enqueue-based
-    assertion passes for the wrong reason and the deleted guard goes unnoticed.
-    `identity` is reached immediately after the guard and touches no I/O.
-    """
-    reached = []
-    monkeypatch.setattr(
-        ClaudeCodeAdapter, "identity",
-        lambda self, env, payload: reached.append(1),
-    )
-    called = []
-    monkeypatch.setattr(
-        capture, "enqueue", lambda *a, **k: called.append(1)
-    )
-    t = tmp_path / "t.jsonl"
-    t.write_text("{}")
-    hook.session_end(
-        _payload(str(tmp_path), str(t)), env={"REMEM_CAPTURE_CHILD": "1"}
-    )
-    assert reached == []
-    assert called == []
-
-
-# --- enqueueing -------------------------------------------------------------
-
-
 @pytest.mark.db
-def test_session_end_enqueues_when_capture_is_enabled(
-    live_dsn, tmp_path, monkeypatch
-):
+def test_session_end_writes_nothing(live_dsn, tmp_path):
+    """The idle trigger replaced the end hook. Nothing is queued, and no
+    event is recorded here either - that is Task 9's PostToolUse path."""
     project_dir = tmp_path / "myproj"
     project_dir.mkdir()
     transcript = tmp_path / "t.jsonl"
@@ -91,9 +65,6 @@ def test_session_end_enqueues_when_capture_is_enabled(
 
     with psycopg.connect(live_dsn) as c:
         migrate(c)
-        store = PostgresStore(c)
-        owner = store.ensure_principal("brandon")
-        capture.enable(store, owner.id, "myproj")
         c.commit()
 
     env = {"REMEM_DSN": live_dsn, "REMEM_USER_ID": "brandon",
@@ -101,39 +72,7 @@ def test_session_end_enqueues_when_capture_is_enabled(
     hook.session_end(_payload(str(project_dir), str(transcript)), env=env)
 
     with psycopg.connect(live_dsn) as c:
-        rows = c.execute("select project, session_id from capture_jobs").fetchall()
-    assert rows == [("myproj", "sess-1")]
-
-
-@pytest.mark.db
-def test_session_end_enqueues_nothing_when_capture_is_disabled(
-    live_dsn, tmp_path
-):
-    project_dir = tmp_path / "otherproj"
-    project_dir.mkdir()
-    transcript = tmp_path / "t.jsonl"
-    transcript.write_text("{}")
-
-    with psycopg.connect(live_dsn) as c:
-        migrate(c)
-        c.commit()
-
-    env = {"REMEM_DSN": live_dsn, "REMEM_USER_ID": "brandon",
-           "REMEM_CONFIG": str(tmp_path / "none.toml")}
-    hook.session_end(_payload(str(project_dir), str(transcript)), env=env)
-
-    with psycopg.connect(live_dsn) as c:
-        count = c.execute("select count(*) from capture_jobs").fetchone()[0]
-    assert count == 0
-
-
-@pytest.mark.db
-def test_session_end_ignores_a_payload_without_a_transcript(live_dsn, tmp_path):
-    with psycopg.connect(live_dsn) as c:
-        migrate(c)
-        c.commit()
-    env = {"REMEM_DSN": live_dsn, "REMEM_USER_ID": "brandon",
-           "REMEM_CONFIG": str(tmp_path / "none.toml")}
-    hook.session_end(json.dumps({"cwd": str(tmp_path)}), env=env)
-    with psycopg.connect(live_dsn) as c:
-        assert c.execute("select count(*) from capture_jobs").fetchone()[0] == 0
+        assert c.execute("select count(*) from events").fetchone()[0] == 0
+        assert c.execute(
+            "select count(*) from extract_jobs"
+        ).fetchone()[0] == 0

@@ -41,18 +41,11 @@ class Match(StrEnum):
     FUZZY = "fuzzy"
 
 
-class CaptureStatus(StrEnum):
-    PENDING = "pending"
-    RUNNING = "running"
-    DONE = "done"
-    FAILED = "failed"
-
-
 class JobStatus(StrEnum):
-    """Same shape as CaptureStatus, but extract_jobs' own type (see
+    """The extract spool's status, and extract_jobs' own type (see
     migrations/009_extract_jobs.sql): reusing capture_status would tie an
-    enum the legacy table still uses to a migration that has nothing to do
-    with it."""
+    enum the retired table still carries to a migration that has nothing to
+    do with it."""
 
     PENDING = "pending"
     RUNNING = "running"
@@ -173,23 +166,6 @@ class Hit:
     rank: float
     snippet: str
     match: Match = Match.EXACT
-
-
-@dataclass(slots=True)
-class CaptureJob:
-    """One session queued for extraction."""
-
-    id: UUID
-    owner_id: UUID
-    project: str
-    transcript_path: str
-    session_id: str | None = None
-    status: CaptureStatus = CaptureStatus.PENDING
-    attempts: int = 0
-    error: str | None = None
-    entries_written: int = 0
-    created_at: datetime | None = None
-    updated_at: datetime | None = None
 
 
 @dataclass(slots=True)

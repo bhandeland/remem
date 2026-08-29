@@ -105,7 +105,12 @@ def _reset_live_db(request):
     with psycopg.connect(dsn, autocommit=True) as c:
         if c.execute("select to_regclass('public.entries')").fetchone()[0] is not None:
             c.execute(
-                "truncate collection_members, collections, entries, principals "
+                # entry_events and events go too: they are written by the
+                # record and events tests through the same shared database,
+                # and one test's leftover events are another's phantom
+                # session to extract.
+                "truncate collection_members, collections, entry_events, "
+                "events, extract_jobs, record_settings, entries, principals "
                 "restart identity cascade"
             )
     yield

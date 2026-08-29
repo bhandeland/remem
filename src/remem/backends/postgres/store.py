@@ -10,8 +10,6 @@ import psycopg
 from psycopg.rows import dict_row
 
 from remem.domain import (
-    CaptureJob,
-    CaptureStatus,
     Collection,
     CollectionQuery,
     Entry,
@@ -125,33 +123,6 @@ def _row_to_collection(row: dict) -> Collection:
         project=row["project"],
         scope=Scope(row["scope"]),
         query=CollectionQuery.from_dict(query),
-        created_at=row["created_at"],
-        updated_at=row["updated_at"],
-    )
-
-
-CAPTURE_JOB_FIELDS = [
-    "id", "owner_id", "project", "session_id", "transcript_path", "status",
-    "attempts", "error", "entries_written", "created_at", "updated_at",
-]
-
-
-def capture_job_columns(alias: str = "") -> str:
-    prefix = f"{alias}." if alias else ""
-    return ", ".join(f"{prefix}{f}" for f in CAPTURE_JOB_FIELDS)
-
-
-def _row_to_capture_job(row: dict) -> CaptureJob:
-    return CaptureJob(
-        id=row["id"],
-        owner_id=row["owner_id"],
-        project=row["project"],
-        session_id=row["session_id"],
-        transcript_path=row["transcript_path"],
-        status=CaptureStatus(row["status"]),
-        attempts=row["attempts"],
-        error=row["error"],
-        entries_written=row["entries_written"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )
@@ -660,7 +631,7 @@ class PostgresStore:
             )
             return [_row_to_entry(r) for r in cur.fetchall()]
 
-    # ---------------- capture ----------------
+    # ---------------- recording ----------------
 
     def set_record_enabled(
         self, owner_id: UUID, project: str, enabled: bool
@@ -686,143 +657,24 @@ class PostgresStore:
             row = cur.fetchone()
         return bool(row["enabled"]) if row else False
 
-    def enqueue_capture(self, job: CaptureJob) -> CaptureJob:
-        with self._cur() as cur:
-            cur.execute(
-                f"""
-                insert into capture_jobs (
-                  id, owner_id, project, session_id, transcript_path
-                ) values (%s, %s, %s, %s, %s)
-                returning {capture_job_columns()}
-                """,
-                (job.id, job.owner_id, job.project, job.session_id,
-                 job.transcript_path),
-            )
-            return _row_to_capture_job(cur.fetchone())
+    def pending_legacy_capture_jobs(self, owner_id: UUID) -> int:
+        """How many rows the retired capture spool still holds as pending.
 
-    def claim_capture_jobs(
-        self, owner_id: UUID, limit: int, stale_after_seconds: int = 600
-    ) -> list[CaptureJob]:
-        """Claim pending jobs, plus any left running by a dead drain.
-
-        SKIP LOCKED is what makes a second concurrent drain safe without a
-        broker: each transaction takes rows the other has not locked.
+        The only query left that touches `capture_jobs_legacy` (see
+        010_retire_capture_jobs.sql). It exists so a user who opted into the
+        old pipeline is told once that something is sitting there, rather
+        than discovering a table nothing reads years later.
         """
         with self._cur() as cur:
             cur.execute(
-                f"""
-                with claimed as (
-                  select id from capture_jobs
-                   where owner_id = %(owner_id)s
-                     and (
-                           status = 'pending'
-                        or (status = 'running'
-                            and updated_at <
-                                clock_timestamp()
-                                - make_interval(secs => %(stale)s))
-                         )
-                   order by created_at
-                   limit %(limit)s
-                   for update skip locked
-                )
-                update capture_jobs j
-                   set status = 'running',
-                       attempts = j.attempts + 1,
-                       updated_at = clock_timestamp()
-                  from claimed
-                 where j.id = claimed.id
-                returning {capture_job_columns("j")}
-                """,
-                {"owner_id": owner_id, "limit": limit,
-                 "stale": stale_after_seconds},
-            )
-            return [_row_to_capture_job(r) for r in cur.fetchall()]
-
-    def claim_capture_job(
-        self, job_id: UUID, owner_id: UUID
-    ) -> CaptureJob | None:
-        """Claim one named job whatever its status, for `drain --job ID`.
-
-        Unlike claim_capture_jobs this ignores status entirely: retrying a
-        job that already gave up is the whole point of the flag. SKIP LOCKED
-        still keeps a concurrent drain from taking the same row.
-        """
-        with self._cur() as cur:
-            cur.execute(
-                f"""
-                with claimed as (
-                  select id from capture_jobs
-                   where id = %(id)s and owner_id = %(owner_id)s
-                   for update skip locked
-                )
-                update capture_jobs j
-                   set status = 'running',
-                       attempts = j.attempts + 1,
-                       updated_at = clock_timestamp()
-                  from claimed
-                 where j.id = claimed.id
-                returning {capture_job_columns("j")}
-                """,
-                {"id": job_id, "owner_id": owner_id},
-            )
-            row = cur.fetchone()
-        return _row_to_capture_job(row) if row else None
-
-    def finish_capture_job(
-        self,
-        job_id: UUID,
-        owner_id: UUID,
-        status: CaptureStatus,
-        error: str | None,
-        entries_written: int,
-    ) -> None:
-        with self._cur() as cur:
-            cur.execute(
-                """
-                update capture_jobs
-                   set status = %s, error = %s, entries_written = %s,
-                       updated_at = clock_timestamp()
-                 where id = %s and owner_id = %s
-                """,
-                (str(status), error, entries_written, job_id, owner_id),
-            )
-
-    def get_capture_job(self, job_id: UUID, owner_id: UUID) -> CaptureJob | None:
-        with self._cur() as cur:
-            cur.execute(
-                f"select {capture_job_columns()} from capture_jobs "
-                "where id = %s and owner_id = %s",
-                (job_id, owner_id),
-            )
-            row = cur.fetchone()
-        return _row_to_capture_job(row) if row else None
-
-    def capture_job_counts(self, owner_id: UUID) -> dict[str, int]:
-        with self._cur() as cur:
-            cur.execute(
-                "select status, count(*) as n from capture_jobs "
-                "where owner_id = %s group by status",
+                "select count(*) as n from capture_jobs_legacy "
+                "where owner_id = %s and status = 'pending'",
                 (owner_id,),
             )
-            return {str(r["status"]): r["n"] for r in cur.fetchall()}
-
-    def recent_failed_capture_jobs(
-        self, owner_id: UUID, limit: int = 5
-    ) -> list[CaptureJob]:
-        with self._cur() as cur:
-            cur.execute(
-                f"""
-                select {capture_job_columns()} from capture_jobs
-                 where owner_id = %s and status = 'failed'
-                 order by updated_at desc
-                 limit %s
-                """,
-                (owner_id, limit),
-            )
-            return [_row_to_capture_job(r) for r in cur.fetchall()]
+            return int(cur.fetchone()["n"])
 
     def enabled_record_projects(self, owner_id: UUID) -> list[str]:
-        """Projects with recording switched on, for `remem capture status`."""
+        """Projects with recording switched on, for the status commands."""
         with self._cur() as cur:
             cur.execute(
                 "select project from record_settings "

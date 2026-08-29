@@ -15,8 +15,8 @@ import pytest
 from remem.agents.base import HarnessEvent
 from remem.backends.postgres.migrate import migrate
 from remem.backends.postgres.store import PostgresStore
-from remem.domain import CaptureStatus, EventKind
-from remem.services import capture, record
+from remem.domain import EventKind
+from remem.services import record
 
 pytestmark = pytest.mark.db
 
@@ -32,13 +32,6 @@ def store(conn):
 @pytest.fixture
 def owner(store):
     return store.ensure_principal("brandon")
-
-
-@pytest.fixture
-def transcript(tmp_path):
-    p = tmp_path / "t.jsonl"
-    p.write_text('{"role":"user","content":"hello"}\n')
-    return str(p)
 
 
 def a_harness_event(**kw):
@@ -94,28 +87,3 @@ def test_the_opt_in_is_per_project_not_global(store, owner):
     assert record.record(
         store, owner.id, a_harness_event(project="other"), "claude-code"
     ) is None
-
-
-# Moved from test_capture_service.py: these exercise the same opt-in gate
-# through capture.enqueue, which checks it exactly as record.record does.
-# capture.enable/disable are unchanged aliases of record.enable/disable.
-
-
-def test_enqueue_returns_none_when_capture_is_disabled(store, owner, transcript):
-    assert capture.enqueue(store, owner.id, project="remem",
-                           transcript_path=transcript, session_id="s") is None
-
-
-def test_enqueue_creates_a_job_when_enabled(store, owner, transcript):
-    capture.enable(store, owner.id, "remem")
-    job = capture.enqueue(store, owner.id, project="remem",
-                          transcript_path=transcript, session_id="s")
-    assert job is not None
-    assert job.status is CaptureStatus.PENDING
-
-
-def test_disable_stops_enqueueing(store, owner, transcript):
-    capture.enable(store, owner.id, "remem")
-    capture.disable(store, owner.id, "remem")
-    assert capture.enqueue(store, owner.id, project="remem",
-                           transcript_path=transcript, session_id="s") is None

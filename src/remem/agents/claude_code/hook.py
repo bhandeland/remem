@@ -99,10 +99,10 @@ def handoff_pointer(
         return ""
 
 
-def spawn_drain(env: Mapping[str, str]) -> bool:
-    """Start a detached `remem capture drain` and return immediately.
+def spawn_process(env: Mapping[str, str]) -> bool:
+    """Start a detached `remem events process` and return immediately.
 
-    Any session drains the backlog, so a capture is never stranded by the
+    Any session works off the backlog, so extraction is never stranded by the
     session that produced it having ended. Detached and output-discarded: the
     session must never wait for extraction, and must never see its output.
     """
@@ -110,7 +110,7 @@ def spawn_drain(env: Mapping[str, str]) -> bool:
         return False
     try:
         subprocess.Popen(
-            ["remem", "capture", "drain"],
+            ["remem", "events", "process"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             stdin=subprocess.DEVNULL,
@@ -128,63 +128,27 @@ def main() -> int:
         block = session_start(sys.stdin.read(), env=env)
         if block:
             sys.stdout.write(block)
-        spawn_drain(env)
+        spawn_process(env)
     except Exception:
         pass
     return 0
 
 
 def session_end(stdin_text: str, env: Mapping[str, str]) -> None:
-    """Queue this session for extraction. Never raises, never prints.
+    """Do nothing, loudly only under REMEM_HOOK_DEBUG.
 
-    Does exactly one INSERT. Everything fragile - the subprocess, the model,
-    the parsing - happens in the drain, where it can be retried and inspected.
+    It used to enqueue a capture job. Extraction is triggered by idleness
+    now (see services/extraction), so a SessionEnd hook is no longer part of
+    making the pipeline work - which is what lets the two harnesses without
+    one behave the same as this one.
+
+    The command stays registered rather than being deleted: an installed
+    settings.json names `remem hook session-end`, and a hook command that
+    does not exist is an error message on every session close. Task 9 gives
+    it its real job back - recording a `session_end` event, which shortens
+    the idle wait without being required by it.
     """
-    if env.get(CHILD_ENV_VAR):
-        # This session IS a extraction run. Enqueueing here would spawn
-        # another extraction, without bound.
-        _debug(env, "skipped: running inside a capture child")
-        return
-
-    try:
-        payload = json.loads(stdin_text) if stdin_text.strip() else {}
-    except (json.JSONDecodeError, AttributeError):
-        _debug(env, "stdin was not valid JSON")
-        return
-
-    try:
-        transcript_path = payload.get("transcript_path")
-        if not transcript_path:
-            _debug(env, "the hook payload carried no transcript_path")
-            return
-
-        identity = ClaudeCodeAdapter().identity(env, payload)
-        if not identity.project:
-            _debug(env, "the hook payload carried no cwd")
-            return
-
-        from remem.services import capture
-
-        config = load(env=env)
-        with open_session(config) as s:
-            job = capture.enqueue(
-                s.store,
-                s.owner.id,
-                project=identity.project,
-                transcript_path=transcript_path,
-                session_id=identity.session_id,
-            )
-            if job is None:
-                _debug(
-                    env,
-                    f"capture is not enabled for project '{identity.project}'. "
-                    f"Enable it with `remem capture enable --project "
-                    f"{identity.project}`.",
-                )
-    except Exception:
-        # Same contract as session_start: a knowledge tool must never be why a
-        # session fails to close.
-        _debug(env, "capture enqueue failed")
+    _debug(env, "session-end does nothing; extraction runs on an idle timer")
 
 
 def main_session_end() -> int:

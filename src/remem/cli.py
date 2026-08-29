@@ -38,6 +38,9 @@ app.add_typer(capture_app, name="capture")
 record_app = typer.Typer(help="Record raw events from a harness.")
 app.add_typer(record_app, name="record")
 
+events_app = typer.Typer(help="Extraction and retention for recorded events.")
+app.add_typer(events_app, name="events")
+
 handoff_app = typer.Typer(help="Session handoffs.")
 app.add_typer(handoff_app, name="handoff")
 
@@ -98,7 +101,7 @@ def _job_id(value: str) -> UUID:
     try:
         return UUID(value)
     except ValueError:
-        typer.echo(f"'{value}' is not a valid capture job id", err=True)
+        typer.echo(f"'{value}' is not a valid job id", err=True)
         raise typer.Exit(1)
 
 
@@ -743,11 +746,11 @@ def capture_enable(
     project: Annotated[Optional[str], typer.Option("--project")] = None,
 ):
     """Turn on automatic capture for a project (defaults to this directory)."""
-    from remem.services import capture
+    from remem.services import record
 
     name = project or _default_project()
     with _session() as s:
-        capture.enable(s.store, s.owner.id, name)
+        record.enable(s.store, s.owner.id, name)
         model = s.config.capture_model
     typer.echo(f"capture enabled for '{name}'")
     # State the cost at the moment the tradeoff is actionable. Measured on a
@@ -767,11 +770,11 @@ def capture_disable(
     project: Annotated[Optional[str], typer.Option("--project")] = None,
 ):
     """Turn off automatic capture for a project."""
-    from remem.services import capture
+    from remem.services import record
 
     name = project or _default_project()
     with _session() as s:
-        capture.disable(s.store, s.owner.id, name)
+        record.disable(s.store, s.owner.id, name)
     typer.echo(f"capture disabled for '{name}'")
 
 
@@ -779,10 +782,10 @@ def capture_disable(
 def capture_status(
     as_json: Annotated[bool, typer.Option("--json")] = False,
 ):
-    """Show what capture has queued, done, and failed."""
+    """Show what extraction has run, done, and failed."""
     with _session() as s:
-        counts = s.store.capture_job_counts(s.owner.id)
-        failures = s.store.recent_failed_capture_jobs(s.owner.id)
+        counts = s.store.extract_job_counts(s.owner.id)
+        failures = s.store.recent_failed_extract_jobs(s.owner.id)
         model = s.config.capture_model
         projects = s.store.enabled_record_projects(s.owner.id)
 
@@ -798,7 +801,7 @@ def capture_status(
         }, indent=2))
         return
 
-    typer.echo(f"Capture enabled for: {', '.join(projects) or 'no projects'}")
+    typer.echo(f"Recording enabled for: {', '.join(projects) or 'no projects'}")
     typer.echo(f"Extraction model: {model}")
     if counts:
         typer.echo("Jobs: " + ", ".join(f"{k}={v}" for k, v in sorted(counts.items())))
@@ -808,36 +811,48 @@ def capture_status(
         typer.echo(f"  failed {f.id} [{f.project}]: {f.error}")
 
 
-@capture_app.command("drain")
-def capture_drain(
+@events_app.command("process")
+def events_process(
     limit: Annotated[int, typer.Option("--limit")] = 10,
     job: Annotated[Optional[str], typer.Option("--job")] = None,
 ):
-    """Distil queued sessions into entries.
+    """Extract entries from sessions that have gone quiet.
+
+    A session is extracted once it has been idle for REMEM_IDLE_MINUTES.
+    Safe to run from cron: overlapping runs are held off by an advisory
+    lock, and a run that finds nothing says so and exits 0.
 
     `--job ID` retries exactly that job, however many times it has already
     failed. It is the only way back for a job that hit the attempt cap.
     """
     from remem.extract.claude_cli import ClaudeCliExtractor
-    from remem.services import capture
+    from remem.services import extraction
 
     job_id = _job_id(job) if job is not None else None
 
-    # Autocommit, unlike every other command: the drain records its own
+    # Autocommit, unlike every other command: the run records its own
     # progress as it goes, and it spends minutes at a time inside `claude`.
     # One transaction for the batch would both discard already-succeeded work
     # on a database error and hold row locks across those minutes.
     with _session(autocommit=True) as s:
+        if not s.store.try_advisory_lock("events-process", s.owner.id):
+            # A previous run is still going. Silence and exit 0 - a cron
+            # command that mails the user about a working system is a cron
+            # command they will turn off.
+            raise typer.Exit(0)
         extractor = ClaudeCliExtractor(model=s.config.capture_model)
         if job_id is not None:
             try:
-                report = capture.drain_job(s.store, s.owner.id, job_id,
-                                           extractor)
-            except capture.CaptureJobNotFound as exc:
+                report = extraction.process_job(s.store, s.owner.id, job_id,
+                                                extractor)
+            except extraction.ExtractJobNotFound as exc:
                 typer.echo(str(exc), err=True)
                 raise typer.Exit(1)
         else:
-            report = capture.drain(s.store, s.owner.id, extractor, limit=limit)
+            report = extraction.process(
+                s.store, s.owner.id, extractor,
+                idle_seconds=s.config.idle_minutes * 60, limit=limit,
+            )
     typer.echo(
         f"claimed {report.claimed}, succeeded {report.succeeded}, "
         f"failed {report.failed}, entries written {report.entries_written}"

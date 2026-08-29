@@ -31,6 +31,12 @@ DEFAULT_CAPTURE_MODEL = "sonnet"
 DEFAULT_TURN_WARN_AT = 150
 DEFAULT_TURN_WARN_EVERY = 50
 
+# How long a session must be quiet before extraction reads it. The trigger
+# is idleness rather than a session-end hook because two of the three
+# harnesses remem targets do not have one - and because a hook that never
+# fires strands the session forever, while a clock always ticks.
+DEFAULT_IDLE_MINUTES = 20
+
 DEFAULT_EMBED_MODEL = "BAAI/bge-small-en-v1.5"
 
 # Cosine similarity, so 1.0 is identical and 0 is unrelated. 0.55 is the
@@ -51,6 +57,7 @@ class Config:
     capture_model: str
     turn_warn_at: int
     turn_warn_every: int
+    idle_minutes: int
     embed_model: str
     semantic_threshold: float
 
@@ -122,6 +129,12 @@ def load(
     turn_warn_every = positive_int("REMEM_TURN_WARN_EVERY", "turn_warn_every",
                                    DEFAULT_TURN_WARN_EVERY)
 
+    # positive_int, not int: a zero window makes every session extractable
+    # the instant its first event lands, which is extraction racing a
+    # session that is still being worked in.
+    idle_minutes = positive_int("REMEM_IDLE_MINUTES", "idle_minutes",
+                                DEFAULT_IDLE_MINUTES)
+
     embed_model = str(
         pick("REMEM_EMBED_MODEL", "embed_model", DEFAULT_EMBED_MODEL)
     ).strip()
@@ -147,6 +160,7 @@ def load(
         max_chars=max_chars,
         turn_warn_at=turn_warn_at,
         turn_warn_every=turn_warn_every,
+        idle_minutes=idle_minutes,
         embed_model=embed_model,
         semantic_threshold=semantic,
     )

@@ -66,3 +66,13 @@ def test_query_defaults_exclude_superseded():
 def test_principal_defaults_to_user_kind():
     p = Principal(id=new_id(), handle="brandon")
     assert p.kind is PrincipalKind.USER
+
+
+def test_query_origins_defaults_to_empty_meaning_all():
+    assert Query().origins == []
+
+
+def test_query_origins_are_not_shared_between_instances():
+    a, b = Query(), Query()
+    a.origins.append(Origin.EXTRACTED)
+    assert b.origins == []
