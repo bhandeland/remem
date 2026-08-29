@@ -1741,3 +1741,81 @@ git commit -m "Search by meaning, between exact and trigram"
 **Type consistency:** `Match` (Task 1) is constructed in Tasks 5 and 7 and formatted in Task 1's frontend changes. `_entry_filters` (Task 2) is called in Task 5. `Embedder.name`/`.dim`/`.embed` (Task 4) are used by Tasks 5, 6, 7 under those exact names. `entries_missing_vectors(owner_id, model, limit)` and `put_vector(entry_id, model, dim, vector, owner_id)` (Task 5) are called with that argument order in Task 6. `backfill(...) -> EmbedResult` fields `embedded`/`failed`/`model` (Task 6) are read in the CLI in that same task.
 
 One inconsistency found and fixed while reviewing: Task 6's CLI draft had a stray walrus (`cfg_model := ...`) left over from an earlier shape; the step now says to write it plainly.
+
+---
+
+## Follow-ups from execution
+
+The plan executed and merged clean. These were found during execution or in the
+final whole-branch review, judged non-blocking, and deliberately not fixed in
+this branch. Recorded here because a scratch directory is not a record.
+
+**F1 - a construction failure that is not `EmbedderUnavailable` crashes search.
+Do this one first; it is about two lines.** `services/search.shared_embedder`
+catches only `EmbedderUnavailable`. `LocalEmbedder.__init__` re-raises the
+common failures as that, but its dimension probe - a real inference call - sits
+outside any `try`. An ONNX runtime failure there propagates out of `_semantic`,
+whose docstring says "every failure here means the same thing to the caller: no
+semantic results, carry on to trigram", and out through `find` into a CLI
+traceback. On a machine where the ONNX session builds but inference fails,
+`remem search` stops working entirely instead of degrading to two tiers. The
+hole is not new - the old frontends caught the same narrow exception - but the
+code now carries a docstring asserting the opposite. Fix: move the
+`shared_embedder` call inside `_semantic`'s existing broad `try`, or give
+`shared_embedder` a second `except Exception` that also caches the `None`.
+
+**F2 - test isolation depends on `REMEM_EMBED_MODEL` being unset.** The autouse
+fixture in `conftest.py` seeds `{DEFAULT_EMBED_MODEL: None}`. The two frontend
+tests reach `find` through `s.config.embed_model`, which reads the process
+environment. A developer with `REMEM_EMBED_MODEL` exported to a valid model name
+misses the seeded key, downloads 130MB during the suite, and may see a spurious
+failure when a live semantic tier answers a query the test expects trigram to
+answer. Fix: `monkeypatch.delenv` in the fixture, or patch `load_embedder`
+directly.
+
+**F3 - nothing pins the lazy-embedder fix at the frontend.** A future edit
+re-adding `embedder=load_embedder(...)` to `cli.py` or `mcp_server.py` would
+fail no test. The frontends also no longer have any test that drives a live
+semantic tier. Fix: one in-process CLI test that patches
+`services.search.load_embedder` to raise, searches a query with an exact match,
+and asserts exit 0.
+
+**M6 - `remem embed --batch 0` reports success having done nothing.** `--batch 0`,
+`--batch -5` and `--limit 0` all print "Embedded 0 entries" and exit 0. In a
+cron entry with a typo'd flag that is a silent no-op forever, and search quietly
+stays a tier short. The project already has the pattern: `config.positive_int`
+guards `REMEM_TURN_WARN_AT` for exactly this reason. Reject a non-positive
+`--batch` loudly.
+
+**M13 - no frontend test of the semantic marker.** The store level asserts
+`Match.SEMANTIC` and the service level asserts tier ordering, and the *fuzzy*
+marker is covered end to end at both frontends - but nothing asserts that
+`remem search` prints the `~` prefix or that MCP `recall` returns
+`"match": "semantic"`. Given that "every frontend must surface the marker" is one
+of this project's two hard search invariants, the tier it was added for is the
+one with no frontend test.
+
+**Smaller, in rough order of value:** `semantic_search` relies on planner qual
+ordering to avoid a dimension-mismatch error and does not say so (adding
+`v.dim = %(dim)s` makes it unconditional); `dim` is write-only at both layers,
+and populating `Embedder.dim` costs a real inference call per construction;
+spec line 469 still lists `entry_vectors` among `007_events.sql`'s new tables,
+so the next implementer writes a `create table` that fails; `DEFAULT_EMBED_MODEL`
+is defined in both `embed.py` and `config.py` with no cross-reference;
+`LocalEmbedder`'s import guard catches only `ImportError` where a broken
+onnxruntime raises `OSError`; six pure-stub tier tests sit behind
+`pytestmark = pytest.mark.db` and vanish under `-m 'not db'`;
+`test_a_failing_batch_is_counted_not_raised` can only fail by hanging;
+`remem embed` has no advisory lock despite the spec promising one; and nothing
+ever deletes vectors, though the migration comment and the spec both describe a
+cleanup that does not exist.
+
+**Deliberately not follow-ups.** An edited entry keeps its stale vector -
+`services/write.update` mutates in place, so `entries_missing_vectors` never
+offers it again. Blast radius: the entry stays semantically findable by its OLD
+wording while returning its NEW text, and the match marker cannot warn about it
+because it is a legitimate semantic hit by the tier's own rules. It belongs to
+the events plan, where entry writes are already being touched. Separately, the
+`0.55` threshold: a nine-entry store cannot settle a retrieval threshold, and any
+value chosen from it would be overfitted to nine documents. The spec already
+names the document-corpus import as the evaluation that can answer it.
