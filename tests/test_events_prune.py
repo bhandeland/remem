@@ -7,8 +7,10 @@ reports the provenance rows it leaves dangling.
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta, timezone
 
+import psycopg
 import pytest
 from typer.testing import CliRunner
 
@@ -164,6 +166,77 @@ def test_a_mixed_window_prunes_what_it_can_without_refusing(store, owner):
             owner.id, "remem", "claude-code", "stuck"
         )
     ] == [unextracted.id]
+
+
+def test_prune_never_reaches_across_owners(store, owner):
+    """`prune_events` is the only owner-wide DELETE in the codebase, and its
+    window is a timestamp - the owner predicate in the `scoped` CTE is the
+    entire thing standing between one principal's retention run and every
+    other principal's raw. Nothing else pins it."""
+    other = store.ensure_principal("someone-else")
+    mine = store.put_event(an_event(owner, at=NOW - timedelta(days=40)))
+    theirs = store.put_event(an_event(other, at=NOW - timedelta(days=40)))
+    _mark_done(store, owner, "s1", covers_through=mine.occurred_at)
+    _mark_done(store, other, "s1", covers_through=theirs.occurred_at)
+
+    report = events.prune(store, owner.id, before=NOW)
+
+    assert report.deleted == 1
+    assert store.events_for_session(owner.id, "remem", "claude-code", "s1") == []
+    survived = store.events_for_session(other.id, "remem", "claude-code", "s1")
+    assert [e.id for e in survived] == [theirs.id]
+
+
+def _seed_prunable(dsn):
+    """One old, already-extracted event, committed - ready to be deleted."""
+    with psycopg.connect(dsn) as c:
+        store = PostgresStore(c)
+        owner = store.ensure_principal("brandon")
+        event = store.put_event(an_event(owner, at=NOW - timedelta(days=40)))
+        _mark_done(store, owner, "s1", covers_through=event.occurred_at)
+        c.commit()
+        return owner.id
+
+
+@pytest.fixture
+def cli_env(live_dsn, monkeypatch, tmp_path):
+    with psycopg.connect(live_dsn) as c:
+        migrate(c)
+        c.commit()
+    monkeypatch.setenv("REMEM_DSN", live_dsn)
+    monkeypatch.setenv("REMEM_USER_ID", "brandon")
+    monkeypatch.setenv("REMEM_CONFIG", str(tmp_path / "none.toml"))
+    return live_dsn
+
+
+def test_prune_deletes_through_the_cli(cli_env):
+    """The refusal paths were the only ones the CLI covered. This is the run
+    that actually commits a delete - the whole reason the command exists, and
+    the one whose rows do not come back."""
+    owner_id = _seed_prunable(cli_env)
+
+    result = runner.invoke(app, ["events", "prune", "--before", "30d"])
+
+    assert result.exit_code == 0, result.stdout + str(result.stderr)
+    assert "deleted 1 events" in result.stdout
+    with psycopg.connect(cli_env) as c:
+        store = PostgresStore(c)
+        assert store.events_for_session(
+            owner_id, "remem", "claude-code", "s1"
+        ) == []
+
+
+def test_prune_json_reports_all_three_counts(cli_env):
+    """--json is what a cron wrapper reads, so every count the human line
+    prints has to be in it - a silently absent `dangling` reads as zero."""
+    _seed_prunable(cli_env)
+
+    result = runner.invoke(app, ["events", "prune", "--before", "30d", "--json"])
+
+    assert result.exit_code == 0, result.stdout + str(result.stderr)
+    assert json.loads(result.stdout) == {
+        "deleted": 1, "kept_unextracted": 0, "dangling": 0
+    }
 
 
 @pytest.mark.parametrize(
