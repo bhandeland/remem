@@ -184,6 +184,28 @@ def test_the_semantic_tier_builds_the_shared_embedder_once(monkeypatch):
     assert calls == ["m"]
 
 
+def test_a_raising_embedder_constructor_costs_the_tier_and_not_the_search(
+    store, owner, monkeypatch
+):
+    """The probe is a real inference call, and it is outside the old try.
+
+    shared_embedder caught EmbedderUnavailable only. A LocalEmbedder that
+    imports fine and then fails while measuring its own dimension raises
+    something else, which escaped the tier and crashed the search - the
+    exact opposite of what _semantic's docstring promises.
+    """
+    monkeypatch.setattr("remem.services.search._EMBEDDERS", {})
+
+    def explode(name):
+        raise RuntimeError("onnxruntime session failed")
+
+    monkeypatch.setattr("remem.services.search.load_embedder", explode)
+
+    remember(store, owner.id, title="config command", body="body")
+    hits = find(store, owner.id, Query(text="zzzz nothing", limit=5))
+    assert hits == []  # degraded to two tiers, did not raise
+
+
 def test_an_unavailable_embedder_is_a_none_and_is_not_retried(monkeypatch):
     # The policy the frontends used to each restate: search degrades, and it
     # degrades once. Re-attempting the fastembed import on every search would

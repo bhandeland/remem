@@ -73,6 +73,15 @@ def shared_embedder(model_name: str = DEFAULT_EMBED_MODEL) -> Embedder | None:
         embedder: Embedder | None = load_embedder(model_name)
     except EmbedderUnavailable:
         embedder = None
+    except Exception:
+        # Deliberately broader than the declared exception. Constructing a
+        # LocalEmbedder does not only import fastembed - it builds an ONNX
+        # session and runs one real inference call to learn its dimension,
+        # and that call fails in ways the embed layer never promised to
+        # wrap: a corrupt download, a missing shared library, an OOM. Every
+        # one of them means the same thing here, which is what this
+        # function exists to say: no semantic tier, carry on with two.
+        embedder = None
     _EMBEDDERS[model_name] = embedder
     return embedder
 

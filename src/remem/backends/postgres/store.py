@@ -200,6 +200,20 @@ class PostgresStore:
 
     def put_entry(self, entry: Entry) -> Entry:
         with self._cur() as cur:
+            # Read the pre-write text so we can tell, after the upsert, whether
+            # this write is the kind that invalidates a vector. A row that does
+            # not exist yet counts as changed but has nothing to delete, so
+            # text_changed stays True and the delete below is a no-op.
+            cur.execute(
+                "select title, body from entries where id = %s and owner_id = %s",
+                (entry.id, entry.owner_id),
+            )
+            previous = cur.fetchone()
+            text_changed = (
+                previous is None
+                or previous["title"] != entry.title
+                or previous["body"] != entry.body
+            )
             cur.execute(
                 f"""
                 insert into entries (
@@ -238,12 +252,28 @@ class PostgresStore:
                 },
             )
             row = cur.fetchone()
-        if row is None:
-            # The id exists but belongs to someone else, so the ON CONFLICT
-            # update matched no row. Never silently drop the write.
-            raise NotOwner(
-                f"entry {entry.id} exists and is owned by another principal"
-            )
+            if row is None:
+                # The id exists but belongs to someone else, so the ON CONFLICT
+                # update matched no row. Never silently drop the write.
+                raise NotOwner(
+                    f"entry {entry.id} exists and is owned by another principal"
+                )
+            # Derived data must never outlive the text it was derived from.
+            # An edited entry whose vector survives stays findable by its OLD
+            # wording while returning its NEW body, and nothing downstream can
+            # warn about it: the semantic tier's marker says "semantic", which
+            # is true - the vector really is near the query. Deleting here
+            # makes entries_missing_vectors offer the row again, so `remem
+            # embed` repairs it on its next run.
+            #
+            # Only a text change counts. Linking, tagging and superseding all
+            # go through put_entry too, and re-embedding on those would give
+            # `remem embed` a backlog that never empties.
+            if text_changed:
+                cur.execute(
+                    "delete from entry_vectors where entry_id = %s",
+                    (entry.id,),
+                )
         return _row_to_entry(row)
 
     def get_entry(self, entry_id: UUID, owner_id: UUID) -> Entry | None:

@@ -1750,8 +1750,12 @@ The plan executed and merged clean. These were found during execution or in the
 final whole-branch review, judged non-blocking, and deliberately not fixed in
 this branch. Recorded here because a scratch directory is not a record.
 
-**F1 - a construction failure that is not `EmbedderUnavailable` crashes search.
-Do this one first; it is about two lines.** `services/search.shared_embedder`
+**F1 - DONE, events pipeline Task 2 (`2026-08-29-events-pipeline`).**
+`shared_embedder` now has a second, broader `except Exception` around the
+`load_embedder` call that also caches `None`, so a construction failure that
+is not `EmbedderUnavailable` degrades to two tiers instead of crashing search.
+Originally filed as: a construction failure that is not `EmbedderUnavailable`
+crashes search. `services/search.shared_embedder`
 catches only `EmbedderUnavailable`. `LocalEmbedder.__init__` re-raises the
 common failures as that, but its dimension probe - a real inference call - sits
 outside any `try`. An ONNX runtime failure there propagates out of `_semantic`,
@@ -1810,12 +1814,15 @@ onnxruntime raises `OSError`; six pure-stub tier tests sit behind
 ever deletes vectors, though the migration comment and the spec both describe a
 cleanup that does not exist.
 
-**Deliberately not follow-ups.** An edited entry keeps its stale vector -
+**Deliberately not follow-ups.** An edited entry kept its stale vector -
 `services/write.update` mutates in place, so `entries_missing_vectors` never
-offers it again. Blast radius: the entry stays semantically findable by its OLD
-wording while returning its NEW text, and the match marker cannot warn about it
-because it is a legitimate semantic hit by the tier's own rules. It belongs to
-the events plan, where entry writes are already being touched. Separately, the
+offered it again. Blast radius: the entry stayed semantically findable by its
+OLD wording while returning its NEW text, and the match marker could not warn
+about it because it is a legitimate semantic hit by the tier's own rules. **DONE,
+events pipeline Task 2 (`2026-08-29-events-pipeline`)**: `put_entry` now reads
+the pre-write title/body and deletes the entry's rows in `entry_vectors` when
+either changed, so `entries_missing_vectors` offers the entry again and `remem
+embed` repairs it. Separately, the
 `0.55` threshold: a nine-entry store cannot settle a retrieval threshold, and any
 value chosen from it would be overfitted to nine documents. The spec already
 names the document-corpus import as the evaluation that can answer it.
