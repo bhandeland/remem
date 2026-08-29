@@ -39,6 +39,17 @@ async function callRemem($, args, stdinData, timeoutMs) {
     const running = $`remem ${args} < ${new Response(stdinText)}`
       .quiet()
       .nothrow();
+    // If the timeout wins the race below, `running` is abandoned - nothing
+    // ever awaits it again. `.nothrow()` means a nonzero exit resolves
+    // rather than rejects, so this covers the unlikely remainder: a Bun
+    // shell failure that rejects anyway (e.g. `remem` missing from PATH).
+    // An abandoned promise that later rejects with no handler is an
+    // unhandled rejection, which is exactly the class of crash the
+    // fail-soft contract exists to prevent - so give it a no-op catch
+    // purely to keep it from ever surfacing as one. The timeout-as-race
+    // behaviour is unchanged: a ShellPromise cannot be cancelled, and nobody
+    // pretends this makes the underlying `remem` process stop running.
+    running.catch(() => {});
     const timeout = new Promise((resolve) => {
       timer = setTimeout(() => resolve(null), timeoutMs);
     });
