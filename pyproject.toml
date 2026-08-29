@@ -2,7 +2,21 @@
 name = "remem"
 version = "0.1.0"
 description = "Knowledge and memory store for AI coding agents"
+readme = "README.md"
 requires-python = ">=3.14"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Brandon Handeland", email = "brandon@unbuffered.net" }]
+keywords = ["mcp", "memory", "knowledge-base", "claude-code", "agents", "postgres"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Text Processing :: Indexing",
+    "Typing :: Typed",
+]
 dependencies = [
     "mcp>=2.1.1",
     "psycopg[binary]>=3.3.4",
@@ -20,6 +34,11 @@ dependencies = [
 # is missing; search degrades to two tiers.
 [project.optional-dependencies]
 embed = ["fastembed>=0.7.0"]
+
+[project.urls]
+Homepage = "https://gitlab.com/nighthawk-oss/remem"
+Repository = "https://gitlab.com/nighthawk-oss/remem"
+Issues = "https://gitlab.com/nighthawk-oss/remem/-/issues"
 
 [project.scripts]
 remem = "remem.cli:app"
