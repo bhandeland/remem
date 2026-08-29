@@ -104,6 +104,31 @@ one. It is triggered by idleness instead - see "Extraction trigger".
 - No change to `handoff`, `kb`, or collections.
 - No second embedding implementation. The seam is documented; one implementation
   ships.
+- **No learned classification, and no PyTorch.** The tempting version is a
+  classifier that decides which events are worth extracting, cheaper than asking
+  a model. Not now, for two reasons: there are no labels except the extractor's
+  own decisions, so the ceiling is imitating what we already have while
+  inheriting its mistakes; and at this volume the extraction call is not the
+  expensive part. The dependency matters too - `sentence-transformers` pulls
+  PyTorch, gigabytes, onto the install path of a tool whose hooks are meant to
+  be invisible. The local embedder is ONNX-based (`fastembed` shape): inference
+  only, tens of megabytes, no torch.
+
+  What this design does instead is keep the option open. Events are stored in
+  full with `tool`, `harness` and timestamps, and `entry_events` means every
+  event eventually carries an implicit label - *did anything durable come out of
+  this?* - so a usable labelled corpus accumulates for free. Revisit when there
+  is a year of it. Note the tension: the 14-day prune is a privacy and size
+  decision that also keeps that corpus shallow. If the corpus is ever wanted,
+  the lever is retention, not architecture.
+
+  Separately, a large existing document corpus is the right way to test whether
+  semantic recall works at all - a store of ten entries cannot answer it. That
+  is an import path and an evaluation exercise, not training, and it belongs
+  after the pipeline works. It would make the `entry_vectors` index question
+  above urgent rather than incidental: at hundreds of thousands of vectors,
+  pgvector needs a real HNSW index and the embedding run is hours, not minutes.
+  Measure before choosing.
 
 ## Data model
 
