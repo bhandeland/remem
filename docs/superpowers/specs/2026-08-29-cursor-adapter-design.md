@@ -111,7 +111,7 @@ the argument never actually rested on the count:
 ## Requirements
 
 1. Record tool calls and both sides of the conversation from Cursor, through the
-   same `remem hook record-event` every other adapter uses.
+   same `remem record event` every other adapter uses.
 2. Inject the knowledge base block into Cursor sessions, once per session.
 3. Never write to a hook Cursor waits on for a decision.
 4. Merge into `hooks.json` rather than owning it - other tools write there too.
@@ -124,7 +124,7 @@ the argument never actually rested on the count:
 
 `src/remem/agents/cursor/`, four modules, and **no generated script of any
 kind** - not a plugin file, not a shell script. `hooks.json` names the `remem`
-command directly, which is available because `remem hook record-event` already
+command directly, which is available because `remem record event` already
 reads its payload as JSON on stdin.
 
 | module | holds |
@@ -192,9 +192,9 @@ Four entries, four hooks:
 | hook | command | becomes |
 |---|---|---|
 | `sessionStart` | `remem hook context --agent cursor` | writes the `.mdc` |
-| `postToolUse` | `remem hook record-event --agent cursor` | `EventKind.TOOL_CALL` |
-| `beforeSubmitPrompt` | `remem hook record-event --agent cursor` | `EventKind.MESSAGE` |
-| `afterAgentResponse` | `remem hook record-event --agent cursor` | `EventKind.MESSAGE` |
+| `postToolUse` | `remem record event --agent cursor` | `EventKind.TOOL_CALL` |
+| `beforeSubmitPrompt` | `remem record event --agent cursor` | `EventKind.MESSAGE` |
+| `afterAgentResponse` | `remem record event --agent cursor` | `EventKind.MESSAGE` |
 
 `sessionStart` is absent from the adapter's `EVENT_KINDS` table and so can never
 reach `event()` - it injects rather than records, exactly as
