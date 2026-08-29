@@ -108,10 +108,14 @@ def recall_tool(
     project accumulates many of them. Pass true when resuming a workstream
     and looking for where it was left.
 
-    If nothing matches exactly, this falls back to typo-tolerant matching and
-    every result carries "fuzzy": true. Treat those as approximate: they may
-    be what you meant, but do not cite them as certain without reading the
-    entry in full via get_entry.
+    Every result carries "match", saying how it was found:
+      "exact"    - the words are in the entry. Trust it.
+      "semantic" - related in meaning, not in wording. Usually what you
+                   meant, but read the entry in full via get_entry before
+                   citing it.
+      "fuzzy"    - a spelling-similarity guess made because nothing else
+                   matched. Verify before relying on it at all.
+    Tiers never mix: every result in one response has the same "match".
     """
     kinds: list[Kind] = []
     if kind is not None:
@@ -135,7 +139,7 @@ def recall_tool(
                 "project": h.entry.project,
                 "tags": list(h.entry.tags),
                 "snippet": h.snippet,
-                "fuzzy": h.fuzzy,
+                "match": str(h.match),
             }
             for h in hits
         ]

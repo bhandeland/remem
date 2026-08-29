@@ -16,6 +16,7 @@ from remem.domain import (
     Entry,
     Hit,
     Kind,
+    Match,
     Origin,
     Principal,
     PrincipalKind,
@@ -284,7 +285,8 @@ class PostgresStore:
             cur.execute(sql, params)
             rows = cur.fetchall()
         return [
-            Hit(entry=_row_to_entry(r), rank=float(r["rank"]), snippet=r["snippet"])
+            Hit(entry=_row_to_entry(r), rank=float(r["rank"]),
+                snippet=r["snippet"], match=Match.EXACT)
             for r in rows
         ]
 
@@ -350,7 +352,7 @@ class PostgresStore:
                 entry=_row_to_entry(r),
                 rank=float(r["rank"]),
                 snippet=r["snippet"],
-                fuzzy=True,
+                match=Match.FUZZY,
             )
             for r in rows
         ]

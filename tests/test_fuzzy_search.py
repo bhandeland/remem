@@ -10,7 +10,7 @@ import pytest
 
 from remem.backends.postgres.migrate import migrate
 from remem.backends.postgres.store import PostgresStore
-from remem.domain import Kind, Query
+from remem.domain import Kind, Match, Query
 from remem.services.search import find
 from remem.services.write import remember
 
@@ -59,7 +59,7 @@ def test_exact_matches_are_never_fuzzy(store, owner):
     remember(store, owner.id, title="Postgres tuning", body="raise work_mem")
     hits = find(store, owner.id, Query(text="work_mem"))
     assert [h.entry.title for h in hits] == ["Postgres tuning"]
-    assert hits[0].fuzzy is False
+    assert hits[0].match is Match.EXACT
 
 
 def test_a_typo_in_the_title_still_finds_the_entry(store, owner):
@@ -67,7 +67,7 @@ def test_a_typo_in_the_title_still_finds_the_entry(store, owner):
              body="the pool saturates under sustained load")
     hits = find(store, owner.id, Query(text="postgres conection pooling"))
     assert [h.entry.title for h in hits] == ["Postgres connection pooling"]
-    assert hits[0].fuzzy is True
+    assert hits[0].match is Match.FUZZY
 
 
 def test_a_typo_in_a_body_word_still_finds_the_entry(store, owner):
@@ -75,7 +75,7 @@ def test_a_typo_in_a_body_word_still_finds_the_entry(store, owner):
              body="always run migrations before restarting the workers")
     hits = find(store, owner.id, Query(text="migratoins"))
     assert [h.entry.title for h in hits] == ["Deploy checklist"]
-    assert hits[0].fuzzy is True
+    assert hits[0].match is Match.FUZZY
 
 
 def test_fuzzy_never_runs_when_exact_search_found_anything(store, owner):
@@ -83,7 +83,7 @@ def test_fuzzy_never_runs_when_exact_search_found_anything(store, owner):
     remember(store, owner.id, title="Migrations", body="run them first")
     remember(store, owner.id, title="Migratoins typo entry", body="unrelated")
     hits = find(store, owner.id, Query(text="migrations"))
-    assert all(h.fuzzy is False for h in hits)
+    assert all(h.match is Match.EXACT for h in hits)
     assert "Migrations" in [h.entry.title for h in hits]
 
 
@@ -159,15 +159,15 @@ def test_cli_marks_fuzzy_results_and_says_so(live_dsn, monkeypatch, tmp_path):
                         "--body", "the pool saturates under load"])
 
     exact = runner.invoke(app, ["search", "saturates", "--json"])
-    assert _json.loads(exact.stdout)[0]["fuzzy"] is False
+    assert _json.loads(exact.stdout)[0]["match"] == "exact"
 
     fuzzy = runner.invoke(app, ["search", "postgres conection pooling", "--json"])
     payload = _json.loads(fuzzy.stdout)
-    assert payload[0]["fuzzy"] is True
+    assert payload[0]["match"] == "fuzzy"
 
     human = runner.invoke(app, ["search", "postgres conection pooling"])
-    assert "No exact matches" in human.stdout
-    assert "~" in human.stdout
+    assert "No exact or related matches" in human.stdout
+    assert "?" in human.stdout
 
 
 @pytest.mark.db
@@ -186,5 +186,5 @@ def test_mcp_recall_labels_fuzzy_results(live_dsn, monkeypatch, tmp_path):
     remember_tool(title="Postgres connection pooling",
                   body="the pool saturates under load")
 
-    assert recall_tool(query="saturates")[0]["fuzzy"] is False
-    assert recall_tool(query="postgres conection pooling")[0]["fuzzy"] is True
+    assert recall_tool(query="saturates")[0]["match"] == "exact"
+    assert recall_tool(query="postgres conection pooling")[0]["match"] == "fuzzy"

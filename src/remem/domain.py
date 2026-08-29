@@ -26,6 +26,20 @@ class Origin(StrEnum):
     HANDOFF = "handoff"
 
 
+class Match(StrEnum):
+    """How a hit matched, and therefore how much to trust it.
+
+    Search runs three tiers and never blends them, so exactly one of these
+    describes every hit in a result set. One field rather than an
+    accumulating set of booleans: `fuzzy` alone could not distinguish a
+    semantic match from a trigram one, and those deserve different trust.
+    """
+
+    EXACT = "exact"
+    SEMANTIC = "semantic"
+    FUZZY = "fuzzy"
+
+
 class CaptureStatus(StrEnum):
     PENDING = "pending"
     RUNNING = "running"
@@ -137,15 +151,15 @@ class Query:
 class Hit:
     """A search result.
 
-    `fuzzy` is True when this came from typo-tolerant fallback rather than an
-    exact match. Callers must be able to tell the difference: an agent handed
-    an approximate match with no marker would cite it as certain.
+    `match` says which tier answered. Callers must be able to tell the
+    difference: an agent handed an approximate match with no marker would
+    cite it as certain.
     """
 
     entry: Entry
     rank: float
     snippet: str
-    fuzzy: bool = False
+    match: Match = Match.EXACT
 
 
 @dataclass(slots=True)

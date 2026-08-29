@@ -18,7 +18,7 @@ import typer
 
 from remem.backends.postgres.migrate import applied_versions, migrate, pending_versions
 from remem.config import load
-from remem.domain import CollectionQuery, Entry, Kind, Origin, Query
+from remem.domain import CollectionQuery, Entry, Kind, Match, Origin, Query
 from remem.project import resolve_project
 from remem.services import kb, write
 from remem.services.search import find
@@ -235,8 +235,9 @@ def search(
 ):
     """Search stored knowledge.
 
-    Falls back to typo-tolerant matching when an exact search finds nothing;
-    those results are marked with a leading ~ (and "fuzzy": true in --json).
+    Three tiers, tried in order and never blended: exact full-text, then
+    entries with related meaning (marked ~), then typo-tolerant matching
+    (marked ?). --json reports which as "match".
     --handoff also searches session handoffs, which are excluded by default.
     """
     with _session() as s:
@@ -251,19 +252,24 @@ def search(
         payload = []
         for h in hits:
             data = _entry_dict(h.entry, h.snippet)
-            data["fuzzy"] = h.fuzzy
+            data["match"] = str(h.match)
             payload.append(data)
         typer.echo(json.dumps(payload, indent=2))
         return
     if not hits:
         typer.echo("No matches.")
         return
-    if hits[0].fuzzy:
-        # Say it once, up front: these are approximate, and the caller should
-        # know that before reading any of them.
-        typer.echo(f"No exact matches for {query!r}. Showing similar entries:\n")
+    # Say it once, up front: the caller should know how these were found
+    # before reading any of them. Tiers never blend, so hits[0] speaks for
+    # the whole result set.
+    if hits[0].match is Match.SEMANTIC:
+        typer.echo(f"No exact matches for {query!r}. Showing entries with "
+                   f"related meaning:\n")
+    elif hits[0].match is Match.FUZZY:
+        typer.echo(f"No exact or related matches for {query!r}. Showing "
+                   f"similar spellings:\n")
     for h in hits:
-        marker = "~ " if h.fuzzy else ""
+        marker = {Match.EXACT: "", Match.SEMANTIC: "~ ", Match.FUZZY: "? "}[h.match]
         typer.echo(f"{marker}{h.entry.id}  [{h.entry.kind}] {h.entry.title}")
         typer.echo(f"    {h.snippet}")
 
