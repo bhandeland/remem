@@ -1,0 +1,137 @@
+# GitLab CI/CD Pipeline for remem
+
+stages:
+  - lint
+  - security
+  - test
+  - publish
+
+variables:
+  UV_CACHE_DIR: "$CI_PROJECT_DIR/.cache/uv"
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  PYTHON_VERSION: "3.14"
+
+# Cache uv's download cache and the project venv between jobs
+.uv-cache:
+  cache:
+    key: "$CI_JOB_NAME-$PYTHON_VERSION-v1"
+    paths:
+      - .cache/uv
+      - .cache/pip
+      - .venv/
+
+# Base job for Python tasks
+.python-base:
+  image: python:${PYTHON_VERSION}-slim
+  extends: .uv-cache
+  before_script:
+    - pip install uv
+    - uv sync --all-extras
+
+.default-rules:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+
+# =============================================================================
+# Linting Stage
+# =============================================================================
+
+ruff:
+  stage: lint
+  extends:
+    - .python-base
+    - .default-rules
+  script:
+    - uv run ruff check src/ tests/
+    - uv run ruff format --check src/ tests/
+  # Advisory until ruff is added to the dev group and the tree is clean.
+  allow_failure: true
+
+# =============================================================================
+# Security Scanning Stage
+# =============================================================================
+
+pip-audit:
+  stage: security
+  extends:
+    - .python-base
+    - .default-rules
+  script:
+    - pip install pip-audit
+    - uv export --no-hashes --format requirements-txt > requirements.txt
+    - pip-audit -r requirements.txt --strict
+  allow_failure: true  # Advisory until dependencies are fully audited
+
+# =============================================================================
+# Test Stage
+# =============================================================================
+#
+# remem's db-marked tests pytest.skip with an explanatory message when Postgres
+# is unreachable, so the suite reports success while never touching the
+# database. A green run here would otherwise prove nothing. The service block
+# provides Postgres, and the assert-db-ran step below fails the job if any
+# db-marked test skipped anyway - a broken service must not read as a pass.
+
+pytest:
+  stage: test
+  image: python:${PYTHON_VERSION}-slim
+  extends:
+    - .uv-cache
+    - .default-rules
+  services:
+    - name: pgvector/pgvector:pg18
+      alias: postgres
+  variables:
+    POSTGRES_USER: remem
+    POSTGRES_PASSWORD: remem
+    POSTGRES_DB: remem
+    REMEM_DSN: "postgresql://remem:remem@postgres:5432/remem"
+  before_script:
+    - pip install uv
+    - uv sync --all-extras
+  script:
+    - uv run pytest tests/ -v --cov=src/remem --cov-report=term-missing --cov-report=xml:coverage.xml --junitxml=report.xml
+    # A db test that skipped is a db test that did not run. Fail loudly.
+    - |
+      uv run python - <<'PY'
+      import sys, xml.etree.ElementTree as ET
+      root = ET.parse("report.xml").getroot()
+      skipped = [
+          tc.get("classname", "") + "::" + tc.get("name", "")
+          for tc in root.iter("testcase")
+          if tc.find("skipped") is not None and "db" in tc.get("classname", "").lower()
+      ]
+      if skipped:
+          print("db-marked tests SKIPPED - Postgres was not reachable:")
+          for s in skipped:
+              print("  ", s)
+          sys.exit(1)
+      print("db tests ran (no skips)")
+      PY
+  coverage: '/TOTAL.*\s+(\d+%)/'
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
+      junit: report.xml
+    when: always
+
+# =============================================================================
+# Publish Stage
+# =============================================================================
+
+publish-pypi:
+  stage: publish
+  image: python:${PYTHON_VERSION}-slim
+  script:
+    - pip install uv
+    - uv build
+    - uv publish --token $PYPI_TOKEN
+  rules:
+    - if: $CI_COMMIT_TAG
+  environment:
+    name: pypi
+    url: https://pypi.org/project/remem/

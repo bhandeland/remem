@@ -1,5 +1,7 @@
 # remem
 
+> **This repo is mirrored from [GitLab](https://gitlab.com/nighthawk-oss/remem).** Issues, merge requests, and contributions should go there.
+
 A knowledge and memory store for AI coding agents. Agents and humans record
 what they learn about a project - facts, reference docs, and prescriptive
 rules - and get it back through ranked search or as a context block injected

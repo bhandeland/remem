@@ -493,3 +493,40 @@ def test_the_limit_bounds_one_run(store, owner):
                                 idle_seconds=IDLE, limit=2)
 
     assert report.claimed == 2
+
+
+def test_repeated_success_never_exhausts_the_attempt_budget(conn, store, owner):
+    """The counter is a *consecutive*-failure budget, and success clears it.
+
+    Discovery-based claiming re-claims the SAME row every time a session
+    produces new outstanding events, so `attempts` is incremented by runs
+    that succeed. Left unreset it is a lifetime claim counter, and a session
+    that is extracted cleanly more times than MAX_ATTEMPTS - a resumed one,
+    or a long one worked over successive runs by MAX_EVENTS_PER_JOB - dies
+    with "gave up after N attempts", a reason that never happened.
+    """
+    record.enable(store, owner.id, "remem")
+    rounds = extraction.MAX_ATTEMPTS + 3
+
+    for i in range(rounds):
+        record.record(
+            store,
+            owner.id,
+            a_harness_event(
+                occurred_at=NOW - timedelta(hours=3) + timedelta(minutes=i),
+                payload={"command": f"round {i}"},
+            ),
+            "claude-code",
+        )
+        report = extraction.process(
+            store, owner.id, FakeExtractor([an_entry(title=f"round {i}")]),
+            idle_seconds=IDLE, limit=10,
+        )
+        assert (report.claimed, report.succeeded, report.failed) == (1, 1, 0), (
+            f"round {i}: {report}"
+        )
+
+    [job] = _all_jobs(conn, store, owner)
+    assert job.status is JobStatus.DONE
+    assert job.error is None
+    assert job.attempts <= extraction.MAX_ATTEMPTS
