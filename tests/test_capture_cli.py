@@ -35,10 +35,10 @@ def test_installing_twice_leaves_one_session_end_hook(tmp_path):
 
 
 @pytest.mark.db
-def test_install_report_says_capture_is_off_by_default(tmp_path):
+def test_install_report_says_recording_is_off_by_default(tmp_path):
     report = ClaudeCodeAdapter().install(scope="user", home=tmp_path)
     combined = " ".join(report.actions + report.notes).lower()
-    assert "capture" in combined
+    assert "record" in combined
     assert "enable" in combined
 
 

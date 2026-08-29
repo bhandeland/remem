@@ -810,7 +810,9 @@ def capture_enable(
     project: Annotated[Optional[str], typer.Option("--project")] = None,
 ):
     """Deprecated: use `remem record enable`."""
-    typer.echo("`capture enable` is renamed to `remem record enable`.")
+    # stderr: a script or crontab still calling the old name should not gain
+    # a permanent line of noise on stdout, once per run, forever.
+    typer.echo("`capture enable` is renamed to `remem record enable`.", err=True)
     from remem.services import record
 
     name = project or _default_project()
@@ -836,7 +838,7 @@ def capture_disable(
     project: Annotated[Optional[str], typer.Option("--project")] = None,
 ):
     """Deprecated: use `remem record disable`."""
-    typer.echo("`capture disable` is renamed to `remem record disable`.")
+    typer.echo("`capture disable` is renamed to `remem record disable`.", err=True)
     from remem.services import record
 
     name = project or _default_project()
@@ -850,7 +852,8 @@ def capture_status(
     as_json: Annotated[bool, typer.Option("--json")] = False,
 ):
     """Deprecated: use `remem record status`."""
-    # stderr, not stdout: --json below must stay parseable on its own.
+    # stderr: --json below must stay parseable on its own, and this is the
+    # same reasoning as the other three aliases besides.
     typer.echo("`capture status` is renamed to `remem record status`.", err=True)
     with _session() as s:
         counts = s.store.extract_job_counts(s.owner.id)
@@ -886,7 +889,9 @@ def capture_drain(
     job: Annotated[Optional[str], typer.Option("--job")] = None,
 ):
     """Deprecated: use `remem events process`."""
-    typer.echo("`capture drain` is renamed to `remem events process`.")
+    # stderr - see capture_enable's comment: `capture drain` is exactly the
+    # kind of command an old crontab still calls, unattended, forever.
+    typer.echo("`capture drain` is renamed to `remem events process`.", err=True)
     events_process(limit=limit, job=job)
 
 

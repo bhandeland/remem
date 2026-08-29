@@ -174,34 +174,34 @@ def test_install_copies_every_bundled_skill(tmp_path):
     assert (skills / "remem" / "SKILL.md").exists()
     assert (skills / "remem-handoff" / "SKILL.md").exists()
     assert (skills / "remem-prime" / "SKILL.md").exists()
-    assert (skills / "remem-capture" / "SKILL.md").exists()
+    assert (skills / "remem-record" / "SKILL.md").exists()
 
 
 @pytest.mark.db
-def test_the_capture_skill_leads_with_the_opt_in_gate(tmp_path):
+def test_the_record_skill_leads_with_the_opt_in_gate(tmp_path):
     ClaudeCodeAdapter().install(scope="user", home=tmp_path)
-    text = (tmp_path / ".claude" / "skills" / "remem-capture" / "SKILL.md").read_text()
+    text = (tmp_path / ".claude" / "skills" / "remem-record" / "SKILL.md").read_text()
     # The gate is the whole safety story, and it is also the answer to the
-    # question that brings anyone to this skill: nothing was captured because
+    # question that brings anyone to this skill: nothing was recorded because
     # nobody turned it on.
-    assert "remem capture enable" in text
+    assert "remem record enable" in text
 
 
 @pytest.mark.db
-def test_the_capture_skill_explains_the_context_block_exclusion(tmp_path):
+def test_the_record_skill_explains_the_context_block_exclusion(tmp_path):
     ClaudeCodeAdapter().install(scope="user", home=tmp_path)
-    text = (tmp_path / ".claude" / "skills" / "remem-capture" / "SKILL.md").read_text()
-    # An agent that finds a captured entry in `search` but never in a context
-    # block will otherwise conclude capture is broken. It is deliberate, and
-    # `kb pin` is the way out.
+    text = (tmp_path / ".claude" / "skills" / "remem-record" / "SKILL.md").read_text()
+    # An agent that finds an extracted entry in `search` but never in a
+    # context block will otherwise conclude extraction is broken. It is
+    # deliberate, and `kb pin` is the way out.
     assert "remem kb pin" in text
 
 
 @pytest.mark.db
-def test_the_capture_skill_points_at_the_failure_surface(tmp_path):
+def test_the_record_skill_points_at_the_failure_surface(tmp_path):
     ClaudeCodeAdapter().install(scope="user", home=tmp_path)
-    text = (tmp_path / ".claude" / "skills" / "remem-capture" / "SKILL.md").read_text()
-    assert "remem capture status" in text
+    text = (tmp_path / ".claude" / "skills" / "remem-record" / "SKILL.md").read_text()
+    assert "remem record status" in text
     # Retrying a job past the attempt cap is the one recovery path that is not
     # discoverable from `--help` on the parent command.
     assert "--job" in text

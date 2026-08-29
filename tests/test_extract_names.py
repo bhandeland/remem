@@ -67,9 +67,12 @@ def test_the_child_variable_is_named_consistently_everywhere():
 
 @pytest.mark.db
 def test_the_capture_commands_still_run_and_warn(env):
+    """The warning is on stderr, not stdout - an old crontab still calling
+    `capture drain` every hour should not gain a permanent line of stdout
+    noise, and `capture status --json` has to stay parseable on its own."""
     result = runner.invoke(app, ["capture", "enable", "--project", "x"])
     assert result.exit_code == 0
-    assert "remem record enable" in result.stdout
+    assert "remem record enable" in result.stderr
 
 
 def test_no_credential_or_endpoint_variable_became_settable():
