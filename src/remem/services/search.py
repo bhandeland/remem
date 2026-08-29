@@ -43,7 +43,7 @@ def find(
     stored. Trigram similarity fixes exactly that case. Mixing fuzzy hits into
     a result set that already contains exact ones would trade precision for a
     problem that does not exist there, so the fallback runs only on an empty
-    result. Every hit it returns is marked `fuzzy=True`.
+    result. Every hit it returns is marked `match=Match.FUZZY`.
 
     Handoffs are excluded from the default origins unless `include_handoffs`
     is set or the caller already named specific origins.
