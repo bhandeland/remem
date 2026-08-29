@@ -45,7 +45,7 @@ PROMPT = """\
 You are reading a transcript of a coding session to extract durable knowledge.
 
 Return a JSON array of at most 5 objects, each shaped:
-  {"title": "...", "body": "...", "kind": "memory|doc|rule", "tags": ["..."]}
+  {"title": "...", "body": "...", "kind": "note|doc|rule", "tags": ["..."]}
 
 Record only what will still be true and useful in a month:
 - a decision whose reasoning is not obvious from the code

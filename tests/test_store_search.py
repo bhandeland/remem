@@ -21,7 +21,7 @@ def owner(store):
 
 
 def add(store, owner, title, body, **kw):
-    e = Entry(id=new_id(), kind=kw.pop("kind", Kind.MEMORY), title=title,
+    e = Entry(id=new_id(), kind=kw.pop("kind", Kind.NOTE), title=title,
               body=body, owner_id=owner.id, **kw)
     return store.put_entry(e)
 
@@ -66,7 +66,7 @@ def test_include_superseded_opt_in(store, owner):
 def test_never_returns_another_owners_entries(store, owner):
     other = store.ensure_principal("someone-else")
     add(store, owner, "Mine", "secret sauce")
-    e = Entry(id=new_id(), kind=Kind.MEMORY, title="Theirs",
+    e = Entry(id=new_id(), kind=Kind.NOTE, title="Theirs",
               body="secret sauce", owner_id=other.id)
     store.put_entry(e)
     hits = store.search(Query(text="secret"), owner.id)
@@ -75,7 +75,7 @@ def test_never_returns_another_owners_entries(store, owner):
 
 def test_filters_by_kind(store, owner):
     add(store, owner, "A rule", "always lint", kind=Kind.RULE)
-    add(store, owner, "A memory", "always lint", kind=Kind.MEMORY)
+    add(store, owner, "A memory", "always lint", kind=Kind.NOTE)
     hits = store.search(Query(text="lint", kinds=[Kind.RULE]), owner.id)
     assert [h.entry.title for h in hits] == ["A rule"]
 

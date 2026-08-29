@@ -571,13 +571,13 @@ class PostgresStore:
 
     # ---------------- capture ----------------
 
-    def set_capture_enabled(
+    def set_record_enabled(
         self, owner_id: UUID, project: str, enabled: bool
     ) -> None:
         with self._cur() as cur:
             cur.execute(
                 """
-                insert into capture_settings (owner_id, project, enabled)
+                insert into record_settings (owner_id, project, enabled)
                 values (%s, %s, %s)
                 on conflict (owner_id, project)
                   do update set enabled = excluded.enabled
@@ -585,10 +585,10 @@ class PostgresStore:
                 (owner_id, project, enabled),
             )
 
-    def capture_enabled(self, owner_id: UUID, project: str) -> bool:
+    def record_enabled(self, owner_id: UUID, project: str) -> bool:
         with self._cur() as cur:
             cur.execute(
-                "select enabled from capture_settings "
+                "select enabled from record_settings "
                 "where owner_id = %s and project = %s",
                 (owner_id, project),
             )
@@ -730,11 +730,11 @@ class PostgresStore:
             )
             return [_row_to_capture_job(r) for r in cur.fetchall()]
 
-    def enabled_capture_projects(self, owner_id: UUID) -> list[str]:
-        """Projects with capture switched on, for `remem capture status`."""
+    def enabled_record_projects(self, owner_id: UUID) -> list[str]:
+        """Projects with recording switched on, for `remem capture status`."""
         with self._cur() as cur:
             cur.execute(
-                "select project from capture_settings "
+                "select project from record_settings "
                 "where owner_id = %s and enabled order by project",
                 (owner_id,),
             )

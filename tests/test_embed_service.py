@@ -40,7 +40,7 @@ def store(conn):
 
 def _entries(store, owner_id, n):
     return [
-        store.put_entry(Entry(id=new_id(), kind=Kind.MEMORY, title=f"t{i}",
+        store.put_entry(Entry(id=new_id(), kind=Kind.NOTE, title=f"t{i}",
                               body=f"body {i}", owner_id=owner_id))
         for i in range(n)
     ]
@@ -84,7 +84,7 @@ def test_embeds_title_and_body_together(store):
     # embedding makes "config command" fail to match an entry titled exactly
     # that. Both, joined, or the tier misses its most obvious cases.
     owner = store.ensure_principal("embed-text")
-    store.put_entry(Entry(id=new_id(), kind=Kind.MEMORY, title="the title",
+    store.put_entry(Entry(id=new_id(), kind=Kind.NOTE, title="the title",
                           body="the body", owner_id=owner.id))
     embedder = FakeEmbedder()
 

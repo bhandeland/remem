@@ -96,7 +96,7 @@ class _TitleFromTranscript:
         from remem.domain import Kind
 
         return [CapturedEntry(title=transcript.strip(), body="body",
-                              kind=Kind.MEMORY)]
+                              kind=Kind.NOTE)]
 
 
 def _enqueue_job(dsn, project, transcript_path):

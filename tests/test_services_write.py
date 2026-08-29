@@ -28,7 +28,7 @@ def test_remember_returns_a_persisted_entry(store, owner):
 
 def test_remember_defaults_to_a_memory_from_an_agent(store, owner):
     e = write.remember(store, owner.id, title="T", body="B")
-    assert e.kind is Kind.MEMORY
+    assert e.kind is Kind.NOTE
     assert e.origin is Origin.AGENT
 
 

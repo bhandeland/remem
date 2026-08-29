@@ -64,7 +64,7 @@ def test_listing_query_actually_uses_the_ordered_index(store, conn):
         store.put_entry(
             Entry(
                 id=new_id(),
-                kind=Kind.MEMORY,
+                kind=Kind.NOTE,
                 title=f"Entry {i}",
                 body="shared body text for planner statistics",
                 owner_id=owner.id,

@@ -54,7 +54,7 @@ def _invalid_kind_message(kind: str) -> str:
 def remember_tool(
     title: str,
     body: str,
-    kind: str = "memory",
+    kind: str = "note",
     project: str | None = None,
     tags: list[str] | None = None,
 ) -> dict:
@@ -68,7 +68,7 @@ def remember_tool(
     knowledge base injected at session start queries on. Only pass it to file
     something under a different project.
 
-    kind: "memory" (something learned), "doc" (reference material), or
+    kind: "note" (something learned), "doc" (reference material), or
     "rule" (a convention that must be followed - these are always injected
     into future sessions).
     """
@@ -101,7 +101,7 @@ def recall_tool(
     a past decision, or before re-deriving something. Returns snippets and
     ids; call get_entry for anything worth reading in full.
 
-    kind: optional filter - "memory", "doc", or "rule". Omit to search
+    kind: optional filter - "note", "doc", or "rule". Omit to search
     across all kinds.
 
     include_handoffs: session handoffs are excluded by default because a

@@ -15,8 +15,14 @@ create table if not exists schema_migrations (
 """
 
 
-def _migration_files() -> list[tuple[str, str]]:
-    """(version, sql) pairs sorted by filename."""
+def migration_files() -> list[tuple[str, str]]:
+    """(version, sql) pairs sorted by filename.
+
+    Public because a migration whose job is to rewrite existing data can
+    only be tested by standing in the middle of the sequence - applying up
+    to the version before it, writing rows the old way, and then applying
+    the rest.
+    """
     package = resources.files("remem.backends.postgres") / "migrations"
     out = []
     for item in sorted(package.iterdir(), key=lambda p: p.name):
@@ -40,7 +46,7 @@ def applied_versions(conn: psycopg.Connection) -> list[str]:
 
 def pending_versions(conn: psycopg.Connection) -> list[str]:
     done = set(applied_versions(conn))
-    return [v for v, _ in _migration_files() if v not in done]
+    return [v for v, _ in migration_files() if v not in done]
 
 
 def migrate(conn: psycopg.Connection) -> list[str]:
@@ -55,7 +61,7 @@ def migrate(conn: psycopg.Connection) -> list[str]:
     conn.execute(_TRACKING_TABLE)
     done = set(applied_versions(conn))
     newly = []
-    for version, sql in _migration_files():
+    for version, sql in migration_files():
         if version in done:
             continue
         conn.execute(sql)

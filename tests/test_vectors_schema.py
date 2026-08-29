@@ -44,7 +44,7 @@ def test_deleting_an_entry_deletes_its_vectors(migrated):
 
     store = PostgresStore(migrated)
     owner = store.ensure_principal("vec-cascade")
-    entry = store.put_entry(Entry(id=new_id(), kind=Kind.MEMORY, title="t",
+    entry = store.put_entry(Entry(id=new_id(), kind=Kind.NOTE, title="t",
                                   body="b", owner_id=owner.id))
     migrated.execute(
         "insert into entry_vectors (entry_id, model, dim, vector) "

@@ -179,7 +179,7 @@ def remember(
     title: str,
     body: Annotated[Optional[str], typer.Option("--body")] = None,
     edit: Annotated[bool, typer.Option("--edit")] = False,
-    kind: Annotated[Kind, typer.Option("--kind")] = Kind.MEMORY,
+    kind: Annotated[Kind, typer.Option("--kind")] = Kind.NOTE,
     project: Annotated[Optional[str], typer.Option("--project")] = None,
     is_global: Annotated[bool, typer.Option("--global")] = False,
     tag: Annotated[Optional[list[str]], typer.Option("--tag")] = None,
@@ -781,7 +781,7 @@ def capture_status(
         counts = s.store.capture_job_counts(s.owner.id)
         failures = s.store.recent_failed_capture_jobs(s.owner.id)
         model = s.config.capture_model
-        projects = s.store.enabled_capture_projects(s.owner.id)
+        projects = s.store.enabled_record_projects(s.owner.id)
 
     if as_json:
         typer.echo(json.dumps({

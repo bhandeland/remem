@@ -44,7 +44,7 @@ def test_generated_search_column_is_populated(conn):
     )
     conn.execute(
         "insert into entries (id, kind, title, body, owner_id) values "
-        "('00000000-0000-7000-8000-000000000002', 'memory', 'Postgres tuning',"
+        "('00000000-0000-7000-8000-000000000002', 'note', 'Postgres tuning',"
         " 'raise work_mem for big sorts',"
         " '00000000-0000-7000-8000-000000000001')"
     )

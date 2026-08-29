@@ -33,7 +33,7 @@ def test_query_origins_defaults_to_empty_meaning_all():
 
 def test_query_origins_are_not_shared_between_instances():
     a, b = Query(), Query()
-    a.origins.append(Origin.CAPTURE)
+    a.origins.append(Origin.EXTRACTED)
     assert b.origins == []
 
 
@@ -44,7 +44,7 @@ def test_capture_tables_exist(conn):
         "where table_schema = 'public'"
     ).fetchall()
     names = {r[0] for r in rows}
-    assert {"capture_settings", "capture_jobs"} <= names
+    assert {"record_settings", "capture_jobs"} <= names
 
 
 def test_capture_jobs_pending_index_is_partial(conn):

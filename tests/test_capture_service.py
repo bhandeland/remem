@@ -68,7 +68,7 @@ def test_drain_writes_entries_with_capture_origin(store, owner, transcript):
                     transcript_path=transcript, session_id="sess-9")
     distiller = FakeDistiller([
         CapturedEntry(title="Pool sizing", body="pgbouncer saturates",
-                      kind=Kind.MEMORY, tags=["ops"])
+                      kind=Kind.NOTE, tags=["ops"])
     ])
 
     report = capture.drain(store, owner.id, distiller)
@@ -78,7 +78,7 @@ def test_drain_writes_entries_with_capture_origin(store, owner, transcript):
     hits = store.search(Query(text="pgbouncer"), owner.id)
     assert [h.entry.title for h in hits] == ["Pool sizing"]
     entry = hits[0].entry
-    assert entry.origin is Origin.CAPTURE
+    assert entry.origin is Origin.EXTRACTED
     assert entry.project == "remem"
     assert entry.session_id == "sess-9"
     assert entry.agent == "claude-code"
@@ -147,7 +147,7 @@ def test_dedup_skips_a_title_already_captured_for_that_project(
     """Capture re-derives the same facts every session; without this the store
     fills with near-identical entries."""
     capture.enable(store, owner.id, "remem")
-    entry = CapturedEntry(title="Pool sizing", body="first", kind=Kind.MEMORY)
+    entry = CapturedEntry(title="Pool sizing", body="first", kind=Kind.NOTE)
 
     for session in ("a", "b"):
         capture.enqueue(store, owner.id, project="remem",
@@ -163,7 +163,7 @@ def test_dedup_does_not_block_the_same_title_in_another_project(
 ):
     capture.enable(store, owner.id, "alpha")
     capture.enable(store, owner.id, "beta")
-    entry = CapturedEntry(title="Pool sizing", body="b", kind=Kind.MEMORY)
+    entry = CapturedEntry(title="Pool sizing", body="b", kind=Kind.NOTE)
 
     for project in ("alpha", "beta"):
         capture.enqueue(store, owner.id, project=project,
@@ -186,7 +186,7 @@ def test_dedup_does_not_block_a_title_a_human_wrote(store, owner, transcript):
     capture.drain(
         store, owner.id,
         FakeDistiller([CapturedEntry(title="Pool sizing", body="captured",
-                                     kind=Kind.MEMORY)]),
+                                     kind=Kind.NOTE)]),
     )
     assert len(store.search(Query(text="Pool sizing"), owner.id)) == 2
 
@@ -232,7 +232,7 @@ def test_drain_does_not_raise_when_writing_an_entry_fails(store, owner, transcri
 
     report = capture.drain(
         ExplodingStore(store), owner.id,
-        FakeDistiller([CapturedEntry(title="T", body="B", kind=Kind.MEMORY)]),
+        FakeDistiller([CapturedEntry(title="T", body="B", kind=Kind.NOTE)]),
     )
     assert report.failed == 1
     stored = store.get_capture_job(job.id, owner.id)
@@ -261,7 +261,7 @@ def test_one_job_raising_does_not_abandon_the_rest(store, owner, transcript):
 
     report = capture.drain(
         SometimesExploding(store), owner.id,
-        FakeDistiller([CapturedEntry(title="T", body="B", kind=Kind.MEMORY)]),
+        FakeDistiller([CapturedEntry(title="T", body="B", kind=Kind.NOTE)]),
     )
     assert report.claimed == 2
     assert report.failed == 1
@@ -319,7 +319,7 @@ def test_drain_job_retries_a_job_that_gave_up(store, owner, transcript):
 
     report = capture.drain_job(
         store, owner.id, job.id,
-        FakeDistiller([CapturedEntry(title="T", body="B", kind=Kind.MEMORY)]),
+        FakeDistiller([CapturedEntry(title="T", body="B", kind=Kind.NOTE)]),
     )
 
     assert report.claimed == 1
@@ -385,7 +385,7 @@ def test_drain_tells_the_distiller_what_is_already_recorded(store, owner, transc
     remember(store, owner.id, title="A rule the user wrote", body="b",
              project="remem", origin=Origin.HUMAN)
     remember(store, owner.id, title="An earlier capture", body="b",
-             project="remem", origin=Origin.CAPTURE)
+             project="remem", origin=Origin.EXTRACTED)
 
     capture.enable(store, owner.id, "remem")
     capture.enqueue(store, owner.id, project="remem",

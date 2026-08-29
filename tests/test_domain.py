@@ -24,13 +24,13 @@ def test_new_id_is_a_uuid7_and_is_time_sortable():
 def test_enums_are_string_valued():
     assert Kind.RULE == "rule"
     assert Scope.PERSONAL == "personal"
-    assert Origin.CAPTURE == "capture"
+    assert Origin.EXTRACTED == "extracted"
     assert PrincipalKind.TEAM == "team"
 
 
 def test_entry_defaults():
     owner = new_id()
-    e = Entry(id=new_id(), kind=Kind.MEMORY, title="t", body="b", owner_id=owner)
+    e = Entry(id=new_id(), kind=Kind.NOTE, title="t", body="b", owner_id=owner)
     assert e.project is None
     assert e.scope is Scope.PERSONAL
     assert e.origin is Origin.AGENT

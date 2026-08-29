@@ -79,7 +79,7 @@ def _entry_from(item: object) -> CapturedEntry | None:
     if not title.strip() or not body.strip():
         return None
     try:
-        kind = Kind(item.get("kind", "memory"))
+        kind = Kind(item.get("kind", "note"))
     except ValueError:
         return None
     return CapturedEntry(

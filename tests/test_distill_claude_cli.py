@@ -44,7 +44,7 @@ def test_distill_parses_the_subprocess_output(monkeypatch):
     def fake_run(cmd, **kwargs):
         return subprocess.CompletedProcess(
             cmd, 0,
-            stdout='[{"title":"T","body":"B","kind":"memory"}]',
+            stdout='[{"title":"T","body":"B","kind":"note"}]',
             stderr="",
         )
 

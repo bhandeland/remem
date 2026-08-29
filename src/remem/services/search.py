@@ -26,7 +26,7 @@ MAX_LIMIT = 200
 #: from search. The alternative - an `exclude_origins` field on Query - avoids
 #: that at the cost of a second overlapping filter in the store's SQL for one
 #: caller. Chosen deliberately; if a fourth origin appears, look here.
-DEFAULT_ORIGINS = [Origin.HUMAN, Origin.AGENT, Origin.CAPTURE]
+DEFAULT_ORIGINS = [Origin.HUMAN, Origin.AGENT, Origin.EXTRACTED]
 
 #: The default value of `find(embedder=...)`, and not the same thing as None.
 #:

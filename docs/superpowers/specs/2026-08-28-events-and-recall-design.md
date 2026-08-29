@@ -462,9 +462,17 @@ nothing unless the skip count is zero.
 
 ## Migration from capture
 
-One migration, `007_events.sql` - `006` is the semantic-recall migration,
-which shipped first. It is the only part of this design that touches
-existing data, so each step is spelled out with what it can and cannot break.
+Four migrations, not one `007_events.sql` - `006` is the semantic-recall
+migration, which shipped first, and the implementation plan splits what
+follows into files small enough that each one lands with the suite green:
+`007_vocabulary.sql` (Task 1: the enum renames and the jsonb rewrite they do
+not reach, `capture_settings` -> `record_settings`), `008_events.sql`
+(Task 3: `event_kind`, `events`, `entry_events`), `009_extract_jobs.sql`
+(Task 5: `job_status`, `extract_jobs`), and `010_retire_capture_jobs.sql`
+(Task 6: `capture_jobs` -> `capture_jobs_legacy`). `migrate()` applies every
+pending file inside one transaction, so a fresh install still gets
+all-or-nothing. This is the only part of this design that touches existing
+data, so each step below is spelled out with what it can and cannot break.
 
 **1. New tables.** `event_kind`, `events`, `entry_events`. (`entry_vectors`
 shipped in `006`; recreating it here would fail.) Pure creation; nothing

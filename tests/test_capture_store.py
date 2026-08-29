@@ -24,27 +24,27 @@ def _job(owner_id, project="remem", path="/tmp/t.jsonl"):
                       transcript_path=path, session_id="sess-1")
 
 
-def test_capture_is_disabled_by_default(store, owner):
-    assert store.capture_enabled(owner.id, "remem") is False
+def test_recording_is_disabled_by_default(store, owner):
+    assert store.record_enabled(owner.id, "remem") is False
 
 
 def test_enable_then_disable(store, owner):
-    store.set_capture_enabled(owner.id, "remem", True)
-    assert store.capture_enabled(owner.id, "remem") is True
-    store.set_capture_enabled(owner.id, "remem", False)
-    assert store.capture_enabled(owner.id, "remem") is False
+    store.set_record_enabled(owner.id, "remem", True)
+    assert store.record_enabled(owner.id, "remem") is True
+    store.set_record_enabled(owner.id, "remem", False)
+    assert store.record_enabled(owner.id, "remem") is False
 
 
 def test_enabling_twice_does_not_error(store, owner):
-    store.set_capture_enabled(owner.id, "remem", True)
-    store.set_capture_enabled(owner.id, "remem", True)
-    assert store.capture_enabled(owner.id, "remem") is True
+    store.set_record_enabled(owner.id, "remem", True)
+    store.set_record_enabled(owner.id, "remem", True)
+    assert store.record_enabled(owner.id, "remem") is True
 
 
 def test_settings_are_owner_scoped(store, owner):
     other = store.ensure_principal("someone-else")
-    store.set_capture_enabled(owner.id, "remem", True)
-    assert store.capture_enabled(other.id, "remem") is False
+    store.set_record_enabled(owner.id, "remem", True)
+    assert store.record_enabled(other.id, "remem") is False
 
 
 def test_enqueue_then_claim(store, owner):
@@ -155,11 +155,11 @@ def test_two_concurrent_drains_do_not_claim_the_same_job(live_dsn):
     assert len(claimed_a) + len(claimed_b) == 1
 
 
-def test_enabled_capture_projects_lists_only_enabled_ones_for_this_owner(store, owner):
+def test_enabled_record_projects_lists_only_enabled_ones_for_this_owner(store, owner):
     other = store.ensure_principal("someone-else")
-    store.set_capture_enabled(owner.id, "beta", True)
-    store.set_capture_enabled(owner.id, "alpha", True)
-    store.set_capture_enabled(owner.id, "gamma", False)
-    store.set_capture_enabled(other.id, "theirs", True)
+    store.set_record_enabled(owner.id, "beta", True)
+    store.set_record_enabled(owner.id, "alpha", True)
+    store.set_record_enabled(owner.id, "gamma", False)
+    store.set_record_enabled(other.id, "theirs", True)
 
-    assert store.enabled_capture_projects(owner.id) == ["alpha", "beta"]
+    assert store.enabled_record_projects(owner.id) == ["alpha", "beta"]

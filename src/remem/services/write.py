@@ -36,7 +36,7 @@ def remember(
     *,
     title: str,
     body: str,
-    kind: Kind = Kind.MEMORY,
+    kind: Kind = Kind.NOTE,
     project: str | None = None,
     tags: list[str] | None = None,
     links: list[UUID] | None = None,

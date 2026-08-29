@@ -43,15 +43,15 @@ class DrainReport:
 
 
 def enable(store: Store, owner_id: UUID, project: str) -> None:
-    store.set_capture_enabled(owner_id, project, True)
+    store.set_record_enabled(owner_id, project, True)
 
 
 def disable(store: Store, owner_id: UUID, project: str) -> None:
-    store.set_capture_enabled(owner_id, project, False)
+    store.set_record_enabled(owner_id, project, False)
 
 
 def is_enabled(store: Store, owner_id: UUID, project: str) -> bool:
-    return store.capture_enabled(owner_id, project)
+    return store.record_enabled(owner_id, project)
 
 
 def enqueue(
@@ -67,7 +67,7 @@ def enqueue(
     Opt-in is the safety gate: nothing accumulates from a project the user did
     not choose.
     """
-    if not store.capture_enabled(owner_id, project):
+    if not store.record_enabled(owner_id, project):
         return None
     return store.enqueue_capture(
         CaptureJob(
@@ -133,7 +133,7 @@ def _already_captured(store: Store, owner_id: UUID, project: str, title: str) ->
     title is not a duplicate to swallow silently.
     """
     hits = store.search(
-        Query(project=project, origins=[Origin.CAPTURE], limit=200), owner_id
+        Query(project=project, origins=[Origin.EXTRACTED], limit=200), owner_id
     )
     return any(h.entry.title == title for h in hits)
 
@@ -155,7 +155,7 @@ def _write(
             tags=list(entry.tags),
             agent=AGENT,
             session_id=job.session_id,
-            origin=Origin.CAPTURE,
+            origin=Origin.EXTRACTED,
         )
         written += 1
     return written

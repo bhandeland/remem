@@ -23,7 +23,7 @@ def test_search_without_origins_returns_everything(store, owner):
     write.remember(store, owner.id, title="Human note", body="shared word",
                    origin=Origin.HUMAN)
     write.remember(store, owner.id, title="Captured note", body="shared word",
-                   origin=Origin.CAPTURE)
+                   origin=Origin.EXTRACTED)
     titles = {h.entry.title for h in store.search(Query(text="shared"), owner.id)}
     assert titles == {"Human note", "Captured note"}
 
@@ -32,7 +32,7 @@ def test_search_filters_by_origin(store, owner):
     write.remember(store, owner.id, title="Human note", body="shared word",
                    origin=Origin.HUMAN)
     write.remember(store, owner.id, title="Captured note", body="shared word",
-                   origin=Origin.CAPTURE)
+                   origin=Origin.EXTRACTED)
     hits = store.search(
         Query(text="shared", origins=[Origin.HUMAN, Origin.AGENT]), owner.id
     )
@@ -43,7 +43,7 @@ def test_no_text_listing_also_filters_by_origin(store, owner):
     write.remember(store, owner.id, title="Human note", body="b",
                    origin=Origin.HUMAN)
     write.remember(store, owner.id, title="Captured note", body="b",
-                   origin=Origin.CAPTURE)
+                   origin=Origin.EXTRACTED)
     hits = store.search(Query(origins=[Origin.HUMAN]), owner.id)
     assert [h.entry.title for h in hits] == ["Human note"]
 
@@ -52,7 +52,7 @@ def test_fuzzy_search_also_filters_by_origin(store, owner):
     """A filter honoured by only one search path would appear to work until a
     query happened to miss exactly."""
     write.remember(store, owner.id, title="Postgres connection pooling",
-                   body="b", origin=Origin.CAPTURE)
+                   body="b", origin=Origin.EXTRACTED)
     hits = store.fuzzy_search(
         Query(text="postgres conection pooling", origins=[Origin.HUMAN]),
         owner.id,
@@ -67,7 +67,7 @@ def test_resolve_excludes_captured_entries_from_the_query_branch(store, owner):
     write.remember(store, owner.id, title="Human note", body="b",
                    tags=["ops"], origin=Origin.HUMAN)
     write.remember(store, owner.id, title="Captured note", body="b",
-                   tags=["ops"], origin=Origin.CAPTURE)
+                   tags=["ops"], origin=Origin.EXTRACTED)
     assert [e.title for e in kb.resolve(store, owner.id, "s")] == ["Human note"]
 
 
@@ -75,6 +75,6 @@ def test_resolve_includes_a_captured_entry_that_was_pinned(store, owner):
     """Pinning is the deliberate way to promote a captured entry."""
     kb.create(store, owner.id, slug="s", title="T")
     captured = write.remember(store, owner.id, title="Captured note", body="b",
-                              origin=Origin.CAPTURE)
+                              origin=Origin.EXTRACTED)
     kb.pin(store, owner.id, "s", captured.id)
     assert [e.title for e in kb.resolve(store, owner.id, "s")] == ["Captured note"]

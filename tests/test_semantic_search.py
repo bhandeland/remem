@@ -25,7 +25,7 @@ def store(conn):
 
 
 def _entry(store, owner_id, title, body="body", **kw):
-    return store.put_entry(Entry(id=new_id(), kind=Kind.MEMORY, title=title,
+    return store.put_entry(Entry(id=new_id(), kind=Kind.NOTE, title=title,
                                  body=body, owner_id=owner_id, **kw))
 
 

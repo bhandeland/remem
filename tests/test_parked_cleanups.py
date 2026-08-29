@@ -103,7 +103,7 @@ def test_clamping_an_oversized_limit_preserves_the_origins_filter(store, owner):
     write.remember(store, owner.id, title="Human", body="shared",
                    origin=Origin.HUMAN)
     write.remember(store, owner.id, title="Captured", body="shared",
-                   origin=Origin.CAPTURE)
+                   origin=Origin.EXTRACTED)
 
     hits = find(store, owner.id,
                 Query(text="shared", origins=[Origin.HUMAN], limit=100000))

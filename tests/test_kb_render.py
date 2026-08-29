@@ -11,7 +11,7 @@ def collection(**kw):
                       title=kw.pop("title", "My KB"), owner_id=OWNER, **kw)
 
 
-def entry(title, body, kind=Kind.MEMORY, tags=None):
+def entry(title, body, kind=Kind.NOTE, tags=None):
     return Entry(id=new_id(), kind=kind, title=title, body=body,
                  owner_id=OWNER, tags=tags or [])
 

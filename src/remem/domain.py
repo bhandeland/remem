@@ -9,7 +9,7 @@ from uuid import UUID, uuid7
 
 
 class Kind(StrEnum):
-    MEMORY = "memory"
+    NOTE = "note"
     DOC = "doc"
     RULE = "rule"
 
@@ -22,7 +22,8 @@ class Scope(StrEnum):
 class Origin(StrEnum):
     HUMAN = "human"
     AGENT = "agent"
-    CAPTURE = "capture"
+    #: Written by the extractor from a session's events. Was 'capture'.
+    EXTRACTED = "extracted"
     HANDOFF = "handoff"
 
 

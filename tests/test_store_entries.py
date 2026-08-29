@@ -56,7 +56,7 @@ def test_put_and_get_entry_roundtrip(store, owner):
 
 def test_get_entry_is_scoped_to_the_owner(store, owner):
     other = store.ensure_principal("someone-else")
-    e = Entry(id=new_id(), kind=Kind.MEMORY, title="t", body="b", owner_id=owner.id)
+    e = Entry(id=new_id(), kind=Kind.NOTE, title="t", body="b", owner_id=owner.id)
     store.put_entry(e)
     assert store.get_entry(e.id, other.id) is None
 
@@ -75,7 +75,7 @@ def test_links_roundtrip_as_uuids(store, owner):
     target = Entry(id=new_id(), kind=Kind.DOC, title="target", body="b", owner_id=owner.id)
     store.put_entry(target)
     e = Entry(
-        id=new_id(), kind=Kind.MEMORY, title="src", body="b",
+        id=new_id(), kind=Kind.NOTE, title="src", body="b",
         owner_id=owner.id, links=[target.id],
     )
     store.put_entry(e)
@@ -83,8 +83,8 @@ def test_links_roundtrip_as_uuids(store, owner):
 
 
 def test_set_superseded_marks_the_old_entry(store, owner):
-    old = Entry(id=new_id(), kind=Kind.MEMORY, title="old", body="b", owner_id=owner.id)
-    new = Entry(id=new_id(), kind=Kind.MEMORY, title="new", body="b", owner_id=owner.id)
+    old = Entry(id=new_id(), kind=Kind.NOTE, title="old", body="b", owner_id=owner.id)
+    new = Entry(id=new_id(), kind=Kind.NOTE, title="new", body="b", owner_id=owner.id)
     store.put_entry(old)
     store.put_entry(new)
     assert store.set_superseded(old.id, new.id, owner.id) is True
@@ -93,8 +93,8 @@ def test_set_superseded_marks_the_old_entry(store, owner):
 
 def test_set_superseded_refuses_across_owners(store, owner):
     other = store.ensure_principal("someone-else")
-    old = Entry(id=new_id(), kind=Kind.MEMORY, title="old", body="b", owner_id=owner.id)
-    new = Entry(id=new_id(), kind=Kind.MEMORY, title="new", body="b", owner_id=owner.id)
+    old = Entry(id=new_id(), kind=Kind.NOTE, title="old", body="b", owner_id=owner.id)
+    new = Entry(id=new_id(), kind=Kind.NOTE, title="new", body="b", owner_id=owner.id)
     store.put_entry(old)
     store.put_entry(new)
     assert store.set_superseded(old.id, new.id, other.id) is False
@@ -102,8 +102,8 @@ def test_set_superseded_refuses_across_owners(store, owner):
 
 def test_set_superseded_refuses_when_new_entry_belongs_to_another_owner(store, owner):
     other = store.ensure_principal("someone-else")
-    old = Entry(id=new_id(), kind=Kind.MEMORY, title="old", body="b", owner_id=owner.id)
-    foreign_new = Entry(id=new_id(), kind=Kind.MEMORY, title="new", body="b", owner_id=other.id)
+    old = Entry(id=new_id(), kind=Kind.NOTE, title="old", body="b", owner_id=owner.id)
+    foreign_new = Entry(id=new_id(), kind=Kind.NOTE, title="new", body="b", owner_id=other.id)
     store.put_entry(old)
     store.put_entry(foreign_new)
     assert store.set_superseded(old.id, foreign_new.id, owner.id) is False
@@ -113,13 +113,13 @@ def test_set_superseded_refuses_when_new_entry_belongs_to_another_owner(store, o
 def test_put_entry_cannot_overwrite_another_owners_entry(store, owner):
     other = store.ensure_principal("mallory")
     mine = store.put_entry(
-        Entry(id=new_id(), kind=Kind.MEMORY, title="Mine",
+        Entry(id=new_id(), kind=Kind.NOTE, title="Mine",
               body="my body", owner_id=owner.id)
     )
 
     with pytest.raises(PermissionError):
         store.put_entry(
-            Entry(id=mine.id, kind=Kind.MEMORY, title="PWNED",
+            Entry(id=mine.id, kind=Kind.NOTE, title="PWNED",
                   body="pwned body", owner_id=other.id)
         )
 
