@@ -46,10 +46,10 @@ def test_capture_model_defaults_to_sonnet():
     """Pinned rather than inherited from the session model.
 
     `claude -p` with no --model uses whatever the user's default is, so
-    distillation cost and behaviour would change whenever they switch models
+    extraction cost and behaviour would change whenever they switch models
     for unrelated reasons. Measured on a real transcript: Haiku produced 1 of 3
     usable entries (a platitude, and a transient open question recorded as a
-    durable rule); Sonnet and Opus produced 2 of 2. Distillation is a judgment
+    durable rule); Sonnet and Opus produced 2 of 2. Extraction is a judgment
     task, not a compression one.
     """
     from remem.config import DEFAULT_CAPTURE_MODEL, load

@@ -16,7 +16,7 @@ DEFAULT_MAX_CHARS = 6000
 DEFAULT_FUZZY_THRESHOLD = 0.3
 
 # Pinned, not inherited. `claude -p` with no --model uses whatever the user's
-# default is, so distillation cost and behaviour would drift whenever they
+# default is, so extraction cost and behaviour would drift whenever they
 # switch models for unrelated reasons.
 #
 # Sonnet rather than Haiku, measured on a real 40KB transcript: Haiku returned

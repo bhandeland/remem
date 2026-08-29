@@ -2,7 +2,7 @@ import pytest
 
 from remem.backends.postgres.migrate import migrate
 from remem.backends.postgres.store import PostgresStore
-from remem.distill.base import CapturedEntry, DistillationFailed, parse_entries
+from remem.extract.base import ExtractedEntry, ExtractionFailed, parse_entries
 from remem.domain import CaptureStatus, Kind, Origin, Query, new_id
 from remem.services import capture
 
@@ -17,7 +17,7 @@ class FakeDistiller:
         self._error = error
         self.calls = []
 
-    def distill(self, transcript, project):
+    def extract(self, transcript, project):
         self.calls.append((transcript, project))
         if self._error:
             raise self._error
@@ -46,12 +46,12 @@ def test_drain_writes_entries_with_capture_origin(store, owner, transcript):
     capture.enable(store, owner.id, "remem")
     capture.enqueue(store, owner.id, project="remem",
                     transcript_path=transcript, session_id="sess-9")
-    distiller = FakeDistiller([
-        CapturedEntry(title="Pool sizing", body="pgbouncer saturates",
+    extractor = FakeDistiller([
+        ExtractedEntry(title="Pool sizing", body="pgbouncer saturates",
                       kind=Kind.NOTE, tags=["ops"])
     ])
 
-    report = capture.drain(store, owner.id, distiller)
+    report = capture.drain(store, owner.id, extractor)
     assert report.succeeded == 1
     assert report.entries_written == 1
 
@@ -70,9 +70,9 @@ def test_drain_passes_the_transcript_contents_to_the_distiller(
     capture.enable(store, owner.id, "remem")
     capture.enqueue(store, owner.id, project="remem",
                     transcript_path=transcript, session_id="s")
-    distiller = FakeDistiller([])
-    capture.drain(store, owner.id, distiller)
-    assert "hello" in distiller.calls[0][0]
+    extractor = FakeDistiller([])
+    capture.drain(store, owner.id, extractor)
+    assert "hello" in extractor.calls[0][0]
 
 
 def test_an_empty_distillation_is_a_success(store, owner, transcript):
@@ -91,7 +91,7 @@ def test_a_distillation_failure_is_recorded_not_raised(store, owner, transcript)
     job = capture.enqueue(store, owner.id, project="remem",
                           transcript_path=transcript, session_id="s")
     report = capture.drain(
-        store, owner.id, FakeDistiller(error=DistillationFailed("claude exploded"))
+        store, owner.id, FakeDistiller(error=ExtractionFailed("claude exploded"))
     )
     assert report.failed == 1
     stored = store.get_capture_job(job.id, owner.id)
@@ -127,7 +127,7 @@ def test_dedup_skips_a_title_already_captured_for_that_project(
     """Capture re-derives the same facts every session; without this the store
     fills with near-identical entries."""
     capture.enable(store, owner.id, "remem")
-    entry = CapturedEntry(title="Pool sizing", body="first", kind=Kind.NOTE)
+    entry = ExtractedEntry(title="Pool sizing", body="first", kind=Kind.NOTE)
 
     for session in ("a", "b"):
         capture.enqueue(store, owner.id, project="remem",
@@ -143,7 +143,7 @@ def test_dedup_does_not_block_the_same_title_in_another_project(
 ):
     capture.enable(store, owner.id, "alpha")
     capture.enable(store, owner.id, "beta")
-    entry = CapturedEntry(title="Pool sizing", body="b", kind=Kind.NOTE)
+    entry = ExtractedEntry(title="Pool sizing", body="b", kind=Kind.NOTE)
 
     for project in ("alpha", "beta"):
         capture.enqueue(store, owner.id, project=project,
@@ -165,7 +165,7 @@ def test_dedup_does_not_block_a_title_a_human_wrote(store, owner, transcript):
                     transcript_path=transcript, session_id="s")
     capture.drain(
         store, owner.id,
-        FakeDistiller([CapturedEntry(title="Pool sizing", body="captured",
+        FakeDistiller([ExtractedEntry(title="Pool sizing", body="captured",
                                      kind=Kind.NOTE)]),
     )
     assert len(store.search(Query(text="Pool sizing"), owner.id)) == 2
@@ -176,22 +176,22 @@ def test_drain_gives_up_after_the_attempt_cap(store, owner):
 
     `claim` increments attempts before the cap is checked, so attempts itself
     rises past MAX_ATTEMPTS; what matters is that the drain stops calling the
-    distiller and records that it gave up.
+    extractor and records that it gave up.
     """
     capture.enable(store, owner.id, "remem")
     job = capture.enqueue(store, owner.id, project="remem",
                           transcript_path="/nonexistent.jsonl", session_id="s")
-    distiller = FakeDistiller([])
+    extractor = FakeDistiller([])
 
     for _ in range(capture.MAX_ATTEMPTS + 2):
         store.finish_capture_job(job.id, owner.id, CaptureStatus.PENDING, None, 0)
-        capture.drain(store, owner.id, distiller)
+        capture.drain(store, owner.id, extractor)
 
     stored = store.get_capture_job(job.id, owner.id)
     assert stored.status is CaptureStatus.FAILED
     assert "gave up" in stored.error
-    # The distiller is never reached for a job whose transcript is missing.
-    assert distiller.calls == []
+    # The extractor is never reached for a job whose transcript is missing.
+    assert extractor.calls == []
 
 
 def test_drain_on_an_empty_queue_reports_nothing_claimed(store, owner):
@@ -212,7 +212,7 @@ def test_drain_does_not_raise_when_writing_an_entry_fails(store, owner, transcri
 
     report = capture.drain(
         ExplodingStore(store), owner.id,
-        FakeDistiller([CapturedEntry(title="T", body="B", kind=Kind.NOTE)]),
+        FakeDistiller([ExtractedEntry(title="T", body="B", kind=Kind.NOTE)]),
     )
     assert report.failed == 1
     stored = store.get_capture_job(job.id, owner.id)
@@ -241,7 +241,7 @@ def test_one_job_raising_does_not_abandon_the_rest(store, owner, transcript):
 
     report = capture.drain(
         SometimesExploding(store), owner.id,
-        FakeDistiller([CapturedEntry(title="T", body="B", kind=Kind.NOTE)]),
+        FakeDistiller([ExtractedEntry(title="T", body="B", kind=Kind.NOTE)]),
     )
     assert report.claimed == 2
     assert report.failed == 1
@@ -258,7 +258,7 @@ def test_unparseable_output_records_the_raw_text_in_the_error(
                           transcript_path=transcript, session_id="s")
 
     class ProseDistiller:
-        def distill(self, transcript, project):
+        def extract(self, transcript, project):
             return parse_entries(prose)
 
     report = capture.drain(store, owner.id, ProseDistiller())
@@ -278,7 +278,7 @@ def test_a_long_raw_output_is_truncated_but_keeps_the_reason(
                           transcript_path=transcript, session_id="s")
 
     class ProseDistiller:
-        def distill(self, transcript, project):
+        def extract(self, transcript, project):
             return parse_entries("z" * 5000)
 
     capture.drain(store, owner.id, ProseDistiller())
@@ -299,7 +299,7 @@ def test_drain_job_retries_a_job_that_gave_up(store, owner, transcript):
 
     report = capture.drain_job(
         store, owner.id, job.id,
-        FakeDistiller([CapturedEntry(title="T", body="B", kind=Kind.NOTE)]),
+        FakeDistiller([ExtractedEntry(title="T", body="B", kind=Kind.NOTE)]),
     )
 
     assert report.claimed == 1
@@ -351,14 +351,14 @@ def test_drain_job_rejects_another_owners_job(store, owner, transcript):
         capture.drain_job(store, owner.id, job.id, FakeDistiller([]))
 
 
-# --- telling the distiller what already exists ------------------------------
+# --- telling the extractor what already exists ------------------------------
 
 
 @pytest.mark.db
 def test_drain_tells_the_distiller_what_is_already_recorded(store, owner, transcript):
     """Including entries the USER wrote. The observed failure was capture
     re-deriving a hand-written rule, so human titles are exactly the ones the
-    distiller most needs to see."""
+    extractor most needs to see."""
     from remem.domain import Origin
     from remem.services.write import remember
 
@@ -374,7 +374,7 @@ def test_drain_tells_the_distiller_what_is_already_recorded(store, owner, transc
     seen = {}
 
     class Recording:
-        def distill(self, transcript, project, known_titles=None):
+        def extract(self, transcript, project, known_titles=None):
             seen["titles"] = list(known_titles or [])
             return []
 
@@ -387,14 +387,14 @@ def test_drain_tells_the_distiller_what_is_already_recorded(store, owner, transc
 def test_a_distiller_without_known_titles_support_still_works(
     store, owner, transcript
 ):
-    """The protocol gained an optional argument; a two-argument distiller must
+    """The protocol gained an optional argument; a two-argument extractor must
     not break."""
     capture.enable(store, owner.id, "remem")
     capture.enqueue(store, owner.id, project="remem",
                     transcript_path=transcript, session_id="s")
 
     class TwoArg:
-        def distill(self, transcript, project):
+        def extract(self, transcript, project):
             return []
 
     report = capture.drain(store, owner.id, TwoArg())

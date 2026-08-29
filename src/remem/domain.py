@@ -177,7 +177,7 @@ class Hit:
 
 @dataclass(slots=True)
 class CaptureJob:
-    """One session queued for distillation."""
+    """One session queued for extraction."""
 
     id: UUID
     owner_id: UUID

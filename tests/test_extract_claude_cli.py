@@ -4,10 +4,10 @@ import subprocess
 
 import pytest
 
-from remem.distill.base import DistillationFailed
-from remem.distill.claude_cli import (
+from remem.extract.base import ExtractionFailed
+from remem.extract.claude_cli import (
     PROMPT,
-    ClaudeCliDistiller,
+    ClaudeCliExtractor,
     build_command,
     build_env,
 )
@@ -40,7 +40,7 @@ def test_prompt_permits_returning_nothing():
     assert "[]" in PROMPT
 
 
-def test_distill_parses_the_subprocess_output(monkeypatch):
+def test_extract_parses_the_subprocess_output(monkeypatch):
     def fake_run(cmd, **kwargs):
         return subprocess.CompletedProcess(
             cmd, 0,
@@ -49,37 +49,37 @@ def test_distill_parses_the_subprocess_output(monkeypatch):
         )
 
     monkeypatch.setattr(subprocess, "run", fake_run)
-    entries = ClaudeCliDistiller().distill("transcript text", "remem")
+    entries = ClaudeCliExtractor().extract("transcript text", "remem")
     assert [e.title for e in entries] == ["T"]
 
 
-def test_distill_raises_when_claude_is_missing(monkeypatch):
+def test_extract_raises_when_claude_is_missing(monkeypatch):
     def fake_run(cmd, **kwargs):
         raise FileNotFoundError("claude")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
-    with pytest.raises(DistillationFailed) as exc:
-        ClaudeCliDistiller().distill("t", "remem")
+    with pytest.raises(ExtractionFailed) as exc:
+        ClaudeCliExtractor().extract("t", "remem")
     assert "not on PATH" in str(exc.value)
 
 
-def test_distill_raises_on_timeout(monkeypatch):
+def test_extract_raises_on_timeout(monkeypatch):
     def fake_run(cmd, **kwargs):
         raise subprocess.TimeoutExpired(cmd, 180)
 
     monkeypatch.setattr(subprocess, "run", fake_run)
-    with pytest.raises(DistillationFailed) as exc:
-        ClaudeCliDistiller().distill("t", "remem")
+    with pytest.raises(ExtractionFailed) as exc:
+        ClaudeCliExtractor().extract("t", "remem")
     assert "timed out" in str(exc.value)
 
 
-def test_distill_raises_on_nonzero_exit(monkeypatch):
+def test_extract_raises_on_nonzero_exit(monkeypatch):
     def fake_run(cmd, **kwargs):
         return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="boom")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
-    with pytest.raises(DistillationFailed) as exc:
-        ClaudeCliDistiller().distill("t", "remem")
+    with pytest.raises(ExtractionFailed) as exc:
+        ClaudeCliExtractor().extract("t", "remem")
     assert "boom" in str(exc.value)
 
 
@@ -93,7 +93,7 @@ def test_transcript_is_passed_on_stdin_not_as_an_argument(monkeypatch):
         return subprocess.CompletedProcess(cmd, 0, stdout="[]", stderr="")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
-    ClaudeCliDistiller().distill("THE-TRANSCRIPT", "remem")
+    ClaudeCliExtractor().extract("THE-TRANSCRIPT", "remem")
     assert "THE-TRANSCRIPT" in seen["input"]
     assert not any("THE-TRANSCRIPT" in part for part in seen["cmd"])
 
@@ -107,7 +107,7 @@ def test_a_large_transcript_is_bounded_to_its_tail(monkeypatch):
     prompt entirely, continuing the transcript's conversation instead. An
     unbounded transcript makes capture fail on essentially every real session.
     """
-    from remem.distill.claude_cli import MAX_TRANSCRIPT_BYTES
+    from remem.extract.claude_cli import MAX_TRANSCRIPT_BYTES
 
     seen = {}
 
@@ -117,13 +117,13 @@ def test_a_large_transcript_is_bounded_to_its_tail(monkeypatch):
 
     monkeypatch.setattr(subprocess, "run", fake_run)
     huge = "x" * (MAX_TRANSCRIPT_BYTES * 3)
-    ClaudeCliDistiller().distill(huge, "remem")
+    ClaudeCliExtractor().extract(huge, "remem")
     assert len(seen["input"]) < MAX_TRANSCRIPT_BYTES * 2
 
 
 def test_bounding_keeps_the_end_not_the_beginning(monkeypatch):
     """A session's conclusions live at the end; its opening is throat-clearing."""
-    from remem.distill.claude_cli import MAX_TRANSCRIPT_BYTES
+    from remem.extract.claude_cli import MAX_TRANSCRIPT_BYTES
 
     seen = {}
 
@@ -133,7 +133,7 @@ def test_bounding_keeps_the_end_not_the_beginning(monkeypatch):
 
     monkeypatch.setattr(subprocess, "run", fake_run)
     transcript = "START-MARKER" + ("x" * MAX_TRANSCRIPT_BYTES * 2) + "END-MARKER"
-    ClaudeCliDistiller().distill(transcript, "remem")
+    ClaudeCliExtractor().extract(transcript, "remem")
     assert "END-MARKER" in seen["input"]
     assert "START-MARKER" not in seen["input"]
 
@@ -141,7 +141,7 @@ def test_bounding_keeps_the_end_not_the_beginning(monkeypatch):
 def test_a_bounded_transcript_says_so(monkeypatch):
     """The model must know it is seeing the end of a longer session, not a
     whole short one - otherwise it reasons about a truncated opening."""
-    from remem.distill.claude_cli import MAX_TRANSCRIPT_BYTES
+    from remem.extract.claude_cli import MAX_TRANSCRIPT_BYTES
 
     seen = {}
 
@@ -150,7 +150,7 @@ def test_a_bounded_transcript_says_so(monkeypatch):
         return subprocess.CompletedProcess(cmd, 0, stdout="[]", stderr="")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
-    ClaudeCliDistiller().distill("x" * (MAX_TRANSCRIPT_BYTES * 2), "remem")
+    ClaudeCliExtractor().extract("x" * (MAX_TRANSCRIPT_BYTES * 2), "remem")
     assert "truncated" in seen["input"].lower()
 
 
@@ -162,7 +162,7 @@ def test_a_small_transcript_is_passed_whole(monkeypatch):
         return subprocess.CompletedProcess(cmd, 0, stdout="[]", stderr="")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
-    ClaudeCliDistiller().distill("SHORT-TRANSCRIPT", "remem")
+    ClaudeCliExtractor().extract("SHORT-TRANSCRIPT", "remem")
     assert "SHORT-TRANSCRIPT" in seen["input"]
     assert "truncated" not in seen["input"].lower()
 
@@ -177,8 +177,8 @@ def test_a_nonzero_exit_with_empty_stderr_still_says_something_useful(monkeypatc
         return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
-    with pytest.raises(DistillationFailed) as exc:
-        ClaudeCliDistiller().distill("some transcript", "remem")
+    with pytest.raises(ExtractionFailed) as exc:
+        ClaudeCliExtractor().extract("some transcript", "remem")
     message = str(exc.value)
     assert "exited 1" in message
     assert "no stderr" in message.lower()
@@ -190,8 +190,8 @@ def test_a_nonzero_exit_with_stderr_still_includes_it(monkeypatch):
         return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="boom happened")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
-    with pytest.raises(DistillationFailed) as exc:
-        ClaudeCliDistiller().distill("t", "remem")
+    with pytest.raises(ExtractionFailed) as exc:
+        ClaudeCliExtractor().extract("t", "remem")
     assert "boom happened" in str(exc.value)
 
 
@@ -201,8 +201,8 @@ def test_a_timeout_reports_the_input_size(monkeypatch):
         raise subprocess.TimeoutExpired(cmd, 180)
 
     monkeypatch.setattr(subprocess, "run", fake_run)
-    with pytest.raises(DistillationFailed) as exc:
-        ClaudeCliDistiller().distill("t" * 5000, "remem")
+    with pytest.raises(ExtractionFailed) as exc:
+        ClaudeCliExtractor().extract("t" * 5000, "remem")
     assert "bytes" in str(exc.value).lower()
 
 
@@ -211,14 +211,14 @@ def test_a_timeout_reports_the_input_size(monkeypatch):
 
 def test_the_command_pins_a_model():
     """Without --model, `claude -p` inherits the user's session model, so
-    distillation silently changes whenever they switch models for unrelated
+    extraction silently changes whenever they switch models for unrelated
     reasons."""
     cmd = build_command("prompt text", model="sonnet")
     assert "--model" in cmd
     assert cmd[cmd.index("--model") + 1] == "sonnet"
 
 
-def test_the_distiller_passes_its_configured_model(monkeypatch):
+def test_the_extractor_passes_its_configured_model(monkeypatch):
     seen = {}
 
     def fake_run(cmd, **kwargs):
@@ -226,11 +226,11 @@ def test_the_distiller_passes_its_configured_model(monkeypatch):
         return subprocess.CompletedProcess(cmd, 0, stdout="[]", stderr="")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
-    ClaudeCliDistiller(model="haiku").distill("t", "remem")
+    ClaudeCliExtractor(model="haiku").extract("t", "remem")
     assert seen["cmd"][seen["cmd"].index("--model") + 1] == "haiku"
 
 
-def test_the_distiller_defaults_to_the_configured_default(monkeypatch):
+def test_the_extractor_defaults_to_the_configured_default(monkeypatch):
     from remem.config import DEFAULT_CAPTURE_MODEL
 
     seen = {}
@@ -240,5 +240,5 @@ def test_the_distiller_defaults_to_the_configured_default(monkeypatch):
         return subprocess.CompletedProcess(cmd, 0, stdout="[]", stderr="")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
-    ClaudeCliDistiller().distill("t", "remem")
+    ClaudeCliExtractor().extract("t", "remem")
     assert seen["cmd"][seen["cmd"].index("--model") + 1] == DEFAULT_CAPTURE_MODEL

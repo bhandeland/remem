@@ -91,11 +91,11 @@ class _TitleFromTranscript:
     def __init__(self, *args, **kwargs):
         pass
 
-    def distill(self, transcript, project):
-        from remem.distill.base import CapturedEntry
+    def extract(self, transcript, project):
+        from remem.extract.base import ExtractedEntry
         from remem.domain import Kind
 
-        return [CapturedEntry(title=transcript.strip(), body="body",
+        return [ExtractedEntry(title=transcript.strip(), body="body",
                               kind=Kind.NOTE)]
 
 
@@ -146,7 +146,7 @@ def test_a_real_database_error_does_not_discard_the_rest_of_the_drain(
 
     monkeypatch.setattr(PostgresStore, "put_entry", flaky_put)
     monkeypatch.setattr(
-        "remem.distill.claude_cli.ClaudeCliDistiller", _TitleFromTranscript
+        "remem.extract.claude_cli.ClaudeCliExtractor", _TitleFromTranscript
     )
 
     result = runner.invoke(app, ["capture", "drain"])
@@ -187,7 +187,7 @@ def test_drain_job_retries_one_job_by_id(env, monkeypatch, tmp_path):
         )
         c.commit()
     monkeypatch.setattr(
-        "remem.distill.claude_cli.ClaudeCliDistiller", _TitleFromTranscript
+        "remem.extract.claude_cli.ClaudeCliExtractor", _TitleFromTranscript
     )
 
     result = runner.invoke(app, ["capture", "drain", "--job", str(job_id)])
@@ -240,17 +240,17 @@ def test_status_reports_the_configured_model(env):
 
 @pytest.mark.db
 def test_drain_uses_the_configured_model(env, monkeypatch):
-    """The CLI must pass config through, not let the distiller default win."""
+    """The CLI must pass config through, not let the extractor default win."""
     seen = {}
 
     class Probe:
         def __init__(self, *args, **kwargs):
             seen.update(kwargs)
 
-        def distill(self, transcript, project):
+        def extract(self, transcript, project):
             return []
 
     monkeypatch.setenv("REMEM_CAPTURE_MODEL", "opus")
-    monkeypatch.setattr("remem.distill.claude_cli.ClaudeCliDistiller", Probe)
+    monkeypatch.setattr("remem.extract.claude_cli.ClaudeCliExtractor", Probe)
     assert runner.invoke(app, ["capture", "drain"]).exit_code == 0
     assert seen.get("model") == "opus"

@@ -4,7 +4,7 @@ import json
 import pytest
 
 from remem.agents.claude_code import hook
-from remem.distill.base import CHILD_ENV_VAR
+from remem.extract.base import CHILD_ENV_VAR
 
 
 @pytest.fixture(autouse=True)
@@ -68,7 +68,7 @@ def test_a_missing_transcript_path_is_silent(tmp_path):
 
 
 def test_a_capture_child_is_never_warned(tmp_path):
-    """The distillation child is a session remem started; telling it to hand
+    """The extraction child is a session remem started; telling it to hand
     off would be advice to nobody."""
     t = _transcript(tmp_path, 99)
     env = _env(tmp_path, **{CHILD_ENV_VAR: "1"})

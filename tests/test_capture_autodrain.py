@@ -17,7 +17,7 @@ def test_spawn_drain_launches_a_detached_drain(monkeypatch):
 
 
 def test_spawn_drain_does_not_block_on_the_child(monkeypatch):
-    """A session must not wait for distillation to finish."""
+    """A session must not wait for extraction to finish."""
     seen = {}
 
     def fake_popen(cmd, **kwargs):

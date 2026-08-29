@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID
 
-from remem.distill.base import CapturedEntry, Distiller, DistillationFailed
+from remem.extract.base import ExtractedEntry, Extractor, ExtractionFailed
 from remem.domain import CaptureJob, CaptureStatus, Origin, Query, new_id
 from remem.services.write import remember
 from remem.store import Store
@@ -62,7 +62,7 @@ def enqueue(
     transcript_path: str,
     session_id: str | None,
 ) -> CaptureJob | None:
-    """Queue a session for distillation, or return None if capture is off.
+    """Queue a session for extraction, or return None if capture is off.
 
     Opt-in is the safety gate: nothing accumulates from a project the user did
     not choose.
@@ -80,11 +80,11 @@ def enqueue(
     )
 
 
-def _failure_reason(exc: DistillationFailed) -> str:
+def _failure_reason(exc: ExtractionFailed) -> str:
     """Compose a job error from the reason plus the model's raw output.
 
     An LLM returning prose instead of JSON is this feature's commonest real
-    failure, and the reason alone ("no JSON array in distiller output") cannot
+    failure, and the reason alone ("no JSON array in extractor output") cannot
     tell a refusal from a truncation from a wrong shape.
     """
     reason = str(exc)[:MAX_REASON_IN_ERROR]
@@ -102,28 +102,28 @@ def _known_titles(store: Store, owner_id: UUID, project: str) -> list[str]:
 
     Human-written entries are included deliberately: the observed failure was
     capture re-deriving a rule the user had written by hand, so those are
-    exactly the titles the distiller most needs to know about.
+    exactly the titles the extractor most needs to know about.
     """
     hits = store.search(Query(project=project, limit=KNOWN_TITLE_LIMIT), owner_id)
     return [h.entry.title for h in hits]
 
 
-def _distill(
-    distiller: Distiller, transcript: str, project: str, known_titles: list[str]
-) -> list[CapturedEntry]:
-    """Call a distiller, tolerating one that predates `known_titles`.
+def _extract(
+    extractor: Extractor, transcript: str, project: str, known_titles: list[str]
+) -> list[ExtractedEntry]:
+    """Call a extractor, tolerating one that predates `known_titles`.
 
     The protocol gained an optional argument; a two-argument implementation
     (including the fakes in the test suite) must keep working rather than
-    failing with a TypeError that would be recorded as a distillation failure.
+    failing with a TypeError that would be recorded as a extraction failure.
     """
     try:
-        accepts = "known_titles" in inspect.signature(distiller.distill).parameters
+        accepts = "known_titles" in inspect.signature(extractor.extract).parameters
     except (TypeError, ValueError):
         accepts = False
     if accepts:
-        return distiller.distill(transcript, project, known_titles=known_titles)
-    return distiller.distill(transcript, project)
+        return extractor.extract(transcript, project, known_titles=known_titles)
+    return extractor.extract(transcript, project)
 
 
 def _already_captured(store: Store, owner_id: UUID, project: str, title: str) -> bool:
@@ -139,7 +139,7 @@ def _already_captured(store: Store, owner_id: UUID, project: str, title: str) ->
 
 
 def _write(
-    store: Store, owner_id: UUID, job: CaptureJob, entries: list[CapturedEntry]
+    store: Store, owner_id: UUID, job: CaptureJob, entries: list[ExtractedEntry]
 ) -> int:
     written = 0
     for entry in entries:
@@ -185,7 +185,7 @@ def _safe_finish(
 def _run_job(
     store: Store,
     owner_id: UUID,
-    distiller: Distiller,
+    extractor: Extractor,
     job: CaptureJob,
     *,
     enforce_cap: bool = True,
@@ -213,17 +213,17 @@ def _run_job(
             return False, 0
         try:
             known = _known_titles(store, owner_id, job.project)
-            entries = _distill(distiller, text, job.project, known)
-        except DistillationFailed as exc:
+            entries = _extract(extractor, text, job.project, known)
+        except ExtractionFailed as exc:
             _safe_finish(
                 store, job, owner_id, CaptureStatus.FAILED,
                 _failure_reason(exc), 0,
             )
             return False, 0
-        except Exception as exc:  # a distiller is third-party-ish code
+        except Exception as exc:  # a extractor is third-party-ish code
             _safe_finish(
                 store, job, owner_id, CaptureStatus.FAILED,
-                f"distiller raised {type(exc).__name__}: {exc}"[:500], 0,
+                f"extractor raised {type(exc).__name__}: {exc}"[:500], 0,
             )
             return False, 0
 
@@ -252,17 +252,17 @@ def _tally(report: DrainReport, succeeded: bool, written: int) -> None:
 
 
 def drain(
-    store: Store, owner_id: UUID, distiller: Distiller, limit: int = 10
+    store: Store, owner_id: UUID, extractor: Extractor, limit: int = 10
 ) -> DrainReport:
     """Distil claimed jobs. Never raises: a failing job records its reason."""
     report = DrainReport()
     for job in store.claim_capture_jobs(owner_id, limit=limit):
-        _tally(report, *_run_job(store, owner_id, distiller, job))
+        _tally(report, *_run_job(store, owner_id, extractor, job))
     return report
 
 
 def drain_job(
-    store: Store, owner_id: UUID, job_id: UUID, distiller: Distiller
+    store: Store, owner_id: UUID, job_id: UUID, extractor: Extractor
 ) -> DrainReport:
     """Distil one named job, cap or no cap.
 
@@ -279,5 +279,5 @@ def drain_job(
     if job is None:
         raise CaptureJobNotFound(job_id)
     report = DrainReport()
-    _tally(report, *_run_job(store, owner_id, distiller, job, enforce_cap=False))
+    _tally(report, *_run_job(store, owner_id, extractor, job, enforce_cap=False))
     return report

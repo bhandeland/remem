@@ -17,7 +17,7 @@ from uuid import UUID
 from remem import session_size as session_size_mod
 from remem.agents.claude_code.adapter import ClaudeCodeAdapter
 from remem.config import load
-from remem.distill.base import CHILD_ENV_VAR
+from remem.extract.base import CHILD_ENV_VAR
 from remem.hookio import debug as _debug
 from remem.services import kb
 from remem.session import open_session
@@ -104,7 +104,7 @@ def spawn_drain(env: Mapping[str, str]) -> bool:
 
     Any session drains the backlog, so a capture is never stranded by the
     session that produced it having ended. Detached and output-discarded: the
-    session must never wait for distillation, and must never see its output.
+    session must never wait for extraction, and must never see its output.
     """
     if env.get(CHILD_ENV_VAR):
         return False
@@ -135,14 +135,14 @@ def main() -> int:
 
 
 def session_end(stdin_text: str, env: Mapping[str, str]) -> None:
-    """Queue this session for distillation. Never raises, never prints.
+    """Queue this session for extraction. Never raises, never prints.
 
     Does exactly one INSERT. Everything fragile - the subprocess, the model,
     the parsing - happens in the drain, where it can be retried and inspected.
     """
     if env.get(CHILD_ENV_VAR):
-        # This session IS a distillation run. Enqueueing here would spawn
-        # another distillation, without bound.
+        # This session IS a extraction run. Enqueueing here would spawn
+        # another extraction, without bound.
         _debug(env, "skipped: running inside a capture child")
         return
 

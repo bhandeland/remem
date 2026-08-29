@@ -1,4 +1,4 @@
-"""Distillation by shelling out to the Claude Code CLI.
+"""Extraction by shelling out to the Claude Code CLI.
 
 Chosen over the Anthropic API because it reuses the user's existing Claude Code
 authentication: no second API key, no second bill, nothing to configure before
@@ -12,7 +12,7 @@ import subprocess
 from typing import Mapping
 
 from remem.config import DEFAULT_CAPTURE_MODEL
-from remem.distill.base import CHILD_ENV_VAR, CapturedEntry, DistillationFailed, parse_entries
+from remem.extract.base import CHILD_ENV_VAR, ExtractedEntry, ExtractionFailed, parse_entries
 
 # Measured against the real CLI on a long session's transcript:
 #   40KB  -> returns in seconds, and the model follows the prompt
@@ -69,9 +69,9 @@ MAX_KNOWN_TITLES = 60
 
 
 def build_prompt(known_titles: list[str] | None = None) -> str:
-    """The distillation prompt, told what this project already holds.
+    """The extraction prompt, told what this project already holds.
 
-    Without this the distiller has no idea anything is recorded, so it happily
+    Without this the extractor has no idea anything is recorded, so it happily
     re-derives a rule the user wrote by hand an hour earlier. Dedup cannot
     catch that: the wording differs, so an exact-title match sees two distinct
     entries. Prevention has to happen before the model writes, not after.
@@ -95,7 +95,7 @@ def build_command(prompt: str, model: str = DEFAULT_CAPTURE_MODEL) -> list[str]:
     """Always pin the model.
 
     Without --model, `claude -p` inherits the user's session model, so
-    distillation would silently get more expensive the moment they switch to a
+    extraction would silently get more expensive the moment they switch to a
     stronger model for unrelated reasons.
     """
     return ["claude", "-p", "--model", model, prompt]
@@ -113,19 +113,19 @@ def build_env(base: Mapping[str, str]) -> dict[str, str]:
     return env
 
 
-class ClaudeCliDistiller:
+class ClaudeCliExtractor:
     def __init__(
         self, timeout: int = 180, model: str = DEFAULT_CAPTURE_MODEL
     ) -> None:
         self._timeout = timeout
         self._model = model
 
-    def distill(
+    def extract(
         self,
         transcript: str,
         project: str,
         known_titles: list[str] | None = None,
-    ) -> list[CapturedEntry]:
+    ) -> list[ExtractedEntry]:
         payload = (
             f"Project: {project}\n\nTranscript:\n{bound_transcript(transcript)}"
         )
@@ -140,11 +140,11 @@ class ClaudeCliDistiller:
                 env=build_env(os.environ),
             )
         except FileNotFoundError as exc:
-            raise DistillationFailed(
+            raise ExtractionFailed(
                 "claude is not on PATH; capture needs the Claude Code CLI"
             ) from exc
         except subprocess.TimeoutExpired as exc:
-            raise DistillationFailed(
+            raise ExtractionFailed(
                 f"claude timed out after {self._timeout}s on {size} bytes of input"
             ) from exc
 
@@ -152,7 +152,7 @@ class ClaudeCliDistiller:
             # Observed in the wild: exit 1 with completely empty stderr. The
             # exit code alone is not a diagnosis, so say what was sent too.
             detail = result.stderr[:300].strip() or "no stderr output"
-            raise DistillationFailed(
+            raise ExtractionFailed(
                 f"claude exited {result.returncode} on {size} bytes of input: "
                 f"{detail}"
             )

@@ -751,11 +751,11 @@ def capture_enable(
         model = s.config.capture_model
     typer.echo(f"capture enabled for '{name}'")
     # State the cost at the moment the tradeoff is actionable. Measured on a
-    # real session: roughly 20 cents per distillation on sonnet, a third of
+    # real session: roughly 20 cents per extraction on sonnet, a third of
     # that on haiku - which returned noticeably worse judgement about what was
     # worth keeping.
     typer.echo(
-        f"distillation runs `claude -p --model {model}` once per session, "
+        f"extraction runs `claude -p --model {model}` once per session, "
         f"roughly $0.10-0.25 each.\n"
         f"change it with REMEM_CAPTURE_MODEL (e.g. haiku for less, "
         f"opus for more)."
@@ -799,7 +799,7 @@ def capture_status(
         return
 
     typer.echo(f"Capture enabled for: {', '.join(projects) or 'no projects'}")
-    typer.echo(f"Distillation model: {model}")
+    typer.echo(f"Extraction model: {model}")
     if counts:
         typer.echo("Jobs: " + ", ".join(f"{k}={v}" for k, v in sorted(counts.items())))
     else:
@@ -818,7 +818,7 @@ def capture_drain(
     `--job ID` retries exactly that job, however many times it has already
     failed. It is the only way back for a job that hit the attempt cap.
     """
-    from remem.distill.claude_cli import ClaudeCliDistiller
+    from remem.extract.claude_cli import ClaudeCliExtractor
     from remem.services import capture
 
     job_id = _job_id(job) if job is not None else None
@@ -828,16 +828,16 @@ def capture_drain(
     # One transaction for the batch would both discard already-succeeded work
     # on a database error and hold row locks across those minutes.
     with _session(autocommit=True) as s:
-        distiller = ClaudeCliDistiller(model=s.config.capture_model)
+        extractor = ClaudeCliExtractor(model=s.config.capture_model)
         if job_id is not None:
             try:
                 report = capture.drain_job(s.store, s.owner.id, job_id,
-                                           distiller)
+                                           extractor)
             except capture.CaptureJobNotFound as exc:
                 typer.echo(str(exc), err=True)
                 raise typer.Exit(1)
         else:
-            report = capture.drain(s.store, s.owner.id, distiller, limit=limit)
+            report = capture.drain(s.store, s.owner.id, extractor, limit=limit)
     typer.echo(
         f"claimed {report.claimed}, succeeded {report.succeeded}, "
         f"failed {report.failed}, entries written {report.entries_written}"
@@ -861,7 +861,7 @@ def record_enable(
     # name - task 10 renames it to REMEM_EXTRACT_MODEL along with the rest of
     # that variable, and until then this prints the name that actually works.
     typer.echo(
-        f"distillation runs `claude -p --model {model}` once per session, "
+        f"extraction runs `claude -p --model {model}` once per session, "
         f"roughly $0.10-0.25 each.\n"
         f"change it with REMEM_CAPTURE_MODEL (e.g. haiku for less, "
         f"opus for more)."

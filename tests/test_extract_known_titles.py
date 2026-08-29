@@ -1,9 +1,9 @@
-"""Telling the distiller what is already recorded.
+"""Telling the extractor what is already recorded.
 
 Observed live: a rule written by hand was re-derived by capture twenty minutes
 later in the same session, with a differently-worded title. Dedup could not
 catch it - it matches exact titles, and only against prior captures. The cause
-is upstream of dedup: the distiller never saw the store, so re-recording
+is upstream of dedup: the extractor never saw the store, so re-recording
 something already written is the expected outcome rather than a bug.
 """
 
@@ -11,7 +11,7 @@ import subprocess
 
 import pytest
 
-from remem.distill.claude_cli import ClaudeCliDistiller, build_prompt
+from remem.extract.claude_cli import ClaudeCliExtractor, build_prompt
 
 
 def test_the_prompt_lists_what_is_already_recorded():
@@ -35,13 +35,13 @@ def test_the_prompt_is_unchanged_when_nothing_is_recorded_yet():
 def test_known_titles_are_bounded():
     """A project with hundreds of entries must not push the transcript out of
     the context window with its own titles."""
-    from remem.distill.claude_cli import MAX_KNOWN_TITLES
+    from remem.extract.claude_cli import MAX_KNOWN_TITLES
 
     prompt = build_prompt([f"Title number {i}" for i in range(MAX_KNOWN_TITLES * 3)])
     assert prompt.count("Title number") <= MAX_KNOWN_TITLES
 
 
-def test_the_distiller_passes_known_titles_into_the_prompt(monkeypatch):
+def test_the_extractor_passes_known_titles_into_the_prompt(monkeypatch):
     seen = {}
 
     def fake_run(cmd, **kwargs):
@@ -49,7 +49,7 @@ def test_the_distiller_passes_known_titles_into_the_prompt(monkeypatch):
         return subprocess.CompletedProcess(cmd, 0, stdout="[]", stderr="")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
-    ClaudeCliDistiller().distill(
+    ClaudeCliExtractor().extract(
         "transcript", "remem", known_titles=["An existing rule"]
     )
     assert any("An existing rule" in part for part in seen["cmd"])
@@ -61,4 +61,4 @@ def test_known_titles_are_optional(monkeypatch):
         return subprocess.CompletedProcess(cmd, 0, stdout="[]", stderr="")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
-    assert ClaudeCliDistiller().distill("transcript", "remem") == []
+    assert ClaudeCliExtractor().extract("transcript", "remem") == []

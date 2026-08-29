@@ -1,11 +1,11 @@
 import pytest
 
-from remem.distill.base import (
+from remem.extract.base import (
     MAX_BODY,
     MAX_ENTRIES,
     MAX_TITLE,
-    CapturedEntry,
-    DistillationFailed,
+    ExtractedEntry,
+    ExtractionFailed,
     parse_entries,
 )
 from remem.domain import Kind
@@ -18,7 +18,7 @@ def test_parses_a_well_formed_array():
     ]"""
     entries = parse_entries(raw)
     assert entries == [
-        CapturedEntry(title="Pool sizing", body="pgbouncer saturates",
+        ExtractedEntry(title="Pool sizing", body="pgbouncer saturates",
                       kind=Kind.NOTE, tags=["ops"])
     ]
 
@@ -83,8 +83,8 @@ def test_non_string_tags_are_dropped():
 
 
 @pytest.mark.parametrize("raw", ["", "   ", "not json at all", "{}", "null", "[1,2,3]"])
-def test_unparseable_output_raises_distillation_failed(raw):
-    with pytest.raises(DistillationFailed):
+def test_unparseable_output_raises_extraction_failed(raw):
+    with pytest.raises(ExtractionFailed):
         parse_entries(raw)
 
 
@@ -107,21 +107,21 @@ def test_an_empty_array_still_wins_over_no_valid_entries():
 
 
 def test_whitespace_only_title_or_body_is_dropped():
-    """A non-empty array where every item fails validation is a distillation
+    """A non-empty array where every item fails validation is a extraction
     failure (not a quiet empty result) - see parse_entries for the rationale."""
     raw = '[{"title":"  ","body":"B","kind":"note"}]'
-    with pytest.raises(DistillationFailed):
+    with pytest.raises(ExtractionFailed):
         parse_entries(raw)
 
 
 def test_failure_carries_the_raw_output_for_diagnosis():
     """The user cannot fix a misbehaving prompt they cannot see."""
-    with pytest.raises(DistillationFailed) as exc:
+    with pytest.raises(ExtractionFailed) as exc:
         parse_entries("I'm sorry, I can't help with that.")
     assert exc.value.raw == "I'm sorry, I can't help with that."
 
 
 def test_failure_on_a_valueless_array_carries_the_raw_output():
-    with pytest.raises(DistillationFailed) as exc:
+    with pytest.raises(ExtractionFailed) as exc:
         parse_entries("[1, 2, 3]")
     assert exc.value.raw == "[1, 2, 3]"
