@@ -15,6 +15,7 @@ from uuid import UUID
 from mcp.server.mcpserver import MCPServer
 
 from remem.domain import Kind, Origin, Query
+from remem.embed import EmbedderUnavailable, load_embedder
 from remem.project import resolve_project
 from remem.services import kb, write
 from remem.services.search import find
@@ -124,12 +125,21 @@ def recall_tool(
         except ValueError:
             return {"error": _invalid_kind_message(kind)}
     with open_session() as s:
+        # Best effort. Search without the optional dependency installed is
+        # two tiers, not an error - so an unavailable embedder is a None, not
+        # an exit. `remem embed` is where this is loud.
+        try:
+            embedder = load_embedder(s.config.embed_model)
+        except EmbedderUnavailable:
+            embedder = None
         hits = find(
             s.store, s.owner.id,
             Query(text=query, kinds=kinds,
                   project=project, tags=list(tags or []), limit=limit),
             fuzzy_threshold=s.config.fuzzy_threshold,
             include_handoffs=include_handoffs,
+            embedder=embedder,
+            semantic_threshold=s.config.semantic_threshold,
         )
         return [
             {
