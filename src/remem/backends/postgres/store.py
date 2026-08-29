@@ -17,7 +17,9 @@ from remem.domain import (
     Entry,
     Event,
     EventKind,
+    ExtractJob,
     Hit,
+    JobStatus,
     Kind,
     Match,
     Origin,
@@ -25,6 +27,7 @@ from remem.domain import (
     PrincipalKind,
     Query,
     Scope,
+    SessionRef,
     new_id,
 )
 from remem.store import NotOwner
@@ -151,6 +154,46 @@ def _row_to_capture_job(row: dict) -> CaptureJob:
         entries_written=row["entries_written"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
+    )
+
+
+EXTRACT_JOB_FIELDS = [
+    "id", "owner_id", "project", "harness", "session_id", "covers_through",
+    "status", "attempts", "error", "entries_written", "created_at",
+    "updated_at",
+]
+
+
+def extract_job_columns(alias: str = "") -> str:
+    prefix = f"{alias}." if alias else ""
+    return ", ".join(f"{prefix}{f}" for f in EXTRACT_JOB_FIELDS)
+
+
+def _row_to_extract_job(row: dict) -> ExtractJob:
+    return ExtractJob(
+        id=row["id"],
+        owner_id=row["owner_id"],
+        project=row["project"],
+        harness=row["harness"],
+        session_id=row["session_id"],
+        covers_through=row["covers_through"],
+        status=JobStatus(row["status"]),
+        attempts=row["attempts"],
+        error=row["error"],
+        entries_written=row["entries_written"],
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+    )
+
+
+def _row_to_session_ref(row: dict) -> SessionRef:
+    return SessionRef(
+        project=row["project"],
+        harness=row["harness"],
+        session_id=row["session_id"],
+        event_count=row["event_count"],
+        last_event_at=row["last_event_at"],
+        extract_from=row["extract_from"],
     )
 
 
@@ -909,3 +952,178 @@ class PostgresStore:
                 (r["event_id"], r["session_id"], r["harness"], r["present"])
                 for r in cur.fetchall()
             ]
+
+    # ---------------- extraction spool ----------------
+
+    def get_extract_job(self, job_id: UUID, owner_id: UUID) -> ExtractJob | None:
+        with self._cur() as cur:
+            cur.execute(
+                f"select {extract_job_columns()} from extract_jobs "
+                "where id = %s and owner_id = %s",
+                (job_id, owner_id),
+            )
+            row = cur.fetchone()
+        return _row_to_extract_job(row) if row else None
+
+    def extract_job_counts(self, owner_id: UUID) -> dict[str, int]:
+        with self._cur() as cur:
+            cur.execute(
+                "select status, count(*) as n from extract_jobs "
+                "where owner_id = %s group by status",
+                (owner_id,),
+            )
+            return {str(r["status"]): r["n"] for r in cur.fetchall()}
+
+    def recent_failed_extract_jobs(
+        self, owner_id: UUID, limit: int = 5
+    ) -> list[ExtractJob]:
+        with self._cur() as cur:
+            cur.execute(
+                f"""
+                select {extract_job_columns()} from extract_jobs
+                 where owner_id = %s and status = 'failed'
+                 order by updated_at desc
+                 limit %s
+                """,
+                (owner_id, limit),
+            )
+            return [_row_to_extract_job(r) for r in cur.fetchall()]
+
+    def finish_extract_job(
+        self,
+        job_id: UUID,
+        owner_id: UUID,
+        status: JobStatus,
+        error: str | None,
+        entries_written: int,
+        covers_through: datetime | None,
+    ) -> None:
+        with self._cur() as cur:
+            cur.execute(
+                """
+                update extract_jobs
+                   set status = %s, error = %s, entries_written = %s,
+                       covers_through = %s, updated_at = clock_timestamp()
+                 where id = %s and owner_id = %s
+                """,
+                (str(status), error, entries_written, covers_through,
+                 job_id, owner_id),
+            )
+
+    def try_advisory_lock(self, name: str, owner_id: UUID) -> bool:
+        # Session-level, not transaction-level: `events process` runs with
+        # autocommit on, so a transaction-scoped lock would be released at
+        # the first commit - which is the first job it finishes, exactly
+        # when a second run must still be kept out. The lock dies with the
+        # connection, which is the process ending, which is what we want.
+        #
+        # Postgres's advisory lock functions come in a one-bigint and a
+        # two-int form; the two-int form is used here so the command name
+        # and the owner can be hashed independently instead of combined into
+        # one 64-bit value, which would need care to avoid collisions between
+        # different (name, owner) pairs landing on the same bigint.
+        with self._cur() as cur:
+            cur.execute(
+                "select pg_try_advisory_lock(hashtext(%s), hashtext(%s))",
+                (name, str(owner_id)),
+            )
+            return bool(cur.fetchone()["pg_try_advisory_lock"])
+
+    def claim_extract_job(self, owner_id: UUID, session: SessionRef) -> ExtractJob:
+        """Upsert on the session key, so a retried session reuses its row
+        and its attempt count instead of accumulating one row per attempt."""
+        with self._cur() as cur:
+            cur.execute(
+                f"""
+                insert into extract_jobs (
+                  id, owner_id, project, harness, session_id, status, attempts
+                ) values (%(id)s, %(owner_id)s, %(project)s, %(harness)s,
+                          %(session_id)s, 'running', 1)
+                on conflict (owner_id, project, harness, session_id)
+                  do update set status = 'running',
+                                attempts = extract_jobs.attempts + 1,
+                                updated_at = clock_timestamp()
+                returning {extract_job_columns()}
+                """,
+                {
+                    "id": new_id(),
+                    "owner_id": owner_id,
+                    "project": session.project,
+                    "harness": session.harness,
+                    "session_id": session.session_id,
+                },
+            )
+            return _row_to_extract_job(cur.fetchone())
+
+    def claim_extract_job_by_id(
+        self, job_id: UUID, owner_id: UUID
+    ) -> ExtractJob | None:
+        """Claim one named job whatever its status, for `process --job ID`.
+
+        Unlike claim_extract_job this ignores status entirely: retrying a
+        job that already gave up is the whole point of the flag. SKIP LOCKED
+        still keeps a concurrent run from taking the same row.
+        """
+        with self._cur() as cur:
+            cur.execute(
+                f"""
+                with claimed as (
+                  select id from extract_jobs
+                   where id = %(id)s and owner_id = %(owner_id)s
+                   for update skip locked
+                )
+                update extract_jobs j
+                   set status = 'running',
+                       attempts = j.attempts + 1,
+                       updated_at = clock_timestamp()
+                  from claimed
+                 where j.id = claimed.id
+                returning {extract_job_columns("j")}
+                """,
+                {"id": job_id, "owner_id": owner_id},
+            )
+            row = cur.fetchone()
+        return _row_to_extract_job(row) if row else None
+
+    def sessions_awaiting_extraction(
+        self, owner_id: UUID, idle_seconds: int, limit: int
+    ) -> list[SessionRef]:
+        """Sessions with events past their watermark, quiet long enough.
+
+        The `watermarks` CTE gives the newest covers_through per session
+        among its DONE jobs - the newest, not any, because a session can be
+        extracted more than once across its life and only the latest
+        watermark matters. Events at or before that mark already produced
+        whatever they were going to produce; event_count and the idle check
+        both look only at what is left after it, which is what makes
+        event_count mean "work outstanding" rather than "events that exist".
+        """
+        with self._cur() as cur:
+            cur.execute(
+                """
+                with watermarks as (
+                  select project, harness, session_id, max(covers_through) as mark
+                    from extract_jobs
+                   where owner_id = %(owner_id)s and status = 'done'
+                   group by project, harness, session_id
+                )
+                select e.project, e.harness, e.session_id,
+                       count(*) as event_count,
+                       max(e.occurred_at) as last_event_at,
+                       w.mark as extract_from
+                  from events e
+                  left join watermarks w
+                         on w.project = e.project
+                        and w.harness = e.harness
+                        and w.session_id = e.session_id
+                 where e.owner_id = %(owner_id)s
+                   and (w.mark is null or e.occurred_at > w.mark)
+                 group by e.project, e.harness, e.session_id, w.mark
+                having max(e.occurred_at)
+                         < clock_timestamp() - make_interval(secs => %(idle)s)
+                 order by max(e.occurred_at)
+                 limit %(limit)s
+                """,
+                {"owner_id": owner_id, "idle": idle_seconds, "limit": limit},
+            )
+            return [_row_to_session_ref(r) for r in cur.fetchall()]

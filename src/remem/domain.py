@@ -48,6 +48,18 @@ class CaptureStatus(StrEnum):
     FAILED = "failed"
 
 
+class JobStatus(StrEnum):
+    """Same shape as CaptureStatus, but extract_jobs' own type (see
+    migrations/009_extract_jobs.sql): reusing capture_status would tie an
+    enum the legacy table still uses to a migration that has nothing to do
+    with it."""
+
+    PENDING = "pending"
+    RUNNING = "running"
+    DONE = "done"
+    FAILED = "failed"
+
+
 class PrincipalKind(StrEnum):
     USER = "user"
     TEAM = "team"
@@ -173,6 +185,31 @@ class CaptureJob:
     transcript_path: str
     session_id: str | None = None
     status: CaptureStatus = CaptureStatus.PENDING
+    attempts: int = 0
+    error: str | None = None
+    entries_written: int = 0
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+@dataclass(slots=True)
+class ExtractJob:
+    """One session queued for extraction from its events.
+
+    Keyed on (owner_id, project, harness, session_id), not a transcript path
+    - see 009_extract_jobs.sql. `covers_through` is the watermark: set on
+    finish, it is the newest occurred_at among the events this run actually
+    read, and is what lets a resumed session be re-queued for only its new
+    events instead of being invisible forever.
+    """
+
+    id: UUID
+    owner_id: UUID
+    project: str
+    harness: str
+    session_id: str
+    covers_through: datetime | None = None
+    status: JobStatus = JobStatus.PENDING
     attempts: int = 0
     error: str | None = None
     entries_written: int = 0

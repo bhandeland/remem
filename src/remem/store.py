@@ -13,9 +13,12 @@ from remem.domain import (
     Collection,
     Entry,
     Event,
+    ExtractJob,
     Hit,
+    JobStatus,
     Principal,
     Query,
+    SessionRef,
 )
 
 
@@ -88,3 +91,23 @@ class Store(Protocol):
     def provenance(
         self, entry_id: UUID, owner_id: UUID
     ) -> list[tuple[UUID, str, str, bool]]: ...
+
+    # extraction spool
+    def sessions_awaiting_extraction(
+        self, owner_id: UUID, idle_seconds: int, limit: int
+    ) -> list[SessionRef]: ...
+    def claim_extract_job(self, owner_id: UUID, session: SessionRef) -> ExtractJob: ...
+    def claim_extract_job_by_id(
+        self, job_id: UUID, owner_id: UUID
+    ) -> ExtractJob | None: ...
+    def finish_extract_job(
+        self, job_id: UUID, owner_id: UUID, status: JobStatus,
+        error: str | None, entries_written: int,
+        covers_through: datetime | None,
+    ) -> None: ...
+    def get_extract_job(self, job_id: UUID, owner_id: UUID) -> ExtractJob | None: ...
+    def extract_job_counts(self, owner_id: UUID) -> dict[str, int]: ...
+    def recent_failed_extract_jobs(
+        self, owner_id: UUID, limit: int = 5
+    ) -> list[ExtractJob]: ...
+    def try_advisory_lock(self, name: str, owner_id: UUID) -> bool: ...
