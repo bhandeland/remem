@@ -1,7 +1,9 @@
-"""SessionStart hook.
+"""Claude Code hook entry points: SessionStart, PostToolUse/SessionEnd
+recording, and the UserPromptSubmit session-size reminder.
 
-Fail-soft is a hard requirement: bounded work, exit 0 unconditionally, print
-nothing on error. A knowledge tool must never be why a session will not start.
+Fail-soft is a hard requirement across all of them: bounded work, exit 0
+unconditionally, print nothing on error. A knowledge tool must never be why a
+session will not start, a tool call will not run, or a prompt will not send.
 """
 
 from __future__ import annotations
@@ -19,7 +21,7 @@ from remem.agents.claude_code.adapter import ClaudeCodeAdapter
 from remem.config import load
 from remem.extract.base import CHILD_ENV_VAR
 from remem.hookio import debug as _debug
-from remem.services import kb
+from remem.services import kb, record
 from remem.session import open_session
 from remem.store import Store
 
@@ -134,26 +136,61 @@ def main() -> int:
     return 0
 
 
-def session_end(stdin_text: str, env: Mapping[str, str]) -> None:
-    """Do nothing, loudly only under REMEM_HOOK_DEBUG.
+def record_event(stdin_text: str, env: Mapping[str, str]) -> None:
+    """Record one Claude Code hook payload as an event, or do nothing.
 
-    It used to enqueue a capture job. Extraction is triggered by idleness
-    now (see services/extraction), so a SessionEnd hook is no longer part of
-    making the pipeline work - which is what lets the two harnesses without
-    one behave the same as this one.
+    This is the PostToolUse hook - it runs once per tool call - and, since
+    `ClaudeCodeAdapter.event()` maps both payload shapes, it is also what
+    `remem hook session-end` now points at: a `session_end` event shortens
+    the idle wait extraction runs on, but the pipeline no longer needs it,
+    which is what lets a harness without a SessionEnd hook lose nothing but
+    time.
 
-    The command stays registered rather than being deleted: an installed
-    settings.json names `remem hook session-end`, and a hook command that
-    does not exist is an error message on every session close. Task 9 gives
-    it its real job back - recording a `session_end` event, which shortens
-    the idle wait without being required by it.
+    Same fail-soft contract as every other hook: malformed stdin, an
+    unreachable database, a project that has not opted in - all silent, all
+    reported only under REMEM_HOOK_DEBUG, and none of them ever raise past
+    here.
     """
-    _debug(env, "session-end does nothing; extraction runs on an idle timer")
+    if env.get(CHILD_ENV_VAR):
+        # The extractor's own `claude -p` child would otherwise record the
+        # extraction itself as events, which the next extraction would then
+        # read - an unbounded feedback loop. Both hooks check this; do not
+        # add a third copy that checks something else.
+        _debug(env, "inside an extraction child; not recording its events")
+        return
 
-
-def main_session_end() -> int:
     try:
-        session_end(sys.stdin.read(), env=dict(os.environ))
+        payload = json.loads(stdin_text) if stdin_text.strip() else {}
+    except (json.JSONDecodeError, AttributeError):
+        _debug(env, "stdin was not valid JSON")
+        return
+
+    try:
+        adapter = ClaudeCodeAdapter()
+        harness_event = adapter.event(env, payload)
+        if harness_event is None:
+            _debug(env, "payload was not an event worth recording")
+            return
+
+        config = load(env=env)
+        with open_session(config) as s:
+            result = record.record(
+                s.store, s.owner.id, harness_event, adapter.name
+            )
+        if result is None:
+            _debug(
+                env,
+                f"recording is not enabled for project "
+                f"{harness_event.project!r}. Enable it with `remem record "
+                f"enable --project {harness_event.project}`.",
+            )
+    except Exception as exc:
+        _debug(env, f"{type(exc).__name__}: {exc}")
+
+
+def main_record_event() -> int:
+    try:
+        record_event(sys.stdin.read(), env=dict(os.environ))
     except Exception:
         pass
     return 0

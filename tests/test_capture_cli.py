@@ -12,6 +12,9 @@ runner = CliRunner()
 
 
 def test_installer_registers_the_session_end_hook(tmp_path):
+    """SessionEnd now points at the same command PostToolUse does - the
+    idle trigger replaced it as the requirement, and it is kept only as a
+    hint that shortens the wait."""
     ClaudeCodeAdapter().install(scope="user", home=tmp_path)
     settings = json.loads((tmp_path / ".claude" / "settings.json").read_text())
     commands = [
@@ -19,7 +22,7 @@ def test_installer_registers_the_session_end_hook(tmp_path):
         for group in settings["hooks"]["SessionEnd"]
         for h in group["hooks"]
     ]
-    assert any("remem hook session-end" in c for c in commands)
+    assert any("remem hook record-event" in c for c in commands)
 
 
 def test_installing_twice_leaves_one_session_end_hook(tmp_path):

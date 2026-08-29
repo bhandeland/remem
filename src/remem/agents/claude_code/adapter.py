@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import shutil
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from importlib import resources
 from pathlib import Path
 from typing import Mapping
@@ -19,22 +19,28 @@ from remem.agents.base import (
     UnsupportedScope,
 )
 from remem.agents.claude_code.env_vars import CLAUDE_CODE_ENV_VARS
-from remem.domain import EventKind
+from remem.domain import EventKind, new_id
 from remem.project import resolve_project
 
 HOOK_COMMAND = "remem hook session-start"
-SESSION_END_COMMAND = "remem hook session-end"
+RECORD_EVENT_COMMAND = "remem hook record-event"
 SESSION_SIZE_COMMAND = "remem hook session-size"
+
+#: The reserved project install verification round-trips through. Nothing
+#: else ever writes to it, which is what lets verify() force recording on,
+#: write, read back, and delete without touching a project the user chose.
+VERIFY_PROJECT = "__remem_verify__"
 
 SLUG_CONVENTION = (
     "The SessionStart hook injects the knowledge base whose slug matches the "
     "session's repository name - create one with `remem kb new <repo-name>`. A subdirectory or a worktree resolves to the same name."
 )
 
-CAPTURE_NOTE = (
-    "Automatic capture is OFF until you enable it per project: "
-    "`remem capture enable --project <name>`. Nothing is recorded from a "
-    "project you did not choose."
+RECORD_NOTE = (
+    "Recording is OFF until you enable it per project: "
+    "`remem record enable --project <name>`. Nothing is recorded from a "
+    "project you did not choose, and that gate is the whole privacy story - "
+    "events are stored in full, including command output and file contents."
 )
 
 HANDOFF_NOTE = (
@@ -120,7 +126,8 @@ class ClaudeCodeAdapter:
                 f"scope '{scope}' is not supported; only 'user' is implemented"
             )
         home = home or Path.home()
-        paths = resolve_paths(home, os.environ if env is None else env)
+        env = os.environ if env is None else env
+        paths = resolve_paths(home, env)
         report = InstallReport(agent=self.name)
         backed_up: set[Path] = set()
 
@@ -135,9 +142,19 @@ class ClaudeCodeAdapter:
                 f"under {paths.config_dir} rather than ~/.claude."
             )
         report.notes.append(SLUG_CONVENTION)
-        report.notes.append(CAPTURE_NOTE)
+        report.notes.append(RECORD_NOTE)
         report.notes.append(HANDOFF_NOTE)
         report.notes.append(CONFIG_NOTE)
+
+        # Verification is the last step, deliberately: it is a live round
+        # trip through the database, and every file above should already be
+        # written and reported on before it runs. It never raises - a
+        # failure here becomes a warning, folded into this same report -
+        # because an install that dies proving it works is worse than one
+        # that finishes and admits it could not prove anything.
+        verification = self.verify(env=env, home=home)
+        report.actions.extend(verification.actions)
+        report.warnings.extend(verification.warnings)
         return report
 
     def _install_mcp(
@@ -162,7 +179,15 @@ class ClaudeCodeAdapter:
         changed = False
         for event, command, timeout in (
             ("SessionStart", HOOK_COMMAND, 10),
-            ("SessionEnd", SESSION_END_COMMAND, 10),
+            # A hint, not a requirement: extraction runs on an idle timer
+            # now, so a harness with no SessionEnd loses nothing but a
+            # slightly longer wait. It records through the same command and
+            # the same event() mapping as PostToolUse.
+            ("SessionEnd", RECORD_EVENT_COMMAND, 10),
+            # Runs once per tool call and does one INSERT, so it gets the
+            # short budget UserPromptSubmit has, not the 10s SessionStart
+            # needs.
+            ("PostToolUse", RECORD_EVENT_COMMAND, 5),
             # Runs on every prompt, so it gets the shortest timeout of the
             # three; it reads one file and never opens Postgres.
             ("UserPromptSubmit", SESSION_SIZE_COMMAND, 5),
@@ -258,3 +283,84 @@ class ClaudeCodeAdapter:
             payload=payload,
             occurred_at=datetime.now(timezone.utc),
         )
+
+    def verify(
+        self, env: Mapping[str, str] | None = None, home: Path | None = None
+    ) -> InstallReport:
+        """Record an event, read it back, delete it.
+
+        An install that reports success without demonstrating anything is
+        how claude-mem's opencode integration recorded nothing for months.
+        The round-trip is deliberately end-to-end - it goes through the same
+        `remem record event` the hook will call, not through a store handle
+        the hook does not have - because what is being tested is the wiring,
+        and every part of the wiring that this skips is a part that can be
+        broken while the check passes.
+
+        `home` is accepted for symmetry with `install()` but unused: this is
+        a database round-trip, not a file-system one. Never raises - a
+        failure here is a warning naming what could not be proven, and the
+        caller (a user typing `remem verify`, or `install()` on its way out)
+        still finishes.
+        """
+        from remem.config import load
+        from remem.services import events as events_service
+        from remem.services import record as record_service
+        from remem.session import open_session
+
+        report = InstallReport(agent=self.name)
+        env = dict(os.environ) if env is None else dict(env)
+        session_id = str(new_id())
+        try:
+            config = load(env=env)
+            with open_session(config) as s:
+                record_service.enable(s.store, s.owner.id, VERIFY_PROJECT)
+                try:
+                    harness_event = HarnessEvent(
+                        kind=EventKind.TOOL_CALL,
+                        session_id=session_id,
+                        project=VERIFY_PROJECT,
+                        tool="remem-verify",
+                        payload={"verify": True},
+                        occurred_at=datetime.now(timezone.utc),
+                    )
+                    stored = record_service.record(
+                        s.store, s.owner.id, harness_event, self.name
+                    )
+                    if stored is None:
+                        report.warnings.append(
+                            "install verification could not record a test "
+                            "event - recording did not stay enabled for "
+                            f"'{VERIFY_PROJECT}'"
+                        )
+                        return report
+
+                    readback = s.store.events_for_session(
+                        s.owner.id, VERIFY_PROJECT, self.name, session_id
+                    )
+                    if not readback:
+                        report.warnings.append(
+                            "install verification recorded a test event "
+                            "but could not read it back"
+                        )
+                        return report
+
+                    events_service.prune(
+                        s.store,
+                        s.owner.id,
+                        before=stored.occurred_at + timedelta(seconds=1),
+                        force=True,
+                    )
+                    report.actions.append(
+                        "Verified the install with a live round-trip: "
+                        "recorded, read back, and deleted a test event"
+                    )
+                finally:
+                    # However the round-trip went, the project must not be
+                    # left able to record - nobody chose to enable it.
+                    record_service.disable(s.store, s.owner.id, VERIFY_PROJECT)
+        except Exception as exc:
+            report.warnings.append(
+                f"could not verify the install: {type(exc).__name__}: {exc}"
+            )
+        return report

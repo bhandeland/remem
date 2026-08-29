@@ -209,6 +209,32 @@ def test_install_with_project_scope_exits_nonzero(monkeypatch, tmp_path):
     assert "Traceback" not in r.stdout + r.stderr
 
 
+def test_verify_reruns_the_install_round_trip_without_reinstalling(env):
+    """`remem verify` is the re-runnable half of install's last step - a
+    user who fixed the database, or just wants to check, should not have to
+    reinstall to find out whether recording actually works."""
+    r = runner.invoke(app, ["verify", "--agent", "claude-code"])
+    assert r.exit_code == 0, r.stdout + r.stderr
+    assert "round-trip" in r.stdout
+    assert r.stderr == ""
+
+
+def test_verify_reports_an_unknown_agent(monkeypatch):
+    r = runner.invoke(app, ["verify", "--agent", "no-such-agent"])
+    assert r.exit_code != 0
+    assert "no-such-agent" in r.stderr
+
+
+def test_verify_exits_nonzero_when_it_cannot_prove_anything(monkeypatch):
+    """Unlike install(), which folds a failed verification into a warning
+    and finishes, `verify` is typed by a human asking "does this work?" -
+    a report full of warnings must not still say yes."""
+    monkeypatch.setenv("REMEM_DSN", "postgresql://nobody@127.0.0.1:1/none")
+    r = runner.invoke(app, ["verify", "--agent", "claude-code"])
+    assert r.exit_code != 0
+    assert "warning" in r.stderr
+
+
 def test_kb_new_without_a_query_warns(env):
     r = runner.invoke(app, ["kb", "new", "bare", "--title", "Bare"])
     assert r.exit_code == 0

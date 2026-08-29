@@ -115,6 +115,28 @@ def test_corrupt_existing_config_is_reported_not_silently_replaced(tmp_path):
     assert list((tmp_path).glob(".claude.json.bak*"))
 
 
+def test_the_install_registers_a_posttooluse_hook(tmp_path):
+    ClaudeCodeAdapter().install(scope="user", home=tmp_path)
+    settings = json.loads((tmp_path / ".claude" / "settings.json").read_text())
+    command = settings["hooks"]["PostToolUse"][0]["hooks"][0]["command"]
+    assert "remem hook record-event" in command
+
+
+def test_the_install_still_registers_session_start(tmp_path):
+    """Context injection is untouched by this change."""
+    ClaudeCodeAdapter().install(scope="user", home=tmp_path)
+    settings = json.loads((tmp_path / ".claude" / "settings.json").read_text())
+    command = settings["hooks"]["SessionStart"][0]["hooks"][0]["command"]
+    assert "remem hook session-start" in command
+
+
+def test_the_posttooluse_hook_is_registered_once(tmp_path):
+    ClaudeCodeAdapter().install(scope="user", home=tmp_path)
+    ClaudeCodeAdapter().install(scope="user", home=tmp_path)
+    settings = json.loads((tmp_path / ".claude" / "settings.json").read_text())
+    assert len(settings["hooks"]["PostToolUse"]) == 1
+
+
 def test_install_registers_the_session_size_hook(tmp_path):
     ClaudeCodeAdapter().install(scope="user", home=tmp_path)
     settings = json.loads((tmp_path / ".claude" / "settings.json").read_text())

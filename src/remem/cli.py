@@ -585,6 +585,45 @@ def install(
         typer.echo(note)
 
 
+@app.command()
+def verify(
+    agent: Annotated[str, typer.Option("--agent")] = "claude-code",
+):
+    """Prove an agent's install actually records events, without reinstalling.
+
+    The same live round-trip `install` runs as its own last step - record,
+    read back, delete - so a user who wants to re-check after fixing the
+    database, or just before trusting the pipeline, does not have to run the
+    whole install again to find out.
+    """
+    from remem.agents.registry import UnknownAgent, get as get_adapter
+
+    try:
+        adapter = get_adapter(agent)()
+    except UnknownAgent as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1)
+
+    verify_fn = getattr(adapter, "verify", None)
+    if verify_fn is None:
+        typer.echo(f"{agent} has no install verification.", err=True)
+        raise typer.Exit(1)
+
+    report = verify_fn(env=dict(os.environ), home=Path.home())
+    for action in report.actions:
+        typer.echo(f"  {action}")
+    for warning in report.warnings:
+        typer.echo(f"  warning: {warning}", err=True)
+    if report.warnings:
+        # verify() itself never raises - a failure is a warning on the
+        # report, because install() calling it must never die mid-install.
+        # But this command is typed by a human asking "does this actually
+        # work?", and a report full of warnings that still exits 0 answers
+        # that question wrong.
+        raise typer.Exit(1)
+    typer.echo(f"\nVerified {report.agent}.")
+
+
 def _message(exc: Exception) -> str:
     """An exception's message, without KeyError's repr quotes.
 
@@ -734,10 +773,25 @@ def hook_session_start():
 
 @hook_app.command("session-end")
 def hook_session_end():
-    """Queue this session for capture. Always exits 0."""
-    from remem.agents.claude_code.hook import main_session_end
+    """Record this SessionEnd payload as an event. Always exits 0.
 
-    raise typer.Exit(main_session_end())
+    The command name is kept from before the idle trigger existed - an
+    already-installed settings.json names it, and a hook command that no
+    longer exists is an error on every session close. It now does exactly
+    what `remem hook record-event` does: extraction runs on an idle timer,
+    so this just shortens the wait rather than being required for it.
+    """
+    from remem.agents.claude_code.hook import main_record_event
+
+    raise typer.Exit(main_record_event())
+
+
+@hook_app.command("record-event")
+def hook_record_event():
+    """Record this PostToolUse or SessionEnd payload as an event. Always exits 0."""
+    from remem.agents.claude_code.hook import main_record_event
+
+    raise typer.Exit(main_record_event())
 
 
 @hook_app.command("session-size")
