@@ -466,8 +466,9 @@ One migration, `007_events.sql` - `006` is the semantic-recall migration,
 which shipped first. It is the only part of this design that touches
 existing data, so each step is spelled out with what it can and cannot break.
 
-**1. New tables.** `event_kind`, `events`, `entry_events`, `entry_vectors`. Pure
-creation; nothing existing is read or altered.
+**1. New tables.** `event_kind`, `events`, `entry_events`. (`entry_vectors`
+shipped in `006`; recreating it here would fail.) Pure creation; nothing
+existing is read or altered.
 
 **2. `extract_jobs` is a new table, not a re-keyed `capture_jobs`.** The earlier
 draft renamed and re-keyed in place. That is the wrong trade. The old key is a
