@@ -39,6 +39,42 @@ def entry_columns(alias: str = "") -> str:
     return ", ".join(f"{prefix}{f}" for f in ENTRY_FIELDS)
 
 
+def _entry_filters(query: Query, owner_id: UUID) -> tuple[list[str], dict]:
+    """The filters every entry read applies, built once for all search tiers.
+
+    Extracted because there are now three tiers running the same predicates
+    against the same table. Duplicated, they drift: a filter accidentally
+    dropped from one tier is invisible until that tier happens to answer, and
+    the owner check is among them. One builder means one place to be wrong.
+
+    Returns clauses joined by the caller with " and ", plus the params they
+    reference. Text matching is NOT included - that is what differs between
+    tiers and is the caller's business.
+    """
+    params: dict = {"owner_id": owner_id, "limit": query.limit}
+    where = ["e.owner_id = %(owner_id)s"]
+
+    if not query.include_superseded:
+        where.append("e.superseded_by is null")
+    if query.kinds:
+        where.append("e.kind = any(%(kinds)s::entry_kind[])")
+        params["kinds"] = [str(k) for k in query.kinds]
+    if query.project is not None:
+        where.append("e.project = %(project)s")
+        params["project"] = query.project
+    if query.tags:
+        where.append("e.tags && %(tags)s")
+        params["tags"] = list(query.tags)
+    if query.origins:
+        where.append("e.origin = any(%(origins)s::entry_origin[])")
+        params["origins"] = [str(o) for o in query.origins]
+    if query.since is not None:
+        where.append("e.created_at >= %(since)s")
+        params["since"] = query.since
+
+    return where, params
+
+
 def _row_to_entry(row: dict) -> Entry:
     return Entry(
         id=row["id"],
@@ -229,26 +265,7 @@ class PostgresStore:
     def search(self, query: Query, owner_id: UUID) -> list[Hit]:
         """Ranked search. Owner and superseded filters are always applied."""
         text = (query.text or "").strip()
-        params: dict = {"owner_id": owner_id, "limit": query.limit}
-        where = ["e.owner_id = %(owner_id)s"]
-
-        if not query.include_superseded:
-            where.append("e.superseded_by is null")
-        if query.kinds:
-            where.append("e.kind = any(%(kinds)s::entry_kind[])")
-            params["kinds"] = [str(k) for k in query.kinds]
-        if query.project is not None:
-            where.append("e.project = %(project)s")
-            params["project"] = query.project
-        if query.tags:
-            where.append("e.tags && %(tags)s")
-            params["tags"] = list(query.tags)
-        if query.origins:
-            where.append("e.origin = any(%(origins)s::entry_origin[])")
-            params["origins"] = [str(o) for o in query.origins]
-        if query.since is not None:
-            where.append("e.created_at >= %(since)s")
-            params["since"] = query.since
+        where, params = _entry_filters(query, owner_id)
 
         if text:
             # websearch_to_tsquery accepts what people and agents actually
@@ -306,30 +323,9 @@ class PostgresStore:
         if not text:
             return []
 
-        params: dict = {
-            "owner_id": owner_id,
-            "limit": query.limit,
-            "text": text,
-            "threshold": threshold,
-        }
-        where = ["e.owner_id = %(owner_id)s"]
-        if not query.include_superseded:
-            where.append("e.superseded_by is null")
-        if query.kinds:
-            where.append("e.kind = any(%(kinds)s::entry_kind[])")
-            params["kinds"] = [str(k) for k in query.kinds]
-        if query.project is not None:
-            where.append("e.project = %(project)s")
-            params["project"] = query.project
-        if query.tags:
-            where.append("e.tags && %(tags)s")
-            params["tags"] = list(query.tags)
-        if query.origins:
-            where.append("e.origin = any(%(origins)s::entry_origin[])")
-            params["origins"] = [str(o) for o in query.origins]
-        if query.since is not None:
-            where.append("e.created_at >= %(since)s")
-            params["since"] = query.since
+        where, params = _entry_filters(query, owner_id)
+        params["text"] = text
+        params["threshold"] = threshold
 
         score = ("greatest(similarity(e.title, %(text)s), "
                  "word_similarity(%(text)s, e.body))")
