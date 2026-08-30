@@ -11,11 +11,13 @@ that ever writes it.
 
 from __future__ import annotations
 
+import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Mapping
 
-from remem.agents.base import HarnessEvent, Identity
+from remem.agents.base import RECORD_NOTE, HarnessEvent, Identity, InstallReport
 from remem.domain import EventKind
 from remem.project import resolve_project
 
@@ -178,3 +180,64 @@ class CursorAdapter:
                 "(no repository here, or the line was already present)"
             )
         return str(path)
+
+    def install(
+        self,
+        scope: str = "user",
+        home: Path | None = None,
+        env: Mapping[str, str] | None = None,
+    ) -> InstallReport:
+        """Merge remem's hook entries into hooks.json, then verify.
+
+        Writes nothing else. The rules file is deliberately NOT written
+        here: it is written at sessionStart, from the workspace the session
+        actually opened, which is what makes one user-scope install work
+        for every repository.
+        """
+        from remem.agents.cursor.install import ENTRIES, hooks_path, merge
+
+        home = home or Path.home()
+        env = os.environ if env is None else env
+
+        # hooks_path raises for an unknown scope, so by the time anything
+        # is written the scope is known good.
+        path = hooks_path(scope, home=home, cwd=Path.cwd())
+        path.parent.mkdir(parents=True, exist_ok=True)
+        document, backup = merge(path, ENTRIES)
+        path.write_text(json.dumps(document, indent=2) + "\n")
+
+        report = InstallReport(agent=self.name)
+        report.actions.append(
+            f"Merged {len(ENTRIES)} hook entries into {path}"
+        )
+        if backup is not None:
+            # A .bak nobody is told about is barely a safety net.
+            report.actions.append(f"Backed up the previous file to {backup}")
+        report.notes.append(RECORD_NOTE)
+        report.notes.append(
+            "The knowledge base block is written to .cursor/rules/remem.mdc "
+            "at every session start, and added to .git/info/exclude so it "
+            "stays out of git."
+        )
+
+        # Verification last, deliberately, and never raising - a failure
+        # here becomes a warning folded into this same report, exactly as
+        # both other adapters do it.
+        verification = self.verify(env=env, home=home)
+        report.actions.extend(verification.actions)
+        report.warnings.extend(verification.warnings)
+        return report
+
+    def verify(
+        self, env: Mapping[str, str] | None = None, home: Path | None = None
+    ) -> InstallReport:
+        """Record an event, read it back, delete it.
+
+        `home` is accepted for symmetry with install() but unused: this is
+        a database round-trip, not a file-system one. What it proves and
+        why it is shaped this way lives in agents/verify.round_trip,
+        shared with every adapter.
+        """
+        from remem.agents.verify import round_trip
+
+        return round_trip(self.name, env)
