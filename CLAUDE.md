@@ -326,15 +326,30 @@ the same reason every other adapter here does: extraction is the layer meant
 to be fixable and re-run without re-recording anything, and pruning fields at
 the recording boundary caps what any future extractor could ever see.
 
-**This adapter has never recorded an event from a real Cursor session.**
-Every payload key `identity()`/`event()` read (`session_id`,
-`workspace_roots`, `hook_event_name`, `tool_name`) comes from reading Cursor's
-payload-constructing code in the shipped app bundle, confirmed by a second,
-independent reading - not from a captured live payload, because no Cursor
-account exists on the machine this was built on. See
-`docs/superpowers/notes/2026-08-29-cursor-payloads.md` for the source reading
-and `docs/superpowers/notes/2026-08-29-cursor-proof.md` for exactly what is
-and is not proven about the adapter as shipped.
+**This adapter has recorded real events from a real Cursor session** (2026-08-30,
+Cursor 3.18.9). Every payload key `identity()`/`event()` reads (`session_id`,
+`workspace_roots`, `hook_event_name`, `tool_name`) was originally derived from
+reading Cursor's payload-constructing code in the shipped app bundle, confirmed
+by a second independent reading, and has since been confirmed against live
+payloads: nine events over two turns, both `EventKind`s, real tool names, and
+`workspace_roots` resolving to the right project. The source reading was
+correct. See `docs/superpowers/notes/2026-08-29-cursor-payloads.md` for that
+reading and `docs/superpowers/notes/2026-08-29-cursor-proof.md` for exactly
+what is and is not proven - two of the four proof criteria are closed, one
+partially, and one (the block confirmed in the outbound request) remains open
+because Cursor's local logs carry no request bodies.
+
+Two things the live session taught that are not about Cursor at all. **Cursor
+loads Claude Code's `~/.claude/settings.json` hooks and runs them with Cursor
+payloads** - so remem's Claude-Code hooks fire inside Cursor, are handed a shape
+they cannot parse, and exit 0 in silence. Nothing is broken by it today; it is
+undecided territory rather than a bug, and it means the two adapters are not as
+independent as the seam suggests. And a `kb.RulesExceedBudget` failure is
+**invisible**, because every hook is fail-soft: when the knowledge base outgrew
+`REMEM_MAX_CHARS`, context injection silently died on *every* harness, Claude
+Code included, with a 0 exit and no output. Fail-soft is still the right
+contract, but the budget is the one failure it hides that a user would want to
+know about.
 
 ## Conventions
 
