@@ -239,9 +239,37 @@ identically when probed. **Context injection had been silently dead on every
 harness** once the knowledge base outgrew 6,000 chars. Raising `REMEM_MAX_CHARS`
 to 16,000 fixed all harnesses at once.
 
-The rendered block is 15,699 chars against that 16,000 budget - about 2% of
-headroom. It will fail again, silently, in the same way. Pruning the knowledge
-base is the durable fix; the raise bought room, not a solution.
+**Correction, same day.** This note first said the rendered block was 15,699
+chars against a 16,000 budget, "about 2% of headroom", and would fail again
+shortly. That was a misreading of `kb.render`, and the number to watch is a
+different one.
+
+`render()` emits rules first and **never truncates them**: if rules and header
+exceed `max_chars` it raises `RulesExceedBudget`, which is the failure above.
+Non-rule entries then fill whatever remains, are dropped whole, and the block
+ends with an explicit `- N more entries not shown` notice. So a block whose
+knowledge base has more notes than fit will *always* measure just under
+`max_chars`. Total block size sitting near the budget is the design working, not
+a warning sign; only **rules + header** approaching the budget predicts failure.
+
+Measured after moving five entries out of the `remem` project (one rule
+superseded by a strictly larger replacement, two git-forge and two local-model
+entries that had been filed here only because that is where the session ran):
+
+| | rules + header | budget | headroom |
+|---|---|---|---|
+| before | 12,625 | 6,000 | failing |
+| after raising the budget | 12,625 | 16,000 | 21% |
+| after pruning | 11,223 | 16,000 | 30% |
+
+The total block barely moved - 15,699 to 15,623 - because four notes that had
+been cut for space simply moved up into the freed room. That is the clearest
+demonstration of why total size is the wrong metric: 5,554 chars left the
+collection and the file shrank by 76 bytes.
+
+The block still ends with `4 more entries not shown`, which is ordinary
+operation. It does mean notes compete for leftover space and silently displace
+one another; rules are the protected category.
 
 ### Criterion 3 - the block confirmed in what the model was SENT: STILL OPEN
 
