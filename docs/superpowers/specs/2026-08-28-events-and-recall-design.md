@@ -67,6 +67,21 @@ and opencode's `Hooks` interface in the installed
 | Cursor | shell hooks | tool events only, **no transcript** | write `.cursor/rules/*.mdc` |
 | opencode | in-process JS plugin | tool events, chat messages, **no transcript** | `experimental.chat.system.transform` |
 
+**Correction, 2026-08-29 (Cursor adapter design, Task 7).** The Cursor row's
+"no transcript" is false. Cursor's hook payload constructor puts
+`transcript_path` on every hook envelope except `workspaceOpen` - read
+directly out of the shipped app (see
+`docs/superpowers/specs/2026-08-29-cursor-adapter-design.md`'s "Three
+corrections" section and `docs/superpowers/notes/2026-08-29-cursor-payloads.md`).
+The mistake was inherited second-hand, from claude-mem's `cursor-hooks/PARITY.md`
+mapping an older Cursor, rather than read out of the product itself - the same
+root cause behind the other two corrections in that section. This table is left
+as originally written, with this note beside it, because the reusable lesson is
+in the mistake and its cause, not just the fixed fact. **Using the transcript is
+still out of scope for the Cursor adapter as built** - this correction only
+fixes what is available, not what remem does with it; that belongs to its own
+design.
+
 Two conclusions follow, and they are the load-bearing decisions of this design.
 
 **Events are the portable raw unit.** A transcript exists in one harness of

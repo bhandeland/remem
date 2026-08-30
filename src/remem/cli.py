@@ -859,17 +859,38 @@ def hook_context(
 
         cfg = load()
         with open_session(cfg) as s:
-            typer.echo(
-                context.block(
-                    s.store,
-                    s.owner.id,
-                    identity.project,
-                    cfg.max_chars,
-                    note=lambda reason: debug(env, reason),
-                    owner_handle=s.owner.handle,
-                ),
-                nl=False,
+            rendered = context.block(
+                s.store,
+                s.owner.id,
+                identity.project,
+                cfg.max_chars,
+                note=lambda reason: debug(env, reason),
+                owner_handle=s.owner.handle,
             )
+
+        # Delivery is the adapter's business, not the frontend's. An
+        # adapter with no inject() is one whose harness reads stdout, which
+        # is the default and not a degradation - see the Protocol comment
+        # in agents/base.py. A capability that raises degrades to the
+        # stdout path and a debug line, never to a broken hook.
+        inject = getattr(adapter, "inject", None)
+        if inject is not None:
+            try:
+                written = inject(rendered, payload, note=lambda reason: debug(env, reason))
+            except Exception as exc:
+                debug(
+                    env,
+                    f"{agent} adapter's inject() raised "
+                    f"{type(exc).__name__}: {exc}",
+                )
+            else:
+                if written:
+                    debug(env, f"wrote the context block to {written}")
+                else:
+                    debug(env, "the adapter wrote no context block")
+                raise typer.Exit(0)
+
+        typer.echo(rendered, nl=False)
     except typer.Exit:
         raise
     except Exception as exc:

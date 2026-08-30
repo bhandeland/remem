@@ -1,7 +1,9 @@
 # Cursor adapter - design
 
 Date: 2026-08-29
-Status: proposed
+Status: implemented (2026-08-29) - shipped unproven against a live Cursor
+session; see `docs/superpowers/notes/2026-08-29-cursor-proof.md` for exactly
+what is and is not proven.
 Builds on: docs/superpowers/specs/2026-08-28-events-and-recall-design.md
 Follows: docs/superpowers/specs/2026-08-29-opencode-adapter-design.md
 
@@ -70,8 +72,20 @@ The load-bearing sentences, and what is actually true:
 
 1. *"Cursor: tool events only, **no transcript**"* - false. `beforeSubmitPrompt`
    carries the user's prompt and `afterAgentResponse` the assistant's reply.
-   There is no transcript **file**, but the conversation is available as message
-   events. Cursor's raw material is richer than opencode's, not poorer.
+   Cursor's raw material is richer than opencode's, not poorer.
+
+   **Correction, 2026-08-29 (Task 7, after this document was written).** The
+   sentence directly above - "There is no transcript file, but the conversation
+   is available as message events" - was itself wrong, and for the same
+   root cause as the mistake it was correcting: it assumed Cursor's shape from
+   another tool's map instead of reading Cursor's own code all the way through.
+   Cursor's hook payload constructor puts `transcript_path` on every hook
+   envelope except `workspaceOpen` - see
+   `docs/superpowers/notes/2026-08-29-cursor-payloads.md`. There **is** a
+   transcript file, on every hook this adapter subscribes to. This does not
+   change anything this design built: nothing here reads `transcript_path`,
+   and using the transcript remains out of scope for this branch - it is
+   recorded here rather than acted on, per `docs/superpowers/notes/2026-08-29-cursor-proof.md`.
 
 2. *"Neither Cursor nor opencode has a reliable session-end signal"* - false for
    Cursor, which has both `sessionStart` and `sessionEnd`.

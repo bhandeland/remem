@@ -15,6 +15,7 @@ import pytest
 from typer.testing import CliRunner
 
 from remem.agents.claude_code.adapter import ClaudeCodeAdapter
+from remem.agents.cursor.adapter import ROOT_KEY, CursorAdapter
 from remem.backends.postgres.migrate import migrate
 from remem.backends.postgres.store import PostgresStore
 from remem.cli import app
@@ -195,3 +196,61 @@ def test_context_reads_a_named_agent_and_matches_the_default(env, repo):
     assert opencode.exit_code == 0
     assert claude_code.stdout != ""
     assert claude_code.stdout == opencode.stdout
+
+
+def test_an_adapter_whose_inject_capability_raises_degrades_to_stdout(env, monkeypatch, repo):
+    """Same contract as identity()/event()/env_settings()/settings_path(): a
+    broken inject() must not be why the block never reaches the harness -
+    it just falls back to the stdout path every other adapter already
+    uses."""
+    _seed_kb(env, project=repo.name)
+
+    def boom(self, block, payload, note=None):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(CursorAdapter, "inject", boom)
+    result = runner.invoke(
+        app,
+        ["hook", "context", "--agent", "cursor"],
+        input=json.dumps({ROOT_KEY: [str(repo)], "session_id": "x"}),
+    )
+    assert result.exit_code == 0
+    assert "Lint rule" in result.stdout
+
+
+def test_an_adapter_whose_inject_capability_raises_explains_itself(env, monkeypatch, repo):
+    monkeypatch.setenv("REMEM_HOOK_DEBUG", "1")
+    _seed_kb(env, project=repo.name)
+
+    def boom(self, block, payload, note=None):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(CursorAdapter, "inject", boom)
+    result = runner.invoke(
+        app,
+        ["hook", "context", "--agent", "cursor"],
+        input=json.dumps({ROOT_KEY: [str(repo)], "session_id": "x"}),
+    )
+    assert result.exit_code == 0
+    assert "inject" in result.stderr
+    assert "boom" in result.stderr
+
+
+def test_an_adapter_with_inject_does_not_print_the_block_to_stdout(env, repo):
+    """Cursor cannot read stdout - printing the block there anyway would be
+    noise nobody reads, not a useful fallback. inject() being present and
+    succeeding means delivery already happened, so stdout stays empty and
+    the block lands in the rules file instead."""
+    _seed_kb(env, project=repo.name)
+
+    result = runner.invoke(
+        app,
+        ["hook", "context", "--agent", "cursor"],
+        input=json.dumps({ROOT_KEY: [str(repo)], "session_id": "x"}),
+    )
+
+    assert result.exit_code == 0
+    assert result.stdout == ""
+    written = repo / ".cursor" / "rules" / "remem.mdc"
+    assert written.exists()
+    assert "Lint rule" in written.read_text()

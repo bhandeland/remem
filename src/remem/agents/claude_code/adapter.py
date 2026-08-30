@@ -29,9 +29,11 @@ RECORD_EVENT_COMMAND = "remem hook record-event"
 SESSION_SIZE_COMMAND = "remem hook session-size"
 
 # VERIFY_PROJECT used to be defined here; it now lives in remem.agents.verify,
-# shared with every adapter's round-trip. Imported (not just used) above so
-# it stays reachable as remem.agents.claude_code.adapter.VERIFY_PROJECT -
-# tests/test_claude_code_events_install.py still imports it from this module.
+# shared with every adapter's round-trip. Re-exported, not used here:
+# tests/test_claude_code_events_install.py still imports it from this
+# module. Naming it in __all__ is what makes that deliberate rather than a
+# stray import a linter should remove.
+__all__ = ["ClaudeCodeAdapter", "VERIFY_PROJECT"]
 
 SLUG_CONVENTION = (
     "The SessionStart hook injects the knowledge base whose slug matches the "
