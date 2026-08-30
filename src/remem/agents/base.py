@@ -159,3 +159,17 @@ class AgentAdapter(Protocol):
     # contract as env_settings()/settings_path(): a capability that raises
     # warns and continues; a broken third-party adapter must never be why
     # recording stops for everyone.
+    #
+    #     def inject(self, block: str, payload: dict) -> str | None: ...
+    #
+    # `inject()` is the delivery half of context injection, and it exists
+    # because the three harnesses disagree about it completely: Claude Code
+    # reads stdout, opencode returns a string from a plugin transform, and
+    # Cursor reads a file in the workspace. services/context.py builds the
+    # block for all of them; this says where it goes. An adapter without it
+    # is one whose frontend already knows how to deliver the block - Claude
+    # Code does not implement it - so a missing inject() is not a
+    # degradation, it is the default. Returns the path or destination
+    # written, for the frontend to report, or None if there was nowhere to
+    # put it. Same degradation contract as the rest: a capability that
+    # raises warns and continues.

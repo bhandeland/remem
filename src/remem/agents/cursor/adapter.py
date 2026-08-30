@@ -81,7 +81,10 @@ class CursorAdapter:
         # adapter does too.
         return payload.get(SESSION_KEY) or payload.get(_SESSION_FALLBACK_KEY)
 
-    def _project(self, payload: dict) -> str | None:
+    def _root(self, payload: dict) -> Path | None:
+        """The workspace root as a path, or None. Distinct from
+        `_project`, which turns the same value into a knowledge base slug -
+        injection needs the directory, recording needs the name."""
         root = payload.get(ROOT_KEY)
         # Cursor's constructor builds this as a `.map()` over the
         # workspace's folders, so it is always a list of path strings in
@@ -93,9 +96,11 @@ class CursorAdapter:
         # nothing and guards against that reading being wrong.
         if isinstance(root, list):
             root = root[0] if root else None
-        if not root:
-            return None
-        return resolve_project(Path(root))
+        return Path(root) if root else None
+
+    def _project(self, payload: dict) -> str | None:
+        root = self._root(payload)
+        return resolve_project(root) if root else None
 
     def event(self, env: Mapping[str, str], payload: dict) -> HarnessEvent | None:
         """Read one Cursor hook payload as an event, or None.
@@ -128,3 +133,26 @@ class CursorAdapter:
             payload=payload,
             occurred_at=datetime.now(timezone.utc),
         )
+
+    def inject(self, block: str, payload: dict) -> str | None:
+        """Write the context block where Cursor will read it.
+
+        The optional injection capability, probed with getattr exactly as
+        event() is - Claude Code does not implement it, because stdout is
+        the frontend's job there. Returning the path is what lets the CLI
+        report where the block went without knowing what it wrote.
+
+        Never raises: every caller is a fail-soft hook.
+        """
+        from remem.agents.cursor import rules
+
+        if not block:
+            # No knowledge base matched. Writing an empty rules file would
+            # hand Cursor a rule that says nothing, every session.
+            return None
+        root = self._root(payload)
+        if root is None:
+            return None
+        path = rules.write(root, block)
+        rules.exclude(root)
+        return str(path)
