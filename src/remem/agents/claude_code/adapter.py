@@ -28,6 +28,19 @@ HOOK_COMMAND = "remem hook session-start"
 RECORD_EVENT_COMMAND = "remem hook record-event"
 SESSION_SIZE_COMMAND = "remem hook session-size"
 
+#: Commands a previous remem wrote for a hook, which this install migrates in
+#: place. `remem hook session-end` predates the idle trigger and survives as a
+#: back-compat alias running exactly what `record-event` runs (see cli.py), so
+#: a settings.json written before the events pipeline names it. Merely
+#: *tolerating* it is not enough: the membership test below would still not
+#: find the canonical command, would append beside the alias, and both would
+#: fire - `events` has no unique constraint, so every session close would
+#: write a duplicate row for the extractor to read twice. Rewriting is also
+#: what stops the alias from having to live forever.
+LEGACY_COMMANDS: dict[str, tuple[str, ...]] = {
+    "SessionEnd": ("remem hook session-end",),
+}
+
 # VERIFY_PROJECT used to be defined here; it now lives in remem.agents.verify,
 # shared with every adapter's round-trip. Re-exported, not used here:
 # tests/test_claude_code_events_install.py still imports it from this
@@ -190,6 +203,49 @@ class ClaudeCodeAdapter:
             ("UserPromptSubmit", SESSION_SIZE_COMMAND, 5),
         ):
             groups = hooks.setdefault(event, [])
+
+            # Normalise remem's own entries before testing membership, so a
+            # file naming only the old command upgrades rather than
+            # accumulating, and one naming both collapses. Scoped to the
+            # commands remem writes: settings.json is shared, and an install
+            # that tidied away entries it did not write would be worse than
+            # the duplicate it set out to fix.
+            ours = tuple(LEGACY_COMMANDS.get(event, ())) + (command,)
+            repaired = False
+            seen = False
+            for group in groups:
+                kept = []
+                for h in group.get("hooks", []):
+                    if h.get("command") not in ours:
+                        kept.append(h)
+                        continue
+                    if seen:
+                        # A second remem entry on this event fires a second
+                        # time; events has no unique constraint to catch the
+                        # duplicate row that follows.
+                        repaired = True
+                        continue
+                    seen = True
+                    if h.get("command") != command or h.get("timeout") != timeout:
+                        h["command"] = command
+                        h["timeout"] = timeout
+                        repaired = True
+                    kept.append(h)
+                group["hooks"] = kept
+            # A group whose only entry was a duplicate of ours is now empty
+            # and would otherwise linger as a hook that runs nothing.
+            groups[:] = [g for g in groups if g.get("hooks")]
+
+            if repaired:
+                changed = True
+                report.actions.append(
+                    f"Repaired the {event} hook in {path} (now `{command}`, once)"
+                )
+                # The canonical command is present by construction now;
+                # falling through would only add a second, contradictory
+                # "already registered" line to the same report.
+                continue
+
             already = any(
                 command in h.get("command", "")
                 for group in groups

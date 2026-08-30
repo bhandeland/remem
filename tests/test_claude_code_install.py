@@ -314,3 +314,167 @@ def test_install_mentions_the_config_command(tmp_path):
     # next; a command nobody is pointed at is a command nobody runs.
     report = ClaudeCodeAdapter().install(scope="user", home=tmp_path)
     assert any("remem config" in n for n in report.notes)
+
+
+@pytest.mark.db
+def test_installing_over_a_pre_events_settings_file_does_not_double_register(tmp_path):
+    """The upgrade path, not the fresh install.
+
+    `remem hook session-end` is a back-compat alias that runs exactly what
+    `remem hook record-event` runs (cli.py) - it predates the idle trigger
+    and stayed because an already-installed settings.json names it. So a
+    settings file written before the events pipeline has SessionEnd pointing
+    at the alias, and a membership test that only looks for the canonical
+    command string sees "not registered", appends, and leaves BOTH. Two
+    entries on one hook, both recording, and `events` has no unique
+    constraint to catch it - every session close writes a duplicate row that
+    the extractor then reads twice.
+
+    Found on Brandon's own machine on 2026-08-30, by an install run to fix a
+    missing PostToolUse hook.
+    """
+    settings = tmp_path / ".claude" / "settings.json"
+    settings.parent.mkdir(parents=True)
+    settings.write_text(
+        json.dumps(
+            {
+                "hooks": {
+                    "SessionStart": [
+                        {
+                            "matcher": "",
+                            "hooks": [
+                                {
+                                    "type": "command",
+                                    "command": "remem hook session-start",
+                                    "timeout": 10,
+                                }
+                            ],
+                        }
+                    ],
+                    "SessionEnd": [
+                        {
+                            "matcher": "",
+                            "hooks": [
+                                {
+                                    "type": "command",
+                                    "command": "remem hook session-end",
+                                    "timeout": 10,
+                                }
+                            ],
+                        }
+                    ],
+                }
+            }
+        )
+    )
+
+    ClaudeCodeAdapter().install(scope="user", home=tmp_path)
+
+    groups = json.loads(settings.read_text())["hooks"]["SessionEnd"]
+    commands = [h["command"] for g in groups for h in g["hooks"]]
+    assert commands == ["remem hook record-event"], (
+        "the legacy alias should be migrated in place, not appended beside: "
+        f"got {commands}"
+    )
+
+
+@pytest.mark.db
+def test_migrating_the_legacy_session_end_alias_is_idempotent(tmp_path):
+    """A second install over the migrated file changes nothing further."""
+    ClaudeCodeAdapter().install(scope="user", home=tmp_path)
+    ClaudeCodeAdapter().install(scope="user", home=tmp_path)
+
+    settings = json.loads((tmp_path / ".claude" / "settings.json").read_text())
+    groups = settings["hooks"]["SessionEnd"]
+    commands = [h["command"] for g in groups for h in g["hooks"]]
+    assert commands == ["remem hook record-event"]
+
+
+@pytest.mark.db
+def test_install_collapses_a_hook_already_registered_twice(tmp_path):
+    """Brandon's machine on 2026-08-30, after the bad install: SessionEnd
+    named the legacy alias AND the canonical command, because a previous
+    install had appended rather than migrated.
+
+    Migrating in place is not enough here - rewriting the alias to the
+    canonical command would leave two identical entries, which is the same
+    duplicate-row bug wearing a different name. The repair has to collapse.
+    """
+    settings = tmp_path / ".claude" / "settings.json"
+    settings.parent.mkdir(parents=True)
+
+    def group(cmd, timeout):
+        return {
+            "matcher": "",
+            "hooks": [{"type": "command", "command": cmd, "timeout": timeout}],
+        }
+
+    settings.write_text(
+        json.dumps(
+            {
+                "hooks": {
+                    "SessionEnd": [
+                        group("remem hook session-end", 10),
+                        group("remem hook record-event", 10),
+                    ]
+                }
+            }
+        )
+    )
+
+    ClaudeCodeAdapter().install(scope="user", home=tmp_path)
+
+    groups = json.loads(settings.read_text())["hooks"]["SessionEnd"]
+    commands = [h["command"] for g in groups for h in g["hooks"]]
+    assert commands == ["remem hook record-event"], (
+        f"the duplicate should be collapsed to one entry: got {commands}"
+    )
+
+
+@pytest.mark.db
+def test_install_leaves_another_tools_hook_on_the_same_event_alone(tmp_path):
+    """The collapse is scoped to remem's own commands.
+
+    settings.json is shared - other tools register hooks on these same
+    events, and an install that tidied the file by deleting entries it did
+    not write would be far worse than the duplicate it set out to fix.
+    """
+    settings = tmp_path / ".claude" / "settings.json"
+    settings.parent.mkdir(parents=True)
+    settings.write_text(
+        json.dumps(
+            {
+                "hooks": {
+                    "SessionEnd": [
+                        {
+                            "matcher": "",
+                            "hooks": [
+                                {
+                                    "type": "command",
+                                    "command": "some-other-tool --flush",
+                                    "timeout": 10,
+                                }
+                            ],
+                        },
+                        {
+                            "matcher": "",
+                            "hooks": [
+                                {
+                                    "type": "command",
+                                    "command": "remem hook session-end",
+                                    "timeout": 10,
+                                }
+                            ],
+                        },
+                    ]
+                }
+            }
+        )
+    )
+
+    ClaudeCodeAdapter().install(scope="user", home=tmp_path)
+
+    groups = json.loads(settings.read_text())["hooks"]["SessionEnd"]
+    commands = [h["command"] for g in groups for h in g["hooks"]]
+    assert "some-other-tool --flush" in commands
+    assert commands.count("remem hook record-event") == 1
