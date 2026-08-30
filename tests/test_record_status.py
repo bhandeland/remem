@@ -202,3 +202,138 @@ def test_events_show_on_an_entry_with_no_provenance(store, owner):
     assert rows == []
     assert "not found" not in rendered
     assert "error" not in rendered.lower()
+
+
+# ---------------- the duplicate detector ----------------
+#
+# 011 made a duplicate impossible for any event carrying a harness id. It
+# cannot cover the rest: claude-code's SessionEnd payload has no per-event
+# id and neither does opencode's message, and inventing one for them would
+# be a constraint over a value remem made up - which is how a legitimate
+# repeat gets deleted.
+#
+# So for those, the answer is a report rather than a constraint. It is safe
+# to key this on payload equality precisely because it only ever prints:
+# every unkeyed payload's fields are stable (the volatile duration_ms lives
+# on tool calls, which are keyed), and a false positive costs a line of
+# output rather than an event.
+
+
+def an_unkeyed_event(owner, *, harness="claude-code", session="s1", payload=None, at=NOW):
+    """A SessionEnd, the shape 011 deliberately cannot deduplicate."""
+    return Event(
+        id=new_id(),
+        owner_id=owner.id,
+        project="remem",
+        harness=harness,
+        session_id=session,
+        kind=EventKind.SESSION_END,
+        tool=None,
+        payload=payload if payload is not None else {
+            "hook_event_name": "SessionEnd", "reason": "clear", "session_id": session,
+        },
+        occurred_at=at,
+    )
+
+
+def test_status_reports_a_duplicated_unkeyed_event(store, owner):
+    """The failure this exists for: a hook registered twice under two
+    command names, recording every session close twice. That is exactly
+    what happened to the claude-code adapter, and nothing anywhere
+    noticed."""
+    store.put_event(an_unkeyed_event(owner))
+    store.put_event(an_unkeyed_event(owner, at=NOW + timedelta(seconds=1)))
+
+    report = events.status(store, owner.id, idle_seconds=IDLE)
+
+    assert len(report.suspected_duplicates) == 1
+    dup = report.suspected_duplicates[0]
+    assert dup.harness == "claude-code"
+    assert dup.session_id == "s1"
+    assert dup.count == 2
+
+
+def test_a_single_unkeyed_event_is_not_reported(store, owner):
+    """One SessionEnd per session is the normal shape and must stay quiet -
+    a report that fires on healthy data is one nobody reads."""
+    store.put_event(an_unkeyed_event(owner))
+
+    report = events.status(store, owner.id, idle_seconds=IDLE)
+
+    assert report.suspected_duplicates == []
+
+
+def test_two_different_unkeyed_events_are_not_a_duplicate(store, owner):
+    """A session can legitimately end more than once - `clear` then
+    `prompt_input_exit`. Different payloads, not a duplicate."""
+    store.put_event(an_unkeyed_event(owner, payload={"reason": "clear"}))
+    store.put_event(
+        an_unkeyed_event(owner, payload={"reason": "prompt_input_exit"}, at=NOW + timedelta(seconds=1))
+    )
+
+    report = events.status(store, owner.id, idle_seconds=IDLE)
+
+    assert report.suspected_duplicates == []
+
+
+def test_keyed_events_are_not_scanned_for_duplicates(store, owner):
+    """011 already makes those impossible, so a second opinion here could
+    only ever be wrong."""
+    for i in range(2):
+        e = an_event(owner)
+        e.payload = {"command": "ls", "tool_use_id": f"tu_{i}"}
+        store.put_event(e)
+
+    report = events.status(store, owner.id, idle_seconds=IDLE)
+
+    assert report.suspected_duplicates == []
+
+
+def test_a_command_run_twice_is_never_reported_as_a_duplicate(store, owner):
+    """The false positive that would make this report worthless.
+
+    Running `ls` twice in a session is ordinary and the two events are
+    byte-identical, so payload equality alone would flag them. Tool calls
+    are excluded from the scan for exactly this reason - both harnesses
+    that record them stamp a tool_use_id anyway.
+    """
+    for _ in range(2):
+        store.put_event(an_event(owner))
+
+    report = events.status(store, owner.id, idle_seconds=IDLE)
+
+    assert report.suspected_duplicates == []
+
+
+def test_the_duplicate_report_names_the_fix(store, owner):
+    """The point is not to say a number - it is to tell the user that a
+    hook is registered twice and which command re-registers it."""
+    store.put_event(an_unkeyed_event(owner))
+    store.put_event(an_unkeyed_event(owner, at=NOW + timedelta(seconds=1)))
+
+    out = events.render(events.status(store, owner.id, idle_seconds=IDLE))
+
+    assert "duplicate" in out.lower()
+    assert "claude-code" in out
+    assert "remem install claude-code" in out
+
+
+def test_the_duplicate_report_reaches_json_too(store, owner):
+    """--json and the human form read off one StatusReport; a detector
+    visible in only one of them is how the two disagree."""
+    store.put_event(an_unkeyed_event(owner))
+    store.put_event(an_unkeyed_event(owner, at=NOW + timedelta(seconds=1)))
+
+    payload = events.to_dict(events.status(store, owner.id, idle_seconds=IDLE))
+
+    assert payload["suspected_duplicates"] == [
+        {"project": "remem", "harness": "claude-code", "session_id": "s1", "count": 2}
+    ]
+
+
+def test_a_clean_status_says_nothing_about_duplicates(store, owner):
+    store.put_event(an_event(owner))
+
+    out = events.render(events.status(store, owner.id, idle_seconds=IDLE))
+
+    assert "duplicate" not in out.lower()

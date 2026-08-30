@@ -12,6 +12,7 @@ from remem.domain import (
     Entry,
     Event,
     ExtractJob,
+    DuplicateGroup,
     HarnessStats,
     Hit,
     JobStatus,
@@ -78,6 +79,12 @@ class Store(Protocol):
     #: `services.events.status` fills it in via `services.extraction`'s
     #: "given up" rule rather than the store re-deriving that policy.
     def event_stats(self, owner_id: UUID) -> list[HarnessStats]: ...
+    #: Events with no harness id of their own that repeat within one
+    #: session - the duplicate 011's unique index cannot reach. Read-only
+    #: and advisory: nothing deletes on the strength of it.
+    def duplicate_unkeyed_events(
+        self, owner_id: UUID, limit: int = 20
+    ) -> list[DuplicateGroup]: ...
 
     # events
     def put_event(self, event: Event) -> Event: ...

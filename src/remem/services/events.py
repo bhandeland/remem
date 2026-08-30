@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 from uuid import UUID
 
 from remem.config import load as load_config
-from remem.domain import ExtractJob, HarnessStats, ProvenanceRow
+from remem.domain import DuplicateGroup, ExtractJob, HarnessStats, ProvenanceRow
 from remem.services import extraction
 from remem.store import Store
 
@@ -128,6 +128,9 @@ class StatusReport:
     recent_failures: list[ExtractJob]
     legacy_pending: int
     extract_model: str
+    #: Repeated events 011's unique index cannot reach - see
+    #: `store.duplicate_unkeyed_events`. Advisory: nothing acts on it.
+    suspected_duplicates: list[DuplicateGroup]
 
 
 def status(store: Store, owner_id: UUID, idle_seconds: int) -> StatusReport:
@@ -165,6 +168,7 @@ def status(store: Store, owner_id: UUID, idle_seconds: int) -> StatusReport:
         recent_failures=store.recent_failed_extract_jobs(owner_id),
         legacy_pending=store.pending_legacy_capture_jobs(owner_id),
         extract_model=load_config().extract_model,
+        suspected_duplicates=store.duplicate_unkeyed_events(owner_id),
     )
 
 
@@ -202,6 +206,17 @@ def render(report: StatusReport) -> str:
         lines.append("Jobs: none yet")
     for f in report.recent_failures:
         lines.append(f"  failed {f.id} [{f.project}]: {f.error}")
+    for d in report.suspected_duplicates:
+        # Named with the fix, not just the count. The cause is almost always
+        # a hook registered twice - which is what re-running the install
+        # repairs - and a number on its own leaves the user to work that
+        # out from a report they were not looking for.
+        lines.append(
+            f"  possible duplicate: {d.count} identical "
+            f"{d.harness} event(s) in session "
+            f"{d.session_id} [{d.project}] - a hook is likely registered "
+            f"twice; re-run `remem install {d.harness}`"
+        )
     if report.legacy_pending:
         lines.append(
             f"{report.legacy_pending} job(s) stranded in the retired "
@@ -232,6 +247,15 @@ def to_dict(report: StatusReport) -> dict:
             for f in report.recent_failures
         ],
         "legacy_pending": report.legacy_pending,
+        "suspected_duplicates": [
+            {
+                "project": d.project,
+                "harness": d.harness,
+                "session_id": d.session_id,
+                "count": d.count,
+            }
+            for d in report.suspected_duplicates
+        ],
     }
 
 

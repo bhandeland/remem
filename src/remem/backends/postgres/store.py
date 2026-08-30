@@ -12,6 +12,7 @@ from psycopg.rows import dict_row
 from remem.domain import (
     Collection,
     CollectionQuery,
+    DuplicateGroup,
     Entry,
     Event,
     EventKind,
@@ -729,6 +730,54 @@ class PostgresStore:
             return [_row_to_harness_stats(r) for r in cur.fetchall()]
 
     # ---------------- events ----------------
+
+    def duplicate_unkeyed_events(
+        self, owner_id: UUID, limit: int = 20
+    ) -> list[DuplicateGroup]:
+        """Repeated events that 011's unique index cannot see.
+
+        Scoped to `event_key is null` on purpose. For a keyed event a
+        duplicate is already impossible, and asking the same question of
+        those rows could only produce false alarms: two tool calls with the
+        same payload in one session is ordinary, and it is only the
+        harness's own id that says otherwise.
+
+        Payload equality is the signal here, which would be the wrong rule
+        for a constraint and is the right one for a report: the worst a
+        false positive can do is print a line.
+
+        Tool calls are excluded even when unkeyed. Both harnesses that
+        record them stamp a tool_use_id, so an unkeyed one is already
+        unusual - and running the same command twice in a session is
+        completely ordinary, which would make this fire on healthy data.
+        A report nobody can trust is one nobody reads. What is left is
+        exactly the two shapes with no id to key on and no reason to
+        repeat: claude-code's SessionEnd and opencode's message.
+        """
+        with self._cur() as cur:
+            cur.execute(
+                """
+                select project, harness, session_id, count(*) as n
+                  from events
+                 where owner_id = %(owner_id)s
+                   and event_key is null
+                   and kind <> 'tool_call'
+                 group by project, harness, session_id, kind, payload
+                having count(*) > 1
+                 order by count(*) desc, harness, session_id
+                 limit %(limit)s
+                """,
+                {"owner_id": owner_id, "limit": limit},
+            )
+            return [
+                DuplicateGroup(
+                    project=r["project"],
+                    harness=r["harness"],
+                    session_id=r["session_id"],
+                    count=r["n"],
+                )
+                for r in cur.fetchall()
+            ]
 
     def put_event(self, event: Event) -> Event:
         """One INSERT. This is the hot path - it runs per tool call."""

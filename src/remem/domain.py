@@ -243,6 +243,22 @@ class HarnessStats:
 
 
 @dataclass(slots=True)
+class DuplicateGroup:
+    """One suspected duplicate, as `remem record status` reports it.
+
+    Only events with no harness id of their own are ever counted here -
+    011's unique index already makes a duplicate impossible for the rest.
+    This is a report and never a delete, which is what makes payload
+    equality an acceptable signal: a false positive costs a line of output.
+    """
+
+    project: str
+    harness: str
+    session_id: str
+    count: int
+
+
+@dataclass(slots=True)
 class ProvenanceRow:
     """One event behind an entry, as `remem events show` reports it.
 
