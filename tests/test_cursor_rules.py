@@ -10,7 +10,7 @@ from pathlib import Path
 from remem.agents.cursor import rules
 from remem.agents.cursor.adapter import ROOT_KEY, CursorAdapter
 
-EXCLUDE_LINE = ".cursor/rules/remem.mdc"
+EXCLUDE_LINE = rules.EXCLUDE_PATTERN
 
 
 def _init_repo(path: Path) -> None:
@@ -138,6 +138,49 @@ def test_exclude_outside_a_repository_is_not_an_error(tmp_path):
     """A workspace outside a repository is an ordinary thing, not a
     failure."""
     assert rules.exclude(tmp_path) is False
+
+
+def test_exclude_matches_when_the_workspace_is_a_repository_subfolder(tmp_path):
+    """A Cursor workspace opened at a subdirectory of a repository is
+    ordinary - and exclude() is handed that subdirectory, not the
+    repository root. A bare `.cursor/rules/remem.mdc` line would anchor to
+    the top of the working tree and never match the file's real location;
+    this proves the pattern that is actually written does."""
+    repo = tmp_path / "repo"
+    sub = repo / "sub"
+    sub.mkdir(parents=True)
+    _init_repo(repo)
+
+    added = rules.exclude(sub)
+    rules.write(sub, "some knowledge")
+
+    assert added is True
+    result = subprocess.run(
+        ["git", "-C", str(repo), "status", "--porcelain"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert result.stdout == ""
+
+
+def test_exclude_retires_the_pre_fix_bare_pattern(tmp_path):
+    """A repository excluded by a remem from before this fix has the bare,
+    root-anchored pattern already sitting in info/exclude. exclude() must
+    replace it, not add the new pattern alongside it - otherwise every
+    fixed repository carries a permanently dead line forever."""
+    _init_repo(tmp_path)
+    info = tmp_path / ".git" / "info"
+    (info / "exclude").write_text(f"*.log\n{rules._LEGACY_EXCLUDE_PATTERN}\n")
+
+    added = rules.exclude(tmp_path)
+
+    text = (info / "exclude").read_text()
+    lines = text.splitlines()
+    assert added is True
+    assert "*.log" in lines
+    assert rules.EXCLUDE_PATTERN in lines
+    assert rules._LEGACY_EXCLUDE_PATTERN not in lines
 
 
 def test_inject_writes_the_block_and_returns_the_path(tmp_path):

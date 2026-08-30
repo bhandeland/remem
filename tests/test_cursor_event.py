@@ -14,11 +14,26 @@ from remem.agents.cursor.adapter import ROOT_KEY, SESSION_KEY, CursorAdapter
 from remem.domain import EventKind
 
 
+def test_the_payload_keys_are_the_ones_cursor_sends():
+    """Pinned as literals, not through the constants below - a test that
+    builds its payload from SESSION_KEY cannot notice SESSION_KEY itself
+    changing. This is the guard docs/superpowers/notes/2026-08-29-cursor-
+    proof.md points at as standing between a rename here and a harness
+    that silently records nothing; it has to spell the keys out, not
+    reflect them back."""
+    assert SESSION_KEY == "session_id"
+    assert ROOT_KEY == "workspace_roots"
+
+
 def _payload(hook: str, tmp_path, **extra) -> dict:
+    # Literal key names, not SESSION_KEY/ROOT_KEY - see the test above.
+    # Building this from the adapter's own constants would make every test
+    # in this file pass even if both constants were renamed to garbage,
+    # which is exactly the failure mode this file exists to catch.
     return {
         "hook_event_name": hook,
-        SESSION_KEY: "sess-1",
-        ROOT_KEY: [str(tmp_path)],
+        "session_id": "sess-1",
+        "workspace_roots": [str(tmp_path)],
         **extra,
     }
 

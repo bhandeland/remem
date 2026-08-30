@@ -13,9 +13,29 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-#: Relative to the workspace root. Also the line written to
-#: .git/info/exclude, which is why it is spelled with forward slashes.
+#: Relative to the workspace root - the file path Cursor actually reads.
+#: NOT the line written to .git/info/exclude; see EXCLUDE_PATTERN below,
+#: which is a different string for a reason explained there.
 RULES_PATH = ".cursor/rules/remem.mdc"
+
+#: The pattern written to .git/info/exclude. Deliberately not RULES_PATH:
+#: a gitignore pattern containing a slash is anchored to the top of the
+#: working tree, so the bare relative path only matches when the Cursor
+#: workspace root IS the repository root. Opening a subdirectory of a
+#: repository is ordinary, and `exclude()` is handed the *workspace* root,
+#: not the repository root - `**/` makes the pattern match at any depth,
+#: so the file is excluded wherever inside the repository it actually
+#: lands. Over-matching against some other, unrelated
+#: `.cursor/rules/remem.mdc` is harmless: remem is the only thing that
+#: ever writes that path, in any repository.
+EXCLUDE_PATTERN = f"**/{RULES_PATH}"
+
+#: The pattern this module wrote before the subfolder-workspace fix above.
+#: Kept only so `exclude()` can retire it from a repository's
+#: info/exclude when it finds it there - never written itself. Without
+#: this, a repository excluded by an older remem would keep the old,
+#: non-matching line forever alongside the new, correct one.
+_LEGACY_EXCLUDE_PATTERN = RULES_PATH
 
 #: alwaysApply is what makes Cursor include the rule in every chat in the
 #: workspace without the user naming it. The description is what Cursor
@@ -118,15 +138,25 @@ def exclude(root: Path) -> bool:
 
     existing = target.read_text() if target.exists() else ""
     # Line-by-line, stripped, ignoring comments and blanks - not a
-    # whitespace-token membership test. `RULES_PATH in existing.split()`
-    # would treat a *commented-out* `# .cursor/rules/remem.mdc` as already
+    # whitespace-token membership test. `EXCLUDE_PATTERN in existing.split()`
+    # would treat a *commented-out* `# **/.cursor/rules/remem.mdc` as already
     # present, because split() breaks "#" into its own token and leaves the
     # path token intact; the real line would then never get added.
     lines = (ln.strip() for ln in existing.splitlines())
     live_lines = [ln for ln in lines if ln and not ln.startswith("#")]
-    if RULES_PATH in live_lines:
+    if EXCLUDE_PATTERN in live_lines:
         return False
 
+    if _LEGACY_EXCLUDE_PATTERN in live_lines:
+        # A pre-fix remem wrote the bare, root-anchored line here. Drop it
+        # rather than leaving it beside the new pattern forever - it never
+        # matched anything but a workspace opened at the repository root,
+        # so keeping it around buys nothing and just clutters the file.
+        kept = [
+            ln for ln in existing.splitlines() if ln.strip() != _LEGACY_EXCLUDE_PATTERN
+        ]
+        existing = ("\n".join(kept) + "\n") if kept else ""
+
     prefix = "" if existing == "" or existing.endswith("\n") else "\n"
-    target.write_text(f"{existing}{prefix}{RULES_PATH}\n")
+    target.write_text(f"{existing}{prefix}{EXCLUDE_PATTERN}\n")
     return True

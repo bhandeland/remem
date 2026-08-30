@@ -108,6 +108,24 @@ def test_the_installed_entries_name_only_hooks_cursor_emits():
     assert not (named & BLOCKING_HOOKS)
 
 
+def test_every_recorded_hook_is_also_installed():
+    """ENTRIES and EVENT_KINDS are each checked against HOOK_NAMES and
+    BLOCKING_HOOKS separately, but never against each other - so adding a
+    hook to one table and forgetting the other installs (or drops) a hook
+    that fires and records nothing, silently, with every other test green.
+
+    The relationship is a subset, not equality: ENTRIES also has
+    `sessionStart`, which injects the knowledge base rather than recording
+    an event and is deliberately absent from EVENT_KINDS (see
+    CursorAdapter.EVENT_KINDS's docstring). So the invariant this test
+    makes executable is "every hook the adapter parses is also installed",
+    not "the two tables name the same hooks".
+    """
+    from remem.agents.cursor.adapter import CursorAdapter
+
+    assert frozenset(CursorAdapter.EVENT_KINDS) <= frozenset(install.ENTRIES)
+
+
 def test_the_entries_call_the_harness_neutral_command():
     """`remem hook record-event` is hardcoded to Claude Code and takes no
     --agent. Getting this wrong records nothing, silently."""
