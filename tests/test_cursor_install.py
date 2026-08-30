@@ -147,3 +147,152 @@ def test_install_writes_the_hooks_and_verifies(tmp_path, monkeypatch):
     assert set(written["hooks"]) == set(install.ENTRIES)
     assert any("round-trip" in a for a in report.actions), report.warnings
     assert any("Recording is OFF" in n for n in report.notes)
+
+
+def test_merge_collapses_a_command_the_file_already_names_twice(tmp_path):
+    """The repair half, mirroring the Claude Code adapter's.
+
+    The membership test below only ever prevented a duplicate this install
+    would add; it never fixed one already in the file. A hooks.json that
+    names remem's command twice - hand-edited, or written by a buggy
+    earlier install - fires the hook twice and doubles every row it
+    records, and `events` has no unique constraint to catch it.
+    """
+    path = tmp_path / "hooks.json"
+    command = "remem record event --agent cursor"
+    path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "hooks": {"postToolUse": [{"command": command}, {"command": command}]},
+            }
+        )
+    )
+
+    merged, _ = install.merge(path, {"postToolUse": command})
+
+    assert merged["hooks"]["postToolUse"] == [{"command": command}]
+
+
+def test_merge_migrates_a_superseded_command_instead_of_appending_beside_it(tmp_path):
+    """The migration half.
+
+    Renaming a command remem writes would otherwise leave the old entry in
+    place next to the new one - both firing - because the membership test
+    is by exact string. This is exactly what happened to the Claude Code
+    adapter's SessionEnd hook; the table is empty here only because no
+    cursor command has been renamed yet, so the mechanism is exercised
+    with a supplied one.
+    """
+    path = tmp_path / "hooks.json"
+    path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "hooks": {"postToolUse": [{"command": "remem record event --old"}]},
+            }
+        )
+    )
+
+    merged, _ = install.merge(
+        path,
+        {"postToolUse": "remem record event --agent cursor"},
+        legacy={"postToolUse": ("remem record event --old",)},
+    )
+
+    assert merged["hooks"]["postToolUse"] == [
+        {"command": "remem record event --agent cursor"}
+    ]
+
+
+def test_merge_repairs_a_file_naming_both_the_old_and_the_new_command(tmp_path):
+    """The state a previous buggy install leaves behind: both present.
+
+    Migrating in place is not enough here - it would produce two identical
+    entries, the same duplicate bug wearing a different name.
+    """
+    path = tmp_path / "hooks.json"
+    new = "remem record event --agent cursor"
+    path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "hooks": {
+                    "postToolUse": [
+                        {"command": "remem record event --old"},
+                        {"command": new},
+                    ]
+                },
+            }
+        )
+    )
+
+    merged, _ = install.merge(
+        path,
+        {"postToolUse": new},
+        legacy={"postToolUse": ("remem record event --old",)},
+    )
+
+    assert merged["hooks"]["postToolUse"] == [{"command": new}]
+
+
+def test_merge_never_removes_an_entry_remem_did_not_write(tmp_path):
+    """hooks.json is shared and user-owned.
+
+    An install that tidied the file by deleting entries it did not write
+    would be far worse than the duplicate it set out to fix - including a
+    duplicate that belongs to somebody else.
+    """
+    path = tmp_path / "hooks.json"
+    command = "remem record event --agent cursor"
+    path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "hooks": {
+                    "postToolUse": [
+                        {"command": "other-tool --log"},
+                        {"command": "other-tool --log"},
+                        {"command": command},
+                        {"command": command},
+                    ]
+                },
+            }
+        )
+    )
+
+    merged, _ = install.merge(path, {"postToolUse": command})
+
+    assert merged["hooks"]["postToolUse"] == [
+        {"command": "other-tool --log"},
+        {"command": "other-tool --log"},
+        {"command": command},
+    ]
+
+
+def test_merge_preserves_other_keys_on_an_entry_it_rewrites(tmp_path):
+    """Cursor may grow per-entry options. Rewriting the command must not
+    drop whatever else the entry carried."""
+    path = tmp_path / "hooks.json"
+    path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "hooks": {
+                    "postToolUse": [
+                        {"command": "remem record event --old", "timeout": 7}
+                    ]
+                },
+            }
+        )
+    )
+
+    merged, _ = install.merge(
+        path,
+        {"postToolUse": "remem record event --agent cursor"},
+        legacy={"postToolUse": ("remem record event --old",)},
+    )
+
+    assert merged["hooks"]["postToolUse"] == [
+        {"command": "remem record event --agent cursor", "timeout": 7}
+    ]

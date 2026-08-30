@@ -24,6 +24,19 @@ ENTRIES = {
 }
 
 
+#: Commands a previous remem wrote for a hook, which install migrates in
+#: place. Empty because no cursor command has been renamed yet - it is here
+#: so that the first rename is a one-line edit rather than a bug.
+#:
+#: The Claude Code adapter learned this the expensive way: `remem hook
+#: session-end` was superseded by `remem hook record-event`, the membership
+#: test below is by exact string, so installing over an older settings.json
+#: appended the new command beside the old one and both fired. `events` has
+#: no unique constraint, so every session close wrote a duplicate row for
+#: the extractor to read twice.
+LEGACY_COMMANDS: dict[str, tuple[str, ...]] = {}
+
+
 def hooks_path(scope: str, home: Path, cwd: Path) -> Path:
     """The hooks.json for the given scope.
 
@@ -42,7 +55,11 @@ def hooks_path(scope: str, home: Path, cwd: Path) -> Path:
     )
 
 
-def merge(path: Path, entries: dict[str, str]) -> tuple[dict, Path | None]:
+def merge(
+    path: Path,
+    entries: dict[str, str],
+    legacy: dict[str, tuple[str, ...]] | None = None,
+) -> tuple[dict, Path | None]:
     """Merge `entries` into the hooks.json at `path`.
 
     Returns the merged document and the backup path, or None if there was
@@ -55,7 +72,12 @@ def merge(path: Path, entries: dict[str, str]) -> tuple[dict, Path | None]:
     Unreadable JSON is treated as an empty document - but only after the
     original bytes are safely in the backup. A corrupt hooks.json must not
     stop the install, and it must not cost the user what they had.
+
+    `legacy` names commands this install supersedes, hook to old commands;
+    it defaults to LEGACY_COMMANDS and is a parameter so a test can exercise
+    the migration while that table is still empty.
     """
+    legacy = LEGACY_COMMANDS if legacy is None else legacy
     backup: Path | None = None
     document: dict = {}
 
@@ -85,12 +107,32 @@ def merge(path: Path, entries: dict[str, str]) -> tuple[dict, Path | None]:
         if not isinstance(group, list):
             group = []
             hooks[hook] = group
-        # Idempotent by command string: re-running the install must not
-        # grow the file, and a hook that fires twice per event would
-        # double every row it records.
-        if not any(
-            isinstance(h, dict) and h.get("command") == command for h in group
-        ):
-            group.append({"command": command})
+        # Repair remem's own entries before testing membership. Idempotence
+        # alone only ever prevented a duplicate THIS install would add; it
+        # never fixed one already in the file, and it never noticed an entry
+        # naming a command remem has since renamed. A hook that fires twice
+        # doubles every row it records.
+        #
+        # Scoped to the commands remem writes: hooks.json is shared and
+        # user-owned, so another tool's entries - duplicates included - are
+        # left exactly as found. Removing one would be worse than the
+        # duplicate this is fixing.
+        ours = tuple(legacy.get(hook, ())) + (command,)
+        kept: list = []
+        seen = False
+        for h in group:
+            if not isinstance(h, dict) or h.get("command") not in ours:
+                kept.append(h)
+                continue
+            if seen:
+                continue
+            seen = True
+            # Rewritten in place rather than replaced, so per-entry options
+            # Cursor may grow survive the migration.
+            h["command"] = command
+            kept.append(h)
+        if not seen:
+            kept.append({"command": command})
+        group[:] = kept
 
     return document, backup
