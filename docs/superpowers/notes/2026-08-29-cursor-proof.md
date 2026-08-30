@@ -261,7 +261,7 @@ disproved with live data. `alwaysApply: true` is Cursor's documented mechanism,
 but "Cursor's docs say so" is a claim about Cursor, not an observation, and this
 note does not treat it as one.
 
-### Criterion 4 - once per session, not once per turn: HALF PROVEN
+### Criterion 4 - once per session, not once per turn: PROVEN
 
 **Not once per turn: proven live.** Two turns ran in session
 `0f1d9067-ea42-48aa-8677-7bdcbb0b15b6`, the second more than four hours after the
@@ -269,13 +269,18 @@ first. The `.mdc` mtime did not move across the second turn. `inject()` does not
 run per-message, which was the real risk - a rules file rewritten every turn
 would churn the working tree continuously.
 
-**Rewritten at a new session start: not observed live.** Both turns landed in the
-same session, so no second `sessionStart` ever fired. That half rests on a manual
-replay of a captured `sessionStart` payload plus the construction argument:
-`hooks.json` wires `sessionStart` alone to `remem hook context`, the other three
-steps to `remem record event`, and the live log confirms Cursor fires
-`sessionStart` once per session. Construction plus inference, not observation.
-One genuinely new chat would close it.
+**Rewritten at a new session start: proven live.** A genuinely new chat (session
+`d2bef942-d5f3-47d1-af1b-70e082788986`) rewrote the `.mdc` at 20:06:44Z, two
+seconds before its own first prompt at 20:06:46Z, moving the file off the 16:27Z
+stamp it had held all afternoon. That session then recorded its own clean four
+events (message, Grep, Shell, message).
+
+Both halves are therefore live observations, in two different sessions: the file
+is rewritten when a session starts and not touched again while it runs. This
+supersedes the "HALF PROVEN" state committed in 836849c, where this half rested
+on a replayed payload plus the construction argument that `hooks.json` wires
+`sessionStart` alone to `remem hook context`. The construction argument was
+right; it is simply no longer what the claim depends on.
 
 ### Two findings that are not about Cursor
 

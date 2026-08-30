@@ -335,9 +335,12 @@ payloads: nine events over two turns, both `EventKind`s, real tool names, and
 `workspace_roots` resolving to the right project. The source reading was
 correct. See `docs/superpowers/notes/2026-08-29-cursor-payloads.md` for that
 reading and `docs/superpowers/notes/2026-08-29-cursor-proof.md` for exactly
-what is and is not proven - two of the four proof criteria are closed, one
-partially, and one (the block confirmed in the outbound request) remains open
-because Cursor's local logs carry no request bodies.
+what is and is not proven - three of the four proof criteria are closed, and
+only one remains open: the block confirmed present in the outbound request,
+which cannot be shown from this machine because Cursor's local logs carry no
+request bodies. Closing it would take a TLS-intercepting proxy in front of
+Cursor, and it is the least valuable of the four now that live payloads have
+disproved the failure it stood in for.
 
 Two things the live session taught that are not about Cursor at all. **Cursor
 loads Claude Code's `~/.claude/settings.json` hooks and runs them with Cursor
