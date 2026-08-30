@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
 import sys
 from typing import Mapping
 
@@ -19,6 +18,7 @@ from remem.agents.claude_code.adapter import ClaudeCodeAdapter
 from remem.config import load
 from remem.extract.base import CHILD_ENV_VAR
 from remem.hookio import debug as _debug
+from remem.hookio import spawn_process
 from remem.services import context, record
 from remem.session import open_session
 
@@ -52,29 +52,6 @@ def session_start(stdin_text: str, env: Mapping[str, str]) -> str:
         # over-budget knowledge base - is silence, never a broken session.
         _debug(env, f"{type(exc).__name__}: {exc}")
         return ""
-
-
-def spawn_process(env: Mapping[str, str]) -> bool:
-    """Start a detached `remem events process` and return immediately.
-
-    Any session works off the backlog, so extraction is never stranded by the
-    session that produced it having ended. Detached and output-discarded: the
-    session must never wait for extraction, and must never see its output.
-    """
-    if env.get(CHILD_ENV_VAR):
-        return False
-    try:
-        subprocess.Popen(
-            ["remem", "events", "process"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            stdin=subprocess.DEVNULL,
-            start_new_session=True,
-            env=dict(env),
-        )
-        return True
-    except Exception:
-        return False
 
 
 def main() -> int:

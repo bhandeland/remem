@@ -254,3 +254,90 @@ def test_an_adapter_with_inject_does_not_print_the_block_to_stdout(env, repo):
     written = repo / ".cursor" / "rules" / "remem.mdc"
     assert written.exists()
     assert "Lint rule" in written.read_text()
+
+
+# --- Extraction is triggered from here, not only from Claude Code ---------
+#
+# `remem events process` used to be spawned from exactly one place, Claude
+# Code's SessionStart hook, so a Cursor-only or opencode-only install
+# recorded events forever and never extracted one. `hook context` is the
+# session-start analogue every other harness already calls once per session,
+# which makes it the one trigger all three share.
+
+
+def _spy(monkeypatch):
+    """Patch the spawn where `hook context` looks it up, and record calls."""
+    calls: list[dict] = []
+
+    def fake(env):
+        calls.append(dict(env))
+        return True
+
+    monkeypatch.setattr("remem.hookio.spawn_process", fake)
+    return calls
+
+
+def test_context_spawns_the_extraction_processor(env, repo, monkeypatch):
+    calls = _spy(monkeypatch)
+    _seed_kb(env)
+    result = runner.invoke(
+        app,
+        ["hook", "context"],
+        input=json.dumps({"cwd": str(repo), "session_id": "s1"}),
+    )
+    assert result.exit_code == 0
+    assert len(calls) == 1
+
+
+def test_context_spawns_the_processor_even_when_no_project_resolves(
+    env, monkeypatch
+):
+    """The backlog is global, not this session's project.
+
+    `remem events process` works off every extractable session for the
+    owner, so whether THIS payload produced a block has no bearing on
+    whether there is extraction work waiting. Claude Code spawns
+    regardless of whether its block rendered; this must match.
+    """
+    calls = _spy(monkeypatch)
+    result = runner.invoke(app, ["hook", "context"], input="not json")
+    assert result.exit_code == 0
+    assert result.stdout == ""
+    assert len(calls) == 1
+
+
+def test_spawn_process_refuses_to_run_inside_the_extractor(monkeypatch):
+    """The recursion guard, exercised directly on the shared helper.
+
+    The extractor spawns `claude -p`, whose own hooks would otherwise spawn
+    another extractor, which reads the events that run recorded, without
+    bound. CHILD_ENV_VAR is what stops it. Asserted against spawn_process
+    itself rather than through the CLI, because the command legitimately
+    shells out to git to resolve the project - trapping every Popen would
+    catch that instead and pass for the wrong reason.
+    """
+    from remem import hookio
+    from remem.extract.base import CHILD_ENV_VAR
+
+    def explode(*a, **k):
+        raise AssertionError("spawned a processor inside the extractor")
+
+    monkeypatch.setattr("subprocess.Popen", explode)
+    assert hookio.spawn_process({CHILD_ENV_VAR: "1"}) is False
+
+
+def test_spawn_process_launches_the_processor_detached(monkeypatch):
+    """The guard must not be the only reason it ever returns False."""
+    from remem import hookio
+
+    seen: dict = {}
+
+    def fake_popen(argv, **kwargs):
+        seen["argv"] = argv
+        seen["kwargs"] = kwargs
+        return object()
+
+    monkeypatch.setattr("subprocess.Popen", fake_popen)
+    assert hookio.spawn_process({}) is True
+    assert seen["argv"] == ["remem", "events", "process"]
+    assert seen["kwargs"]["start_new_session"] is True

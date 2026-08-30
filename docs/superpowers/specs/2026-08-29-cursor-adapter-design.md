@@ -356,6 +356,13 @@ What the proof must show, all four:
   records but never extracts - the same real, undecided gap the opencode work
   left open. It is one gap for two adapters now, which strengthens the case for
   fixing it properly rather than bolting it onto a third install path.
+
+  *Amended 2026-08-30: done, and fixed once rather than per adapter.
+  `spawn_process` moved to `remem/hookio.py` and is now called from
+  `remem hook context` as well as Claude Code's `SessionStart` - the
+  session-start analogue opencode and Cursor already call once per session.
+  A harness with no `claude` on PATH fails those jobs and records the reason
+  rather than skipping them; the attempt cap stops the retries.*
 - **`beforeReadFile`, `afterAgentThought`, and the specific `after*` tool
   hooks.** In the vendored list, not subscribed.
 - **A Cursor MCP registration.** This design wires hooks. remem's MCP server is

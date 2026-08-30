@@ -104,8 +104,9 @@ checked in `services/record.py`. Events are stored **in full** and kept
 is the only thing that ever deletes one, and only on request.
 
 Flow: a harness hook (or plugin) does exactly one INSERT via `remem record event`
-(everything fragile is deferred), and `remem events process` - run from cron or a
-later SessionStart - extracts entries from sessions that have gone quiet, via
+(everything fragile is deferred), and `remem events process` - run from cron, or
+spawned by `hookio.spawn_process` at any harness's session start - extracts
+entries from sessions that have gone quiet, via
 `claude -p` in `extract/claude_cli.py`, writing entries with `origin='extracted'`
 and `entry_events` provenance rows.
 
@@ -310,12 +311,24 @@ subscribing to a hook Cursor does not emit.
 auto-updates itself, so expect the freshness half to fire eventually, the
 same way opencode's did mid-branch.
 
-A Cursor-only install **records but never extracts** - `remem events process`
-is only ever spawned from Claude Code's `SessionStart` hook, so nothing in a
-Cursor-only setup ever triggers it. This is the same real, undecided gap the
-opencode adapter has; it is now one gap shared by two adapters rather than a
-Cursor-specific oversight, which is the case for fixing it once rather than
-bolting a third trigger on.
+A Cursor-only install extracts as well as records. `remem events process` used
+to be spawned from exactly one place, Claude Code's `SessionStart` hook, so a
+Cursor-only or opencode-only setup recorded events forever and never extracted
+one. It is now spawned from `hookio.spawn_process`, called both from that hook
+and from `remem hook context` - the session-start analogue opencode and Cursor
+already call once per session, which makes it the single trigger all three
+harnesses share. Fixed once, rather than bolted onto each new install path.
+
+The call sits in a `finally`, so it runs on every path through `hook context`
+including the early returns for unusable stdin, an unknown agent and an
+unresolvable project: the backlog is global, and whether *this* payload
+produced a block says nothing about whether extraction has work waiting.
+
+Extraction shells out to `claude -p`, which a Cursor-only user may well not
+have installed. Those jobs **fail and record the reason** rather than being
+skipped - `MAX_ATTEMPTS` stops the retries and `remem record status` shows why.
+A probe for the extractor was considered and rejected: it can be wrong about
+where `claude` lives, while a recorded failure cannot.
 
 Every Cursor hook payload also carries `user_email` (read straight out of
 Cursor's payload constructor) and remem stores events in full and

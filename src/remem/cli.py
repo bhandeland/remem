@@ -820,6 +820,7 @@ def hook_context(
     block and nothing else to stdout. Reasons go to stderr under
     REMEM_HOOK_DEBUG.
     """
+    from remem import hookio
     from remem.agents import registry
     from remem.hookio import debug
     from remem.services import context
@@ -895,6 +896,23 @@ def hook_context(
         raise
     except Exception as exc:
         debug(env, f"{type(exc).__name__}: {exc}")
+    finally:
+        # Extraction is triggered here for every harness that has no
+        # session-start hook of its own - opencode and Cursor both call this
+        # command once per session, which makes it the one trigger all three
+        # harnesses share. Claude Code does the same from SessionStart.
+        #
+        # In `finally`, so it runs on every path above, including the early
+        # returns for unusable stdin, an unknown agent, and an unresolvable
+        # project. The backlog is global: `remem events process` works off
+        # every extractable session for the owner, so whether THIS payload
+        # produced a block says nothing about whether extraction has work.
+        #
+        # A harness with no `claude` on PATH will fail these jobs rather than
+        # silently skip them - the attempt cap stops the retries and
+        # `remem record status` shows the reason, which beats a probe here
+        # that guesses wrong about where the extractor lives.
+        hookio.spawn_process(env)
 
     raise typer.Exit(0)
 
