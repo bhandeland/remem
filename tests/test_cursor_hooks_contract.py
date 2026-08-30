@@ -40,8 +40,8 @@ def test_the_vendored_list_has_every_name_cursor_enumerates():
     assert len(HOOK_NAMES) == 21
 
 
-def test_the_vendored_list_records_where_it_came_from():
-    assert CURSOR_VERSION == "3.9.16"
+def test_the_vendored_list_records_what_it_was_checked_against():
+    assert CURSOR_VERSION == "3.18.9"
 
 
 def test_the_blocking_hooks_are_not_subscribed():

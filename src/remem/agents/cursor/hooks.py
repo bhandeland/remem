@@ -11,8 +11,8 @@ separate `cursor`-marked test asserts this list still matches the installed
 app. The two answer different questions; see
 tests/test_cursor_hooks_contract.py.
 
-Transcribed from Cursor 3.9.16, by reading the hook enumeration in
-Contents/Resources/app/out/vs/workbench/workbench.desktop.main.js.
+Originally transcribed from Cursor 3.9.16, by reading the hook enumeration
+in Contents/Resources/app/out/vs/workbench/workbench.desktop.main.js.
 """
 
 from __future__ import annotations
@@ -20,7 +20,13 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-CURSOR_VERSION = "3.9.16"
+# The newest Cursor this list has been checked against, not the one it was
+# first transcribed from - Cursor auto-updates, so the interesting fact is
+# how recently the vendored names were still true, not when they were typed.
+# The freshness test reads the installed bundle; this records the answer it
+# gave, so a reader can tell a list verified last week from one verified a
+# year ago. Bump it whenever that test is re-run against a newer Cursor.
+CURSOR_VERSION = "3.18.9"
 
 HOOK_NAMES = frozenset(
     {
