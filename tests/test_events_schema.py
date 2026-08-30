@@ -65,3 +65,41 @@ def test_event_id_is_indexed(migrated):
     ).fetchall()
     assert any("event_id" in r[0] and "entry_events_event_idx" in r[0]
                for r in indexes)
+
+
+def test_event_key_is_null_when_the_harness_supplies_no_id(migrated):
+    """The partial index has to stay partial.
+
+    claude-code's SessionEnd payload carries no per-event id and neither
+    does opencode's message, so most of what remem records cannot be
+    deduplicated at all. A key that invented something for those rows
+    would be a constraint over a value remem made up - which is how a
+    legitimate repeat gets dropped.
+    """
+    row = migrated.execute(
+        "select event_key from (select %s::jsonb as payload) p"
+        " cross join lateral (select case"
+        "   when p.payload->>'tool_use_id' is not null"
+        "     then 'tool:' || (p.payload->>'tool_use_id')"
+        "   when p.payload->>'generation_id' is not null"
+        "     then 'gen:' || (p.payload->>'generation_id')"
+        "          || ':' || coalesce(p.payload->>'hook_event_name', '')"
+        " end as event_key) k",
+        ('{"hook_event_name": "SessionEnd", "reason": "clear"}',),
+    ).fetchone()
+    assert row[0] is None
+
+
+def test_the_uniqueness_index_on_events_is_partial(migrated):
+    """A total index would make every id-less event collide with the next.
+
+    Every claude-code SessionEnd has a null key; under a total unique index
+    the second one in a session would be silently discarded.
+    """
+    predicate = migrated.execute(
+        "select pg_get_expr(indpred, indrelid) from pg_index i"
+        " join pg_class c on c.oid = i.indexrelid"
+        " where c.relname = 'events_harness_key_uniq'"
+    ).fetchone()
+    assert predicate is not None, "events_harness_key_uniq is missing"
+    assert predicate[0] is not None, "the index must be partial, not total"

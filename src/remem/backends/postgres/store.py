@@ -743,7 +743,20 @@ class PostgresStore:
                   %(session_id)s, %(kind)s::event_kind, %(tool)s,
                   %(payload)s::jsonb, %(occurred_at)s
                 )
-                returning recorded_at
+                -- A duplicate is dropped, not raised. The caller is a
+                -- fail-soft hook doing one INSERT; an exception here is how
+                -- a twice-registered hook turns into a broken session.
+                --
+                -- `do update` setting payload to what it already is, rather
+                -- than `do nothing`: a no-op write that still RETURNS the
+                -- surviving row. `do nothing` returns nothing, and finding
+                -- that row afterwards would mean a second copy of 011's
+                -- event_key expression here, free to drift from it.
+                -- First write wins; nothing about the stored row changes.
+                on conflict (owner_id, project, harness, session_id, event_key)
+                  where event_key is not null
+                  do update set payload = events.payload
+                returning id, recorded_at
                 """,
                 {
                     "id": event.id,
@@ -760,7 +773,12 @@ class PostgresStore:
                     "occurred_at": event.occurred_at or datetime.now(timezone.utc),
                 },
             )
-            event.recorded_at = cur.fetchone()["recorded_at"]
+            # The row actually stored, which on a duplicate is the earlier
+            # one - so every caller gets a usable Event either way, and the
+            # id it carries is the id that is really in the table.
+            row = cur.fetchone()
+            event.id = row["id"]
+            event.recorded_at = row["recorded_at"]
         return event
 
     def events_for_session(
