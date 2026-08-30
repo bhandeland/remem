@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Mapping
+from typing import Callable, Mapping
 
 from remem.agents.base import HarnessEvent, Identity
 from remem.domain import EventKind
@@ -134,7 +134,12 @@ class CursorAdapter:
             occurred_at=datetime.now(timezone.utc),
         )
 
-    def inject(self, block: str, payload: dict) -> str | None:
+    def inject(
+        self,
+        block: str,
+        payload: dict,
+        note: Callable[[str], None] | None = None,
+    ) -> str | None:
         """Write the context block where Cursor will read it.
 
         The optional injection capability, probed with getattr exactly as
@@ -142,7 +147,20 @@ class CursorAdapter:
         the frontend's job there. Returning the path is what lets the CLI
         report where the block went without knowing what it wrote.
 
-        Never raises: every caller is a fail-soft hook.
+        `note` is the same escape hatch as `services/context.block()`'s:
+        this method has no business deciding where a message is shown, so
+        it hands the reason to whatever the caller passes and lets the
+        frontend decide (REMEM_HOOK_DEBUG for the CLI, a list's `append`
+        for a test). It is how the caller learns that the rules file was
+        written but the exclude line was not - a repository with no
+        `.git`, or one where the line is already present - so the fact is
+        not simply dropped on the floor.
+
+        Does not itself guarantee against raising: `Path.mkdir` and
+        `Path.write_text` can still raise (`PermissionError`, a full disk).
+        What is guaranteed is that failure is *safe*, not that it cannot
+        happen - `hook_context` in cli.py wraps this call and degrades to
+        the stdout path, exactly like every other optional capability here.
         """
         from remem.agents.cursor import rules
 
@@ -154,5 +172,9 @@ class CursorAdapter:
         if root is None:
             return None
         path = rules.write(root, block)
-        rules.exclude(root)
+        if not rules.exclude(root) and note is not None:
+            note(
+                f"wrote {path} but did not add it to git's info/exclude "
+                "(no repository here, or the line was already present)"
+            )
         return str(path)

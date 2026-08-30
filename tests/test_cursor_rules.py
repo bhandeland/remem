@@ -4,12 +4,32 @@ not assumed."""
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 from remem.agents.cursor import rules
 from remem.agents.cursor.adapter import ROOT_KEY, CursorAdapter
 
 EXCLUDE_LINE = ".cursor/rules/remem.mdc"
+
+
+def _init_repo(path: Path) -> None:
+    """A real, minimal repository - not a bare `mkdir .git`.
+
+    `exclude()` now shells out to `git rev-parse --git-common-dir`, which
+    refuses to answer for a directory that merely happens to be named
+    `.git`; git only recognizes a repository it created (or one with the
+    marker files `git init` writes: HEAD, objects/, refs/). A commit is
+    required too, only because `git worktree add` (used below) needs a ref
+    to branch from.
+    """
+    subprocess.run(["git", "init", "-q", str(path)], check=True)
+    subprocess.run(["git", "-C", str(path), "config", "user.email", "a@b.c"], check=True)
+    subprocess.run(["git", "-C", str(path), "config", "user.name", "a"], check=True)
+    subprocess.run(
+        ["git", "-C", str(path), "commit", "-q", "-m", "init", "--allow-empty"],
+        check=True,
+    )
 
 
 def test_the_rendered_file_always_applies():
@@ -43,7 +63,7 @@ def test_writing_overwrites_unconditionally(tmp_path):
 
 
 def test_exclude_appends_to_git_info_exclude(tmp_path):
-    (tmp_path / ".git" / "info").mkdir(parents=True)
+    _init_repo(tmp_path)
 
     added = rules.exclude(tmp_path)
 
@@ -52,7 +72,7 @@ def test_exclude_appends_to_git_info_exclude(tmp_path):
 
 
 def test_exclude_is_idempotent(tmp_path):
-    (tmp_path / ".git" / "info").mkdir(parents=True)
+    _init_repo(tmp_path)
     rules.exclude(tmp_path)
 
     added = rules.exclude(tmp_path)
@@ -63,14 +83,55 @@ def test_exclude_is_idempotent(tmp_path):
 
 
 def test_exclude_preserves_what_is_already_there(tmp_path):
+    _init_repo(tmp_path)
     info = tmp_path / ".git" / "info"
-    info.mkdir(parents=True)
     (info / "exclude").write_text("# existing\n*.log\n")
 
     rules.exclude(tmp_path)
 
     text = (info / "exclude").read_text()
     assert "*.log" in text and EXCLUDE_LINE in text
+
+
+def test_exclude_ignores_a_commented_out_line(tmp_path):
+    """A whitespace-token test would read `# .cursor/rules/remem.mdc` as
+    the line already being present - split() breaks the leading `#` into
+    its own token and leaves the path token looking like a match - so the
+    real, active line would never get added. Line-by-line comparison does
+    not have that hole."""
+    _init_repo(tmp_path)
+    info = tmp_path / ".git" / "info"
+    (info / "exclude").write_text(f"# {EXCLUDE_LINE}\n")
+
+    added = rules.exclude(tmp_path)
+
+    assert added is True
+    lines = (info / "exclude").read_text().splitlines()
+    assert EXCLUDE_LINE in lines
+
+
+def test_exclude_in_a_worktree_writes_to_the_shared_git_dir(tmp_path):
+    """In a linked worktree, `.git` is a *file* pointing elsewhere - the
+    exact case that made `is_dir()` silently no-op in every remem worktree,
+    including the one this codebase is developed in. The line has to land
+    in the shared `info/exclude` under the main repository's real `.git`
+    directory, not somewhere under the worktree (which has no `info/`
+    directory of its own to write)."""
+    main = tmp_path / "main"
+    main.mkdir()
+    _init_repo(main)
+    worktree = tmp_path / "wt"
+    subprocess.run(
+        ["git", "-C", str(main), "worktree", "add", "-q", str(worktree), "-b", "wtbranch"],
+        check=True,
+    )
+    assert (worktree / ".git").is_file()
+
+    added = rules.exclude(worktree)
+
+    assert added is True
+    assert not (worktree / ".git" / "info").exists()
+    assert EXCLUDE_LINE in (main / ".git" / "info" / "exclude").read_text()
 
 
 def test_exclude_outside_a_repository_is_not_an_error(tmp_path):
@@ -101,3 +162,29 @@ def test_inject_of_an_empty_block_writes_nothing(tmp_path):
 
     assert adapter.inject("", {ROOT_KEY: str(tmp_path)}) is None
     assert not (tmp_path / ".cursor").exists()
+
+
+def test_inject_reports_when_the_exclude_line_is_not_added(tmp_path):
+    """Outside a repository, `rules.exclude()` is a no-op - the rules file
+    is still written, but nothing keeps it out of a tracked tree. That fact
+    used to be silently discarded; `note` is how the caller learns it,
+    exactly as `services/context.block()`'s `note` reports its reasons."""
+    adapter = CursorAdapter()
+    notes: list[str] = []
+
+    adapter.inject("the block", {ROOT_KEY: str(tmp_path)}, note=notes.append)
+
+    assert notes
+    assert "exclude" in notes[0]
+
+
+def test_inject_says_nothing_when_the_exclude_line_was_added(tmp_path):
+    """The happy path is quiet - `note` exists to report the surprising
+    case, not to narrate every ordinary success."""
+    _init_repo(tmp_path)
+    adapter = CursorAdapter()
+    notes: list[str] = []
+
+    adapter.inject("the block", {ROOT_KEY: str(tmp_path)}, note=notes.append)
+
+    assert notes == []

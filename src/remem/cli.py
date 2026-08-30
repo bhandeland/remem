@@ -876,7 +876,7 @@ def hook_context(
         inject = getattr(adapter, "inject", None)
         if inject is not None:
             try:
-                written = inject(rendered, payload)
+                written = inject(rendered, payload, note=lambda reason: debug(env, reason))
             except Exception as exc:
                 debug(
                     env,

@@ -10,6 +10,7 @@ module exists at all.
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 #: Relative to the workspace root. Also the line written to
@@ -48,15 +49,57 @@ def write(root: Path, block: str) -> Path:
     return path
 
 
-def exclude(root: Path) -> bool:
-    """Add the rules file to .git/info/exclude. True if it added the line.
+def _git_common_dir(root: Path) -> Path | None:
+    """The repository-wide `.git` directory for `root`, or None outside one.
 
-    .git/info/exclude rather than .gitignore, deliberately. .gitignore is
+    `.git` is a directory only in a plain, non-worktree repository. In a
+    linked worktree or a submodule it is a *file* holding a `gitdir:`
+    pointer, and the real directory - the one `info/exclude` has to live
+    under to apply everywhere, including the worktree that created it - is
+    somewhere else entirely (typically `<main>/.git/worktrees/<name>`, but
+    that layout is git's to define, not ours to guess). remem's own
+    development happens inside a worktree, so this is the common case here,
+    not an edge case.
+
+    `git rev-parse --git-common-dir` is git answering this question for us,
+    exactly as `project.py`'s `resolve_project()` uses `--git-common-dir` to
+    find the *main* repository's root from inside a worktree - the same
+    call, but this function stops at the common directory itself rather
+    than taking its parent, because that directory (not the repository
+    root) is where `info/exclude` lives.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "--git-common-dir"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        # Not a repository at all - an ordinary thing, not an error.
+        return None
+
+    common = Path(result.stdout.strip())
+    if not common.is_absolute():
+        common = root / common
+    try:
+        return common.resolve()
+    except OSError:
+        return None
+
+
+def exclude(root: Path) -> bool:
+    """Add the rules file to the repository's info/exclude. True if it
+    added the line.
+
+    info/exclude rather than .gitignore, deliberately. .gitignore is
     tracked, reviewed and merged - appending to it hands the user a diff
     they did not ask for, and in a shared repository that lands in
-    somebody's pull request. .git/info/exclude is local-only, needs no
-    commit, and is exactly the mechanism git provides for "ignore this
-    here, not for everyone".
+    somebody's pull request. info/exclude is local-only, needs no commit,
+    and is exactly the mechanism git provides for "ignore this here, not
+    for everyone".
 
     What this prevents is the .mdc being committed, which matters because
     its content is one user's knowledge base rendered at one moment:
@@ -66,14 +109,22 @@ def exclude(root: Path) -> bool:
     Returns False, not an error, when there is no repository - a workspace
     outside one is an ordinary thing.
     """
-    info = root / ".git" / "info"
-    if not info.parent.is_dir():
+    common = _git_common_dir(root)
+    if common is None:
         return False
+    info = common / "info"
     info.mkdir(parents=True, exist_ok=True)
     target = info / "exclude"
 
     existing = target.read_text() if target.exists() else ""
-    if RULES_PATH in existing.split():
+    # Line-by-line, stripped, ignoring comments and blanks - not a
+    # whitespace-token membership test. `RULES_PATH in existing.split()`
+    # would treat a *commented-out* `# .cursor/rules/remem.mdc` as already
+    # present, because split() breaks "#" into its own token and leaves the
+    # path token intact; the real line would then never get added.
+    lines = (ln.strip() for ln in existing.splitlines())
+    live_lines = [ln for ln in lines if ln and not ln.startswith("#")]
+    if RULES_PATH in live_lines:
         return False
 
     prefix = "" if existing == "" or existing.endswith("\n") else "\n"
