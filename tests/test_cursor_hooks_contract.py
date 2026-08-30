@@ -63,7 +63,7 @@ def test_parsing_a_bundle(tmp_path):
     character window around it (`notAHook` sits far enough past the
     enumeration - separated by 3000 characters of padding - that it falls
     outside the window, the same way an unrelated self-naming pair
-    elsewhere in the real 30MB bundle would).
+    elsewhere in the real 47MB bundle would).
     """
     bundle = tmp_path / "Contents" / "Resources" / "app" / "out" / "vs" / "workbench"
     bundle.mkdir(parents=True)

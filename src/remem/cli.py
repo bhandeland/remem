@@ -884,8 +884,10 @@ def hook_context(
                     f"{type(exc).__name__}: {exc}",
                 )
             else:
-                debug(env, f"wrote the context block to {written}"
-                      if written else "the adapter wrote no context block")
+                if written:
+                    debug(env, f"wrote the context block to {written}")
+                else:
+                    debug(env, "the adapter wrote no context block")
                 raise typer.Exit(0)
 
         typer.echo(rendered, nl=False)

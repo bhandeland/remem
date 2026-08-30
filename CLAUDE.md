@@ -298,11 +298,13 @@ no repository at all, the `.mdc` is still written and a note (not a warning)
 says the exclude was skipped - a workspace outside a repository is an
 ordinary thing.
 
-The hook-contract test (`tests/test_cursor_hooks_contract.py`) follows
-opencode's shape exactly: one test that always runs, everywhere, checking
-every hook named in the generated `hooks.json` and every key of
-`EVENT_KINDS` is in the vendored `HOOK_NAMES` - this is what would have
-caught subscribing to a hook Cursor does not emit - and one
+The always-runs half of the hook-contract check follows opencode's shape
+exactly: every hook named in the generated `hooks.json` and every key of
+`EVENT_KINDS` is checked against the vendored `HOOK_NAMES` -
+`tests/test_cursor_install.py` and `tests/test_cursor_event.py`
+respectively, both always running - which is what would have caught
+subscribing to a hook Cursor does not emit.
+`tests/test_cursor_hooks_contract.py` holds the other half: one
 `@pytest.mark.cursor` test, which may skip, that re-reads the installed
 `Cursor.app` bundle and checks the vendored list is still fresh. Cursor
 auto-updates itself, so expect the freshness half to fire eventually, the

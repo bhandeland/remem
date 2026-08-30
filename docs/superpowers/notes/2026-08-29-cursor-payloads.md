@@ -137,6 +137,14 @@ this read did not enumerate.
 | cursor version | `cursor_version` | source-derived, not captured |
 | user email | `user_email` | source-derived, not captured - see privacy note below |
 
+`workspace_roots` is built from `folders.map(D => D.uri.path)` - `uri.path`,
+not `uri.fsPath`. On POSIX the two agree; on Windows `uri.path` yields a
+form like `/c:/Users/...` where `uri.fsPath` would give `C:\Users\...`, and
+`Path()` on the adapter side would mishandle the former. remem has not been
+tested on Windows at all, and this is where a path difference would first
+surface if it ever is - flagged here rather than fixed, since there is
+nothing to verify it against on this machine.
+
 ## What remains genuinely unverified
 
 - **Whether any of these four hooks fires at all.** The constructor code

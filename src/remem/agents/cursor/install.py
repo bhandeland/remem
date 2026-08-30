@@ -61,7 +61,11 @@ def merge(path: Path, entries: dict[str, str]) -> tuple[dict, Path | None]:
 
     if path.exists():
         raw = path.read_text()
-        backup = path.with_suffix(f".json.bak{int(time.time())}")
+        # Nanosecond resolution, not int(time.time()): two installs inside
+        # the same second would otherwise compute the same suffix, and the
+        # second write would silently clobber the first backup instead of
+        # adding one.
+        backup = path.with_suffix(f".json.bak{time.time_ns()}")
         backup.write_text(raw)
         try:
             loaded = json.loads(raw)

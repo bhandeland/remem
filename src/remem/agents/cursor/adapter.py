@@ -96,6 +96,13 @@ class CursorAdapter:
         # payload note's provenance section), only read out of the
         # constructor's source, so tolerating the simpler shape costs
         # nothing and guards against that reading being wrong.
+        #
+        # For a genuine multi-root workspace this takes the first folder
+        # and silently ignores the rest. That is a reasonable default, not
+        # an oversight: the first entry is the folder the session was
+        # started in, which is the one both recording (the project a
+        # session's events belong to) and injection (where Cursor will
+        # look for the rules file) actually need.
         if isinstance(root, list):
             root = root[0] if root else None
         return Path(root) if root else None

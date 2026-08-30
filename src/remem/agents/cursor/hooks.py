@@ -96,7 +96,7 @@ def installed_hook_names(app: Path) -> frozenset[str]:
     text = bundle.read_text(errors="replace")
     # The enumeration is one object literal. Anchor on a name we know is in
     # it and take a window around it, rather than matching the pattern
-    # across a 30MB file where an unrelated self-naming pair could sneak in.
+    # across a 47MB file where an unrelated self-naming pair could sneak in.
     anchor = text.find('beforeSubmitPrompt:"beforeSubmitPrompt"')
     if anchor == -1:
         return frozenset()
