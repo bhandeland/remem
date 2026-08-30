@@ -334,6 +334,20 @@ Prune reports what it deleted **and** how many `entry_events` rows it just left
 dangling. That number is the cost of the run, and it is the only moment a user
 can see it.
 
+> **Amended 2026-08-30.** This section promised prune could "drop a project"
+> (see Retention, below) but the flag was never written: `prune_events` took
+> only `(owner_id, before, force)`, so the sole way to drop one project's
+> events was to delete every project's. `--project` now exists and narrows
+> both the delete and the `kept_unextracted` count.
+>
+> Ruled rather than amended the other way - dropping the promise - because
+> recording is opt-in **per project** and that gate is the entire safety
+> story. An eraser coarser than the gate makes the safe action cost
+> unrelated data. `--project` does not default to the working directory the
+> way the writing commands' does: every other `--project` narrows a read or
+> files a new row, this one deletes, so the scope is always typed. It buys
+> no exemption from `--before`.
+
 ## Search
 
 Three tiers, still never blended:

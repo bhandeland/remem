@@ -80,7 +80,12 @@ def parse_window(text: str) -> timedelta:
 
 
 def prune(
-    store: Store, owner_id: UUID, *, before: datetime, force: bool = False
+    store: Store,
+    owner_id: UUID,
+    *,
+    before: datetime,
+    force: bool = False,
+    project: str | None = None,
 ) -> PruneReport:
     """Delete events older than `before` that have already been extracted.
 
@@ -97,9 +102,15 @@ def prune(
     did not. `--force` (for a stuck session whose extraction will never
     finish) removes the extraction requirement entirely, so nothing is ever
     kept back and nothing is ever refused.
+
+    `project` narrows the run to one project; None, the default, spans them
+    all as it always has. Recording is opt-in per project and that gate is
+    the whole safety story, so the delete has to reach the same granularity:
+    without it, dropping one project's events means deleting every other
+    project's too, and the safe action costs unrelated data.
     """
     deleted, dangling, kept_unextracted = store.prune_events(
-        owner_id, before=before, force=force
+        owner_id, before=before, force=force, project=project
     )
     if not force and deleted == 0 and kept_unextracted > 0:
         raise PruneRefused(kept_unextracted)

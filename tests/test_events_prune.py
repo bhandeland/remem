@@ -226,17 +226,37 @@ def test_prune_deletes_through_the_cli(cli_env):
         ) == []
 
 
-def test_prune_json_reports_all_three_counts(cli_env):
+def test_prune_json_reports_all_three_counts_and_the_scope(cli_env):
     """--json is what a cron wrapper reads, so every count the human line
-    prints has to be in it - a silently absent `dangling` reads as zero."""
+    prints has to be in it - a silently absent `dangling` reads as zero.
+
+    `project` is here for the same reason, and is null on an unscoped run
+    rather than absent: a wrapper that has to tell "all projects" from "one
+    project" cannot do it by a missing key, which reads identically to an
+    older remem that never reported scope at all.
+    """
     _seed_prunable(cli_env)
 
     result = runner.invoke(app, ["events", "prune", "--before", "30d", "--json"])
 
     assert result.exit_code == 0, result.stdout + str(result.stderr)
     assert json.loads(result.stdout) == {
-        "deleted": 1, "kept_unextracted": 0, "dangling": 0
+        "deleted": 1, "kept_unextracted": 0, "dangling": 0, "project": None
     }
+
+
+def test_prune_json_names_the_project_when_scoped(cli_env):
+    with psycopg.connect(cli_env) as c:
+        store = PostgresStore(c)
+        _seed_two_projects(store, store.ensure_principal("brandon"))
+        c.commit()
+
+    result = runner.invoke(
+        app,
+        ["events", "prune", "--before", "30d", "--project", "client-work", "--json"],
+    )
+
+    assert json.loads(result.stdout)["project"] == "client-work"
 
 
 @pytest.mark.parametrize(
@@ -257,3 +277,146 @@ def test_a_window_that_does_not_parse_is_refused(text):
     a user who meant 30 days deletes 30 minutes' worth - or everything."""
     with pytest.raises(events.BadWindow):
         events.parse_window(text)
+
+
+# ---------------- --project: matching the eraser to the gate ------------
+#
+# Recording is opt-in PER PROJECT, and that gate is the whole safety story.
+# Events are stored in full - command output, file contents, and on cursor
+# the user's email address - and kept indefinitely. An eraser coarser than
+# the gate means the only way to drop one project's events is to delete
+# every project's, so the safe action costs unrelated data.
+#
+# The spec promised this ("to drop a project or window the user does not
+# want kept"); the flag simply never got written.
+
+
+def an_event_in(owner, project, *, at=NOW, session="s1"):
+    e = an_event(owner, at=at, session=session)
+    e.project = project
+    return e
+
+
+def _mark_done_in(store, owner, project, session_id, covers_through):
+    job = store.claim_extract_job(
+        owner.id,
+        SessionRef(
+            project=project, harness="claude-code", session_id=session_id,
+            event_count=0, last_event_at=covers_through,
+        ),
+    )
+    store.finish_extract_job(
+        job.id, owner.id, JobStatus.DONE, None, 0, covers_through
+    )
+
+
+def _seed_two_projects(store, owner):
+    old = NOW - timedelta(days=40)
+    for project, session in (("remem", "s1"), ("client-work", "s2")):
+        e = store.put_event(an_event_in(owner, project, at=old, session=session))
+        _mark_done_in(store, owner, project, session, e.occurred_at)
+    return old
+
+
+def test_prune_scoped_to_a_project_leaves_every_other_project_alone(store, owner):
+    """The point of the flag. Dropping one project must not be a reason to
+    lose another's history."""
+    _seed_two_projects(store, owner)
+
+    report = events.prune(
+        store, owner.id, before=NOW, force=False, project="client-work"
+    )
+
+    assert report.deleted == 1
+    assert store.events_for_session(owner.id, "remem", "claude-code", "s1") != []
+    assert store.events_for_session(
+        owner.id, "client-work", "claude-code", "s2"
+    ) == []
+
+
+def test_prune_without_a_project_still_spans_them_all(store, owner):
+    """The existing behaviour is the default and is unchanged - the flag
+    narrows, it never becomes a required argument."""
+    _seed_two_projects(store, owner)
+
+    report = events.prune(store, owner.id, before=NOW, force=False)
+
+    assert report.deleted == 2
+
+
+def test_a_project_with_nothing_in_the_window_deletes_nothing(store, owner):
+    """A typo in a project name must be a no-op, not a wildcard."""
+    _seed_two_projects(store, owner)
+
+    report = events.prune(
+        store, owner.id, before=NOW, force=False, project="no-such-project"
+    )
+
+    assert report.deleted == 0
+    assert store.events_for_session(owner.id, "remem", "claude-code", "s1") != []
+
+
+def test_the_unextracted_refusal_is_scoped_to_the_project_too(store, owner):
+    """kept_unextracted counts the window, so it has to respect the same
+    scope - otherwise pruning one project is refused because of raw
+    belonging to a different one, with no way to tell why."""
+    _seed_two_projects(store, owner)
+    # Unextracted raw in a project we are NOT pruning.
+    store.put_event(
+        an_event_in(owner, "other", at=NOW - timedelta(days=40), session="s3")
+    )
+
+    report = events.prune(
+        store, owner.id, before=NOW, force=False, project="client-work"
+    )
+
+    assert report.deleted == 1
+    assert report.kept_unextracted == 0
+
+
+def test_prune_project_still_requires_a_window(cli_env):
+    """--project narrows the blast radius; it does not buy an exemption
+    from the rule that the window is always typed."""
+    result = runner.invoke(app, ["events", "prune", "--project", "remem"])
+
+    assert result.exit_code == 1
+    assert "--before is required" in (result.stdout + str(result.stderr))
+
+
+def test_prune_project_through_the_cli(cli_env):
+    """The flag reaches the service, and the run commits."""
+    with psycopg.connect(cli_env) as c:
+        store = PostgresStore(c)
+        owner = store.ensure_principal("brandon")
+        _seed_two_projects(store, owner)
+        c.commit()
+        owner_id = owner.id
+
+    result = runner.invoke(
+        app, ["events", "prune", "--before", "30d", "--project", "client-work"]
+    )
+
+    assert result.exit_code == 0, result.stdout + str(result.stderr)
+    with psycopg.connect(cli_env) as c:
+        store = PostgresStore(c)
+        assert store.events_for_session(
+            owner_id, "client-work", "claude-code", "s2"
+        ) == []
+        assert store.events_for_session(
+            owner_id, "remem", "claude-code", "s1"
+        ) != []
+
+
+def test_the_cli_says_which_project_it_pruned(cli_env):
+    """A destructive command that does not name its scope leaves the user
+    guessing whether it hit everything."""
+    with psycopg.connect(cli_env) as c:
+        store = PostgresStore(c)
+        _seed_two_projects(store, store.ensure_principal("brandon"))
+        c.commit()
+
+    result = runner.invoke(
+        app, ["events", "prune", "--before", "30d", "--project", "client-work"]
+    )
+
+    assert "client-work" in result.stdout

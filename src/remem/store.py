@@ -107,8 +107,12 @@ class Store(Protocol):
     def provenance(
         self, entry_id: UUID, owner_id: UUID
     ) -> list[tuple[UUID, str, str, bool]]: ...
+    #: `project` narrows the prune to one project; None means all of them.
+    #: The gate that decides whether an event is ever recorded is per
+    #: project, so the one that deletes it has to be too.
     def prune_events(
-        self, owner_id: UUID, before: datetime, force: bool
+        self, owner_id: UUID, before: datetime, force: bool,
+        project: str | None = None,
     ) -> tuple[int, int, int]: ...
 
     # extraction spool

@@ -1060,6 +1060,10 @@ def events_prune(
     before: Annotated[
         Optional[str], typer.Option("--before", help="e.g. 30d, 12h, 90m")
     ] = None,
+    project: Annotated[
+        Optional[str],
+        typer.Option("--project", help="only this project (default: all)"),
+    ] = None,
     force: Annotated[bool, typer.Option("--force")] = False,
     as_json: Annotated[bool, typer.Option("--json")] = False,
 ):
@@ -1070,6 +1074,13 @@ def events_prune(
     history. An event that has not been extracted yet is never deleted
     unless `--force` says so - for a session whose extraction is never
     going to finish.
+
+    `--project` narrows the run to one project. Recording is opt-in per
+    project, so the delete reaches the same granularity - otherwise the
+    only way to drop one project's events is to delete every project's.
+    It does NOT default to the current directory the way the writing
+    commands do: every other `--project` here narrows a read or files a
+    new row, and this one deletes, so the scope has to be typed.
     """
     from remem.services import events
 
@@ -1089,7 +1100,9 @@ def events_prune(
     with _session() as s:
         cutoff = datetime.now(timezone.utc) - window
         try:
-            report = events.prune(s.store, s.owner.id, before=cutoff, force=force)
+            report = events.prune(
+                s.store, s.owner.id, before=cutoff, force=force, project=project
+            )
         except events.PruneRefused as exc:
             typer.echo(str(exc), err=True)
             raise typer.Exit(1)
@@ -1099,13 +1112,19 @@ def events_prune(
             "deleted": report.deleted,
             "kept_unextracted": report.kept_unextracted,
             "dangling": report.dangling,
+            "project": project,
         }, indent=2))
         return
     # The dangling count prints even when it is zero - its absence would be
     # indistinguishable from a prune that never reported it at all.
+    # The scope is named on every run, including the unscoped one. A
+    # destructive command that says only what it deleted leaves the user to
+    # guess whether it hit one project or all of them.
+    scope = f"project '{project}'" if project else "all projects"
     typer.echo(
-        f"deleted {report.deleted} events, kept {report.kept_unextracted} "
-        f"unextracted, left {report.dangling} provenance rows dangling"
+        f"deleted {report.deleted} events from {scope}, kept "
+        f"{report.kept_unextracted} unextracted, left {report.dangling} "
+        f"provenance rows dangling"
     )
 
 

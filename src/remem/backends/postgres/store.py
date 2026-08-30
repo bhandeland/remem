@@ -940,7 +940,11 @@ class PostgresStore:
             ]
 
     def prune_events(
-        self, owner_id: UUID, before: datetime, force: bool
+        self,
+        owner_id: UUID,
+        before: datetime,
+        force: bool,
+        project: str | None = None,
     ) -> tuple[int, int, int]:
         """Delete raw events older than `before`, and say what that cost.
 
@@ -952,6 +956,14 @@ class PostgresStore:
         event is raw that produced nothing, and losing it is the outcome the
         whole pipeline exists to prevent, so overriding that is a deliberate
         act, not a wider window.
+
+        `project` narrows every part of this - the delete AND the
+        `kept_unextracted` count - to one project. It has to narrow both:
+        counting the whole window while deleting one project's slice would
+        refuse a prune because of raw belonging to a project the user never
+        named, with nothing in the message to say so. None means every
+        project, which is the behaviour that shipped first and stays the
+        default; the flag only ever narrows.
 
         The dangling count is taken from `entry_events` before the delete
         runs, in the same statement - after the delete the rows are already
@@ -987,6 +999,10 @@ class PostgresStore:
                           and w.session_id = e.session_id
                    where e.owner_id = %(owner_id)s
                      and e.occurred_at < %(before)s
+                     -- One `scoped` CTE feeds both the delete and the
+                     -- kept_unextracted count, so filtering here is what
+                     -- keeps the two from disagreeing about the window.
+                     and (%(project)s::text is null or e.project = %(project)s)
                 ), candidates as (
                   select id from scoped where %(force)s or extracted
                 ), dangling as (
@@ -1007,7 +1023,12 @@ class PostgresStore:
                                     where not extracted) end)
                          as kept_unextracted
                 """,
-                {"owner_id": owner_id, "before": before, "force": force},
+                {
+                    "owner_id": owner_id,
+                    "before": before,
+                    "force": force,
+                    "project": project,
+                },
             )
             row = cur.fetchone()
             return (row["deleted"], row["dangling"], row["kept_unextracted"])
