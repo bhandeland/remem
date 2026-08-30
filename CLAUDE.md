@@ -236,6 +236,104 @@ needs opencode's plugin types installed to check. Collapsing them into one test 
 produce a guard that skips on CI - the same failure mode the `db` markers already taught
 this project to distrust.
 
+### The cursor adapter
+
+`src/remem/agents/cursor/`, four modules and no generated script of any kind -
+`hooks.json` names the `remem` command directly, because `remem record event`
+already reads its payload as JSON on stdin. It sits between the two adapters
+that shipped before it and deliberately borrows from each: `.cursor/hooks.json`
+is user-owned and shared - other tools write there too - so it gets Claude
+Code's treatment (read, merge, back up first, echo the backup path), while the
+generated `.cursor/rules/remem.mdc` is machine-owned and overwritten
+unconditionally, like opencode's `remem.js`. A user who wants local edits to
+the `.mdc` is asking for the wrong file.
+
+Cursor emits 21 hooks (vendored in `agents/cursor/hooks.py`, read out of
+`Cursor.app`'s minified bundle); this adapter subscribes to exactly four:
+`sessionStart` (injects, via `remem hook context --agent cursor`),
+`postToolUse` (`EventKind.TOOL_CALL`), and `beforeSubmitPrompt` /
+`afterAgentResponse` (both `EventKind.MESSAGE`). Six hooks **block** - Cursor
+waits on them for a permission decision on their stdout
+(`beforeShellExecution`, `beforeMCPExecution`, `beforeReadFile`,
+`beforeTabFileRead`, `subagentStart`, `preToolUse`) - and this adapter is
+deliberately wired to none of them, checked in as `hooks.BLOCKING_HOOKS` so an
+edit that reaches for one fails a test instead of shipping a hook that can
+deny a permission by failing. The remaining exclusions are `afterAgentThought`
+(reasoning text: high-volume, low-signal for extraction) and the specific
+`afterShellExecution`/`afterMCPExecution`/`afterFileEdit` hooks, folded into
+the generic `postToolUse` instead - one parser instead of three, and no gap
+opens when Cursor adds a tool type.
+
+**Injection is the fourth optional adapter capability** -
+`inject(self, block, payload) -> str | None`, probed with `getattr` exactly as
+`event()`, `env_settings()` and `settings_path()` are. Cursor needs the
+context block written to a file rather than printed or returned, so `cli.py`
+never has to know what an `.mdc` is; Claude Code simply does not implement
+`inject()`. This is the one probed capability where a **missing**
+implementation is the default, not a degradation - printing to stdout at
+`SessionStart` is exactly what Claude Code is supposed to do, not a fallback
+from something richer. `sessionStart` fires once, so the `.mdc` is written
+once per session by construction, with no state to keep anywhere - the third
+time this project has needed "once per session" and the third different
+mechanism: Claude Code gets it free from `SessionStart`, opencode keeps an
+in-process `Set` of session ids because it has no session hook at all, and
+Cursor needed neither once the stale "no `SessionStart` equivalent" premise
+from the events-and-recall spec was corrected.
+
+Writing the `.mdc` is also the first time remem puts context into the user's
+**working tree** rather than a stream, which is why `agents/cursor/rules.py`
+adds `.cursor/rules/remem.mdc` to **`.git/info/exclude`, not `.gitignore`**:
+`.gitignore` is tracked and reviewed, so appending to it hands the user a diff
+they did not ask for, and in a shared repository that diff lands in somebody's
+pull request; `info/exclude` is local-only and exactly the mechanism git
+provides for "ignore this here, not for everyone." The append is idempotent
+(checked line-by-line, not by a whitespace-token membership test, so a
+commented-out line doesn't count as already-present) and resolves through
+`git rev-parse --git-common-dir` rather than assuming `.git` is a directory -
+in a linked worktree or a submodule `.git` is a *file* holding a `gitdir:`
+pointer, and `info/exclude` lives under the real common directory that
+pointer names, not under the worktree. remem's own development happens inside
+a worktree, so this is the ordinary case here, not an edge case. If there is
+no repository at all, the `.mdc` is still written and a note (not a warning)
+says the exclude was skipped - a workspace outside a repository is an
+ordinary thing.
+
+The hook-contract test (`tests/test_cursor_hooks_contract.py`) follows
+opencode's shape exactly: one test that always runs, everywhere, checking
+every hook named in the generated `hooks.json` and every key of
+`EVENT_KINDS` is in the vendored `HOOK_NAMES` - this is what would have
+caught subscribing to a hook Cursor does not emit - and one
+`@pytest.mark.cursor` test, which may skip, that re-reads the installed
+`Cursor.app` bundle and checks the vendored list is still fresh. Cursor
+auto-updates itself, so expect the freshness half to fire eventually, the
+same way opencode's did mid-branch.
+
+A Cursor-only install **records but never extracts** - `remem events process`
+is only ever spawned from Claude Code's `SessionStart` hook, so nothing in a
+Cursor-only setup ever triggers it. This is the same real, undecided gap the
+opencode adapter has; it is now one gap shared by two adapters rather than a
+Cursor-specific oversight, which is the case for fixing it once rather than
+bolting a third trigger on.
+
+Every Cursor hook payload also carries `user_email` (read straight out of
+Cursor's payload constructor) and remem stores events in full and
+indefinitely, so a recorded Cursor event carries the user's email address as
+a side effect of this design - unlike Claude Code's events today. Nothing in
+this adapter filters it; the payload is passed through whole, on purpose, for
+the same reason every other adapter here does: extraction is the layer meant
+to be fixable and re-run without re-recording anything, and pruning fields at
+the recording boundary caps what any future extractor could ever see.
+
+**This adapter has never recorded an event from a real Cursor session.**
+Every payload key `identity()`/`event()` read (`session_id`,
+`workspace_roots`, `hook_event_name`, `tool_name`) comes from reading Cursor's
+payload-constructing code in the shipped app bundle, confirmed by a second,
+independent reading - not from a captured live payload, because no Cursor
+account exists on the machine this was built on. See
+`docs/superpowers/notes/2026-08-29-cursor-payloads.md` for the source reading
+and `docs/superpowers/notes/2026-08-29-cursor-proof.md` for exactly what is
+and is not proven about the adapter as shipped.
+
 ## Conventions
 
 - Python 3.14 (`uuid7` from stdlib, `StrEnum`, `from __future__ import annotations`).

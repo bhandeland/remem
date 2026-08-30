@@ -235,6 +235,40 @@ in an opencode-only setup triggers it. Put `remem events process` on a cron
 (or run it by hand, or in a later Claude Code session that also has remem
 installed) or your events will pile up unread.
 
+## Install into Cursor
+
+```bash
+remem install cursor --scope project   # merges into <repo>/.cursor/hooks.json
+remem install cursor --scope user      # merges into ~/.cursor/hooks.json
+```
+
+The agent name (`cursor`) is a **positional argument**, not a `--agent` flag -
+`remem install --agent cursor` fails with "No such option: --agent". This
+merges four hook entries into `hooks.json` (backing the file up first, since
+other tools can legitimately write there too) and writes
+`.cursor/rules/remem.mdc` on every session start - `.mdc`, unlike
+`hooks.json`, is machine-owned and overwritten unconditionally, so don't
+hand-edit it. The `.mdc` path is added to `.git/info/exclude` (not
+`.gitignore`) so it never shows up in `git status` or a diff.
+
+**Recording is off until you enable it per project**, exactly as above:
+
+```bash
+remem record enable --project myapp
+```
+
+**The Cursor adapter has not been proven against a real Cursor session** -
+see `docs/superpowers/notes/2026-08-29-cursor-proof.md` for exactly what is
+and is not verified. The install path and the recording round-trip are
+proven; whether Cursor's hooks actually fire with the payload shape this
+adapter expects is not, for lack of a Cursor account to test against.
+
+**Extraction needs its own schedule**, the same gap opencode has: a
+Cursor-only install records events and never extracts them, because
+`remem events process` is only ever spawned from Claude Code's SessionStart
+hook. Put it on a cron, or run it from a Claude Code session that also has
+remem installed.
+
 ## Configuration
 
 Environment variable, then config file, then default.
