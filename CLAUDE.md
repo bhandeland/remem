@@ -132,6 +132,16 @@ Invariants worth not breaking:
   vanishes from search.
 - `extract/base.py` treats all model output as untrusted: shape-checked, capped
   (`MAX_ENTRIES`/`MAX_TITLE`/`MAX_BODY`), filtered before it reaches the store.
+- The renderer spends its budget on **coverage before detail**. `render_events`
+  hoists payload keys that are constant across the batch into one note, caps
+  every oversized value (`MAX_FIELD_BYTES`, then `TIGHT_FIELD_BYTES`), and only
+  then drops whole events off the front. Measured: 40KB of tail (18 of 112
+  events) returned nothing in three runs, where the whole session with values
+  capped returned entries in five of five. Both the hoist and the cap are keyed
+  on the batch and on value size, never on a table of key names - the module
+  renders Cursor and opencode events too, and their constants are different
+  keys. A cut `tool_response` still says what the tool did; a dropped event
+  says nothing.
 - The extraction model is **pinned** (`REMEM_EXTRACT_MODEL`, default `sonnet`), not
   inherited from the session, so cost/behaviour do not drift. Haiku was measured and
   rejected on judgment, not JSON validity. `REMEM_CAPTURE_MODEL` is read for one

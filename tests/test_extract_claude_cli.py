@@ -1,5 +1,6 @@
 """The subprocess is asserted, never executed. No test spawns claude."""
 
+import json
 import subprocess
 from datetime import datetime, timedelta, timezone
 
@@ -29,10 +30,22 @@ def an_event(payload=None, i=0, tool="Bash", kind=EventKind.TOOL_CALL):
     )
 
 
-def events_of_size(total, count=40):
-    """`count` events whose rendered form is at least `total` bytes."""
+def events_of_size(total, count=1000):
+    """`count` events whose rendered form is at least `total` bytes.
+
+    Each payload differs: a real session does not repeat one command
+    hundreds of times, and identical payloads would be hoisted into the
+    constants note and leave these fixtures with nothing left to bound.
+
+    Many modest events rather than a few enormous ones, because that is now
+    the only shape that can overflow the budget: per-value capping trims the
+    outliers, so what remains is the sheer number of events. `count` has to
+    be high enough that the batch overflows even at the TIGHT cap - a batch
+    that merely overflows at the default cap is re-rendered tighter and
+    fits, which is the ladder working, not bounding.
+    """
     filler = "x" * max(1, total // count)
-    return [an_event({"command": filler}, i=i) for i in range(count)]
+    return [an_event({"command": f"{i}-{filler}"}, i=i) for i in range(count)]
 
 
 def test_command_runs_claude_in_print_mode():
@@ -200,11 +213,17 @@ def test_a_bounded_batch_says_so():
 
 
 def test_truncation_never_cuts_a_line_in_half():
-    """A half-rendered payload is a shape the model has to guess at."""
-    events = events_of_size(MAX_PROMPT_BYTES * 2)
-    body = render_events(events).split("\n", 1)[1]
-    rendered = {render_events([e]) for e in events}
-    assert all(line in rendered for line in body.splitlines())
+    """A half-rendered payload is a shape the model has to guess at, and the
+    first thing it guesses is that the payload means something other than
+    what it says. Asserted on the JSON itself rather than by comparing with
+    a single-event render: the batch may have been rendered at a tighter
+    field cap than one event alone would be, which is a whole line all the
+    same."""
+    text = render_events(events_of_size(MAX_PROMPT_BYTES * 2))
+    body = [l for l in text.splitlines() if not l.startswith("[")]
+    assert len(body) > 1
+    for line in body:
+        assert json.loads(line.split(" ", 3)[3])
 
 
 def test_a_short_session_is_passed_whole():
@@ -297,8 +316,148 @@ def test_the_extractor_defaults_to_the_configured_default(monkeypatch):
 
 
 def test_one_event_larger_than_the_whole_budget_is_cut(monkeypatch):
-    """A single Read of a large file would otherwise defeat the bound: the
-    line-at-a-time rule keeps whole lines, and one line can be the session."""
+    """A single Read of a large file would otherwise defeat the bound. The
+    field cap now catches this before the line-at-a-time rule does - the
+    event survives, only its oversized value is trimmed."""
     text = render_events([an_event({"content": "y" * (MAX_PROMPT_BYTES * 2)})])
     assert len(text) < MAX_PROMPT_BYTES * 2
+    assert "cut" in text.lower()
+    assert "tool_call" in text
+
+
+def test_a_line_that_is_still_too_long_after_capping_is_cut_short():
+    """The backstop beneath the field cap: capping bounds each value, not
+    their number, so an event carrying hundreds of them can still be longer
+    than the whole budget on its own."""
+    payload = {f"k{i}": "y" * 1000 for i in range(300)}
+    text = render_events([an_event(payload)], limit=10_000)
+    assert len(text) < 12_000
     assert "cut short" in text
+
+
+# --- constants stated once, not per event -----------------------------------
+
+
+def _lines(text):
+    """The event lines, without the bracketed notes the renderer prepends."""
+    return [l for l in text.splitlines() if not l.startswith("[")]
+
+
+def _notes(text):
+    return [l for l in text.splitlines() if l.startswith("[")]
+
+
+def test_a_key_identical_across_every_event_is_stated_once():
+    """112 events repeating one cwd spent ~4KB saying the same thing. The
+    budget is bytes, and every repeat is a line of session the model does
+    not get to see."""
+    events = [an_event({"cwd": "/repo", "command": f"c{i}"}, i=i)
+              for i in range(5)]
+    text = render_events(events)
+    assert "/repo" in "\n".join(_notes(text))
+    assert all("/repo" not in line for line in _lines(text))
+    assert all(f"c{i}" in text for i in range(5))
+
+
+def test_a_key_whose_value_varies_stays_on_every_event():
+    events = [an_event({"cwd": f"/repo{i}", "command": "x"}, i=i)
+              for i in range(5)]
+    text = render_events(events)
+    assert all(f"/repo{i}" in "\n".join(_lines(text)) for i in range(5))
+
+
+def test_a_key_missing_from_one_event_is_not_hoisted():
+    """Present-and-equal on four of five events is not constant: hoisting it
+    would assert it of the fifth, which never carried it."""
+    events = [an_event({"cwd": "/repo"}, i=i) for i in range(4)]
+    events.append(an_event({"command": "no-cwd"}, i=4))
+    text = render_events(events)
+    assert "/repo" in "\n".join(_lines(text))
+
+
+def test_a_batch_too_short_to_repeat_itself_is_left_alone():
+    """Below three events hoisting saves at most one copy - churn, and it
+    would strip the payload the caller can see whole today."""
+    events = [an_event({"cwd": "/repo"}, i=i) for i in range(2)]
+    text = render_events(events)
+    assert _notes(text) == []
+    assert all("/repo" in line for line in _lines(text))
+
+
+def test_hoisting_is_keyed_on_the_batch_not_on_a_table_of_key_names():
+    """The renderer serves every harness. A hardcoded list of Claude Code's
+    payload keys would silently do nothing for Cursor, whose constants are
+    workspace_roots and user_email."""
+    events = [an_event({"workspace_roots": ["/w"], "generation_id": f"g{i}"},
+                       i=i, tool=None, kind=EventKind.MESSAGE)
+              for i in range(5)]
+    text = render_events(events)
+    assert "/w" in "\n".join(_notes(text))
+    assert all("/w" not in line for line in _lines(text))
+
+
+# --- capping one value, rather than dropping the whole event ----------------
+
+
+def test_a_value_larger_than_the_field_cap_is_cut_whatever_its_key():
+    """Keyed on the value's size, not on a list of key names: one 31KB
+    tool_response took 77% of the whole budget on a real session, and the
+    key holding it differs per harness."""
+    big = "z" * 5000
+    events = [an_event({f"odd_key_{i}": big, "n": i}, i=i) for i in range(5)]
+    text = render_events(events)
+    assert big not in text
+    assert "cut" in text.lower()
+
+
+def test_a_value_within_the_cap_is_left_whole():
+    """The cap trims the outliers; it is not a summariser."""
+    modest = "y" * 300
+    events = [an_event({"command": modest, "n": i}, i=i) for i in range(5)]
+    assert modest in render_events(events)
+
+
+def test_a_constant_too_large_to_state_is_cut_in_the_note_too():
+    """Hoisting a 30KB constant would state it once and still blow the
+    budget - stating it once is not the same as stating it cheaply."""
+    big = "z" * 5000
+    events = [an_event({"blob": big, "n": i}, i=i) for i in range(5)]
+    text = render_events(events)
+    assert big not in text
+    assert "blob" in text
+
+
+def test_capping_a_value_keeps_every_event(monkeypatch):
+    """The point of the cap: a session stays whole. Dropping events was
+    measured at zero entries on a session holding four durable insights,
+    where the capped render of the same events returned entries in five
+    runs out of five."""
+    events = [an_event({"out": f"{i}-" + "z" * 4000, "marker": f"EVENT-{i}"},
+                       i=i) for i in range(30)]
+    text = render_events(events, limit=30_000)
+    assert all(f"EVENT-{i}" in text for i in range(30))
+    assert "truncated" not in text.lower()
+
+
+def test_a_whole_working_session_fits_within_the_budget():
+    """The measured shape this budget exists to hold: ~112 events whose
+    capped render is ~83KB. At the old 40,000 the same session was dropped
+    to its last 18 events and returned nothing in three runs, where the
+    whole session returned entries in five out of five."""
+    events = [an_event({"tool_response": f"E{i}-" + "z" * 3000,
+                        "tool_input": f"I{i}-" + "q" * 3000,
+                        "cwd": "/repo"}, i=i)
+              for i in range(112)]
+    text = render_events(events)
+    assert "truncated" not in text.lower()
+    assert all(f"E{i}-" in text for i in range(112))
+
+
+def test_a_session_too_large_at_the_default_cap_is_re_rendered_tighter():
+    """The middle rung. Every event is still shown; each is told less. A
+    diluted whole session beat a sharp fragment of one in every measured
+    run, so detail is what gives way first, not coverage."""
+    events = [an_event({"out": f"E{i}-" + "z" * 1000}, i=i) for i in range(100)]
+    text = render_events(events, limit=30_000)
+    assert all(f"E{i}-" in text for i in range(100))
+    assert "truncated" not in text.lower()
