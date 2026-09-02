@@ -116,26 +116,102 @@ def ingest_file(
     origin = Origin.ARCHIVED if archive else Origin.INGESTED
     existing = {_sec_of(e): e for e in _live_chunks(store, owner_id, path)}
     report = Report()
+    seen: set[str] = set()
+    anchor_id = None
 
     for chunk in chunks:
+        seen.add(chunk.slug)
         current = existing.get(chunk.slug)
         if current is None:
             report.created += 1
             if not dry_run:
-                remember(
+                written = remember(
                     store, owner_id,
                     title=chunk.title, body=chunk.body, kind=Kind.DOC,
                     project=project, origin=origin,
                     tags=_tags_for(path, chunk),
                 )
+                if chunk.anchor:
+                    anchor_id = written.id
         elif current.body == chunk.body:
             # Skip entirely rather than rewrite an identical row: an update
             # would churn updated_at and make `remem embed` look like it has
             # work to redo when the stored vector is still correct.
             report.unchanged += 1
+            if chunk.anchor:
+                anchor_id = current.id
         else:
             report.changed += 1
             if not dry_run:
-                supersede(store, owner_id, current.id,
-                          title=chunk.title, body=chunk.body)
+                replacement = supersede(
+                    store, owner_id, current.id,
+                    title=chunk.title, body=chunk.body,
+                )
+                if chunk.anchor:
+                    # The CURRENT anchor, not the retired row: if the anchor
+                    # was itself superseded this run, orphans must point at
+                    # its replacement or they would point at a dead entry.
+                    anchor_id = replacement.id
+
+    # The sweep. A heading that was renamed or deleted leaves a live chunk
+    # with no counterpart in this reading of the file; left alone it stays
+    # live and silently stale, returning alongside its own replacement with
+    # nothing to say which is current.
+    #
+    # Orphans are superseded BY THE ANCHOR because set_superseded requires a
+    # replacement id and a deleted heading has none. "This section is gone,
+    # the document is here" is the honest reading, and it costs no schema
+    # change - the alternative was a retired_at column plus a new predicate
+    # in every query the store runs, for one caller.
+    for slug, entry in existing.items():
+        if slug in seen:
+            continue
+        report.swept += 1
+        if dry_run or anchor_id is None:
+            continue
+        # store.set_superseded directly, NOT write.supersede: supersede
+        # creates a replacement entry, and a swept chunk has no replacement -
+        # that absence is the whole reason the anchor exists. Calling it here
+        # would duplicate the orphan instead of retiring it.
+        store.set_superseded(entry.id, anchor_id, owner_id)
+
     return report
+
+
+def ingest_paths(
+    store: Store,
+    owner_id: UUID,
+    paths: list[Path],
+    *,
+    project: str | None,
+    archive: bool = False,
+    dry_run: bool = False,
+) -> Report:
+    """Ingest files and directories, collecting failures rather than aborting.
+
+    One bad encoding in a directory must not cost every other file in it -
+    this is a bulk command, and a caller who gets nothing back for one
+    unreadable file learns less than one who gets the rest plus a named
+    failure. The CLI exits non-zero when `failures` is non-empty.
+    """
+    report = Report()
+    for path in _discover(paths):
+        try:
+            report.merge(
+                ingest_file(store, owner_id, path, project=project,
+                            archive=archive, dry_run=dry_run)
+            )
+        except (OSError, UnicodeDecodeError, TooManyChunks) as exc:
+            report.failures.append((path, str(exc)))
+    return report
+
+
+def _discover(paths: list[Path]) -> list[Path]:
+    """Files as given, directories globbed for **/*.md, sorted for a stable
+    report. Sorted matters: a dry run the user reads and then re-runs for
+    real must list its files in the same order both times."""
+    found: list[Path] = []
+    for path in paths:
+        path = Path(path)
+        found.extend(sorted(path.rglob("*.md")) if path.is_dir() else [path])
+    return found
