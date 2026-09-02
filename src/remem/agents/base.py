@@ -116,6 +116,14 @@ class HookState:
     #: carries it, and a caller that wants to distinguish "no such file"
     #: from "a file naming no remem hooks" should not have to stat it
     #: again. Defaulted, so it sits last: `found` has no default.
+    #:
+    #: Nothing in src/ reads it today - only tests assert it - and that is
+    #: deliberate rather than a leftover: both cases render the same "looked
+    #: in <path>" line, since a config file that exists but names no remem
+    #: hook is not installed in any sense a user cares about. It is part of
+    #: the facts an adapter reports because the adapter is the only thing
+    #: that can know it cheaply, and re-deriving it later would mean a
+    #: second stat in a different layer, racing the first.
     exists: bool = False
 
 

@@ -98,3 +98,18 @@ def test_not_installed_names_the_file_it_looked_in(tmp_path, monkeypatch):
     assert result.exit_code == 0
     assert "not installed" in result.stdout
     assert str(tmp_path / ".claude" / "settings.json") in result.stdout
+
+
+def test_one_file_is_reported_looked_in_once(tmp_path, monkeypatch):
+    """cwd == home resolves cursor's user and project scope to the same
+    hooks.json. Printing "looked in" twice for one file reads as two places
+    checked, which overstates the search behind a "not installed" - the one
+    thing this line exists to keep honest. cursor, not claude-code: claude
+    code raises UnsupportedScope for project scope, so a sweep only ever
+    examines one file for it and could never duplicate."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.chdir(tmp_path)
+    result = runner.invoke(app, ["doctor", "cursor"])
+    assert result.exit_code == 0
+    assert "not installed" in result.stdout
+    assert result.stdout.count("looked in") == 1

@@ -73,8 +73,13 @@ class AgentReport:
     #: and any scheme that picked "the first installed scope" would hide the
     #: half-install this module exists to catch.
     scope: str | None = None
-    #: The config file examined, or None - either because the adapter has no
-    #: hook configuration or because the file does not exist.
+    #: The config file this report is about. Set on an installed report,
+    #: where a file was read and remem commands were found in it. None on
+    #: every other kind of report - a not-installed one carries the paths it
+    #: looked at in `examined` instead, because there is more than one, and
+    #: an UNCHECKED one has no file it can vouch for. Not a statement about
+    #: existence: `HookState.path` names the file examined whether or not it
+    #: is there, and `HookState.exists` is what answers that.
     path: Path | None = None
     #: An adapter is INSTALLED when at least one remem command appears in
     #: its config. Zero is "not installed" and stays quiet; some-but-not-all
@@ -193,7 +198,11 @@ def check(
                 ))
                 continue
 
-            if state.path is not None:
+            # Deduplicated, order preserved: an adapter that resolves user
+            # and project scope to the same file - which Claude Code does
+            # when cwd == home - would otherwise have "looked in" printed
+            # twice for one file, reading as two places checked.
+            if state.path is not None and state.path not in examined:
                 examined.append(state.path)
             if any(state.found.get(h.event) for h in state.expected):
                 answered += 1
