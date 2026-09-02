@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 from dataclasses import dataclass
@@ -16,6 +17,7 @@ from remem.agents.base import (
     EnvVar,
     ExpectedHook,
     HarnessEvent,
+    HookState,
     Identity,
     InstallReport,
     UnsupportedScope,
@@ -392,3 +394,61 @@ class ClaudeCodeAdapter:
         `remem.agents.verify.round_trip`, shared with every adapter.
         """
         return round_trip(self.name, env)
+
+    def hook_state(
+        self,
+        scope: str = "user",
+        home: Path | None = None,
+        env: Mapping[str, str] | None = None,
+    ) -> HookState:
+        """What settings.json actually registers, against HOOK_ENTRIES.
+
+        Read-only, and deliberately not via `jsonfile.read_json`: that
+        helper backs a corrupt file up before returning an empty document,
+        which is correct for an install about to rewrite it and wrong for
+        a check. A diagnostic that leaves .bak files behind is a
+        diagnostic people stop running. Unreadable settings read as no
+        remem hooks at all, which is the honest answer - the file names
+        none that can be found.
+        """
+        if scope != "user":
+            raise UnsupportedScope(
+                f"scope '{scope}' is not supported; only 'user' is implemented"
+            )
+        home = home or Path.home()
+        env = os.environ if env is None else env
+        path = resolve_paths(home, env).settings
+
+        document: dict = {}
+        if path.exists():
+            try:
+                loaded = json.loads(path.read_text())
+                if isinstance(loaded, dict):
+                    document = loaded
+            except (OSError, json.JSONDecodeError):
+                document = {}
+        hooks = document.get("hooks", {})
+        if not isinstance(hooks, dict):
+            hooks = {}
+
+        found: dict[str, tuple[str, ...]] = {}
+        for entry in HOOK_ENTRIES:
+            # Legacy commands count as found. `remem hook session-end` runs
+            # exactly what record-event runs, so the hook does fire; calling
+            # it missing would send the user chasing a bug that is really a
+            # rename waiting for the next install.
+            ours = tuple(LEGACY_COMMANDS.get(entry.event, ())) + (entry.command,)
+            commands: list[str] = []
+            for group in hooks.get(entry.event, []) or []:
+                if not isinstance(group, dict):
+                    continue
+                for hook in group.get("hooks", []) or []:
+                    if isinstance(hook, dict) and hook.get("command") in ours:
+                        commands.append(hook["command"])
+            found[entry.event] = tuple(commands)
+
+        return HookState(
+            expected=tuple(h.expected() for h in HOOK_ENTRIES),
+            path=path if path.exists() else None,
+            found=found,
+        )
