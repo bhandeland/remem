@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Mapping
 
+from remem import jsonfile
 from remem.agents.base import (
     RECORD_NOTE,
     HarnessEvent,
@@ -264,27 +265,25 @@ class CursorAdapter:
         """What hooks.json actually registers, against HOOK_ENTRIES.
 
         Read-only: unlike `merge()`, which backs the file up before
-        rewriting it, this never writes. Unreadable JSON reads as no remem
-        hooks - the honest answer, since the file names none that can be
-        found.
+        rewriting it, this never writes - `jsonfile.read_document` carries
+        the reasoning for why that matters here and why this is not
+        `read_json`. Unreadable JSON reads as no remem hooks - the honest
+        answer, since the file names none that can be found.
+
+        `env` is unused: `hooks_path` needs only scope, home and cwd, and
+        Cursor has no CLAUDE_CONFIG_DIR equivalent to honour. The parameter
+        stays for the Protocol shape the service calls through, so this
+        reads as deliberate next to the Claude Code adapter, where `env`
+        genuinely redirects the file.
         """
         from remem.agents.cursor.install import (
             HOOK_ENTRIES, LEGACY_COMMANDS, hooks_path,
         )
 
         home = home or Path.home()
-        env = os.environ if env is None else env
         path = hooks_path(scope, home=home, cwd=Path.cwd())
 
-        document: dict = {}
-        if path.exists():
-            try:
-                loaded = json.loads(path.read_text())
-                if isinstance(loaded, dict):
-                    document = loaded
-            except (OSError, json.JSONDecodeError):
-                document = {}
-        hooks = document.get("hooks", {})
+        hooks = jsonfile.read_document(path).get("hooks", {})
         if not isinstance(hooks, dict):
             hooks = {}
 

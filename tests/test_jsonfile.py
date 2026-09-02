@@ -57,3 +57,21 @@ def test_backup_once_returns_where_the_copy_went(tmp_path):
 
 def test_backup_once_returns_none_when_there_was_nothing_to_back_up(tmp_path):
     assert jsonfile.backup_once(tmp_path / "missing.json", set()) is None
+
+
+def test_read_document_never_leaves_a_backup_behind(tmp_path):
+    """The reason this exists separately from read_json. A diagnostic that
+    litters .bak files beside a user's config is one people stop running,
+    and `remem doctor` reads config files it must not touch."""
+    path = tmp_path / "settings.json"
+    path.write_text("{ not json at all")
+    assert jsonfile.read_document(path) == {}
+    assert list(tmp_path.iterdir()) == [path]
+
+
+def test_read_document_tolerates_absence_and_a_non_object(tmp_path):
+    assert jsonfile.read_document(tmp_path / "nope.json") == {}
+    listy = tmp_path / "listy.json"
+    listy.write_text("[1, 2, 3]")
+    # A top-level array names no hooks, so {} is the honest answer.
+    assert jsonfile.read_document(listy) == {}

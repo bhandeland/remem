@@ -60,6 +60,37 @@ def read_json(path: Path, backed_up: set[Path]) -> tuple[dict, list[str]]:
         ]
 
 
+def read_document(path: Path) -> dict:
+    """Read a JSON object, tolerating everything, writing nothing.
+
+    Deliberately NOT `read_json`: that helper backs a corrupt file up before
+    returning an empty document, which is right for an install about to
+    rewrite the file and wrong for a check. A diagnostic that leaves .bak
+    files behind beside a user's config is a diagnostic people stop running,
+    and a diagnostic nobody runs is the state this whole area of the code is
+    trying to get out of.
+
+    A missing file, an unreadable one, invalid JSON and a top-level value
+    that is not an object all read as `{}` - the honest answer for a caller
+    asking what a config registers, since a file it cannot parse names
+    nothing that can be found. Callers who need to know the difference
+    should stat the path themselves.
+
+    Lives here rather than on an adapter because it is not harness-specific:
+    the Claude Code and Cursor `hook_state()` implementations both need it,
+    and the copy that carried this reasoning was on only one of them - which
+    is exactly how the third adapter would end up copying the version
+    without it, or routing the check through `read_json` for tidiness.
+    """
+    if not path.exists():
+        return {}
+    try:
+        loaded = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return loaded if isinstance(loaded, dict) else {}
+
+
 def write_json(path: Path, data: dict, backed_up: set[Path]) -> Path | None:
     """Write data, backing the existing file up first. Returns the backup."""
     made = backup_once(path, backed_up)

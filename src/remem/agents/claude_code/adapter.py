@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import shutil
 from dataclasses import dataclass
@@ -403,13 +402,10 @@ class ClaudeCodeAdapter:
     ) -> HookState:
         """What settings.json actually registers, against HOOK_ENTRIES.
 
-        Read-only, and deliberately not via `jsonfile.read_json`: that
-        helper backs a corrupt file up before returning an empty document,
-        which is correct for an install about to rewrite it and wrong for
-        a check. A diagnostic that leaves .bak files behind is a
-        diagnostic people stop running. Unreadable settings read as no
-        remem hooks at all, which is the honest answer - the file names
-        none that can be found.
+        Read-only, via `jsonfile.read_document` and deliberately not
+        `jsonfile.read_json` - the reasoning for that split lives on
+        `read_document`. Unreadable settings read as no remem hooks at all,
+        which is the honest answer: the file names none that can be found.
         """
         if scope != "user":
             raise UnsupportedScope(
@@ -419,15 +415,7 @@ class ClaudeCodeAdapter:
         env = os.environ if env is None else env
         path = resolve_paths(home, env).settings
 
-        document: dict = {}
-        if path.exists():
-            try:
-                loaded = json.loads(path.read_text())
-                if isinstance(loaded, dict):
-                    document = loaded
-            except (OSError, json.JSONDecodeError):
-                document = {}
-        hooks = document.get("hooks", {})
+        hooks = jsonfile.read_document(path).get("hooks", {})
         if not isinstance(hooks, dict):
             hooks = {}
 

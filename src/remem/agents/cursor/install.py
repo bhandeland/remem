@@ -75,6 +75,17 @@ def hooks_path(scope: str, home: Path, cwd: Path) -> Path:
     obvious use for the second. An unknown scope raises rather than
     falling back: an install that reports success while having done
     something else is worse than one that refuses.
+
+    Known limitation, deliberately left as it is: project scope resolves
+    from raw `cwd`, where opencode's equivalent uses `repo_root(cwd)` so a
+    project install run from a subdirectory does not land somewhere the
+    harness will never look. So `remem install cursor --scope project` and
+    `remem doctor` both behave differently here depending on which
+    directory they are run from. Changing it would change where `install()`
+    WRITES, which is a bigger move than a diagnostic fix wave should make
+    on its own; doctor names every path it examined, which makes the
+    symptom self-diagnosing until then. Ruled in the fix-wave rulings for
+    the hook-install doctor (R6).
     """
     if scope == "user":
         return home / ".cursor" / "hooks.json"
