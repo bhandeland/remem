@@ -157,3 +157,33 @@ def test_json_and_human_forms_read_off_the_same_reports():
     data = doctor.to_dict(reports)
     assert data["failed"] is True
     assert data["agents"][0]["hooks"][1]["verdict"] == "missing"
+
+
+class RaisesOnConstruction:
+    """A third-party adapter whose __init__ blows up.
+
+    Distinct from FakeAdapter(raises=True), which raises from hook_state -
+    inside check()'s try. `registry.discover()` hands back classes, so the
+    constructor call is real code on the ordinary path, and until this test
+    existed nothing covered it.
+    """
+
+    name = "exploding"
+
+    def __init__(self):
+        raise RuntimeError("adapter blew up on construction")
+
+
+def test_an_adapter_that_raises_from_init_warns_and_the_rest_still_run():
+    state = hooks(SessionStart=["remem hook session-start"],
+                  PostToolUse=["remem hook record-event"],
+                  SessionEnd=["remem hook record-event"])
+    reports = doctor.check({
+        "exploding": RaisesOnConstruction,
+        "fake": FakeAdapter(state),
+    })
+    broken = next(r for r in reports if r.agent == "exploding")
+    good = next(r for r in reports if r.agent == "fake")
+    assert broken.verdict is doctor.Verdict.UNCHECKED
+    assert "blew up on construction" in broken.warning
+    assert set(verdicts(good).values()) == {doctor.Verdict.OK}

@@ -111,9 +111,22 @@ def check(
     reports: list[AgentReport] = []
 
     for name in sorted(adapters):
-        adapter = adapters[name]
-        adapter = adapter() if isinstance(adapter, type) else adapter
-        state_fn = getattr(adapter, "hook_state", None)
+        # Constructing the adapter and probing the capability are inside the
+        # guard, not outside it: `registry.discover()` hands back classes, so
+        # `adapter()` is real third-party code running on the ordinary path,
+        # and an adapter with a `__getattr__` can raise from the probe too.
+        # Either one escaping would take `remem doctor` down with a traceback,
+        # which is the exact contract this module's docstring claims to keep.
+        try:
+            adapter = adapters[name]
+            adapter = adapter() if isinstance(adapter, type) else adapter
+            state_fn = getattr(adapter, "hook_state", None)
+        except Exception as exc:
+            reports.append(AgentReport(
+                agent=name, verdict=Verdict.UNCHECKED,
+                warning=f"could not load {name}'s adapter: {exc}",
+            ))
+            continue
         if state_fn is None:
             reports.append(AgentReport(agent=name, verdict=Verdict.UNCHECKED))
             continue
