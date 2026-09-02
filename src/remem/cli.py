@@ -627,6 +627,43 @@ def verify(
     typer.echo(f"\nVerified {report.agent}.")
 
 
+@app.command("doctor")
+def doctor(
+    agent: Annotated[Optional[str], typer.Argument()] = None,
+    scope: Annotated[str, typer.Option("--scope")] = "user",
+    as_json: Annotated[bool, typer.Option("--json")] = False,
+):
+    """Check that each harness's config registers the hooks remem installs.
+
+    The gap this closes: hooks are fail-soft, so a harness that was never
+    told to call remem looks exactly like one with nothing to say. `remem
+    verify` proves remem records when called; this asks whether the harness
+    will ever call it. Neither answers the other's question.
+
+    Opens no database connection - a diagnostic that needs the system
+    healthy is no use when it is not.
+    """
+    from remem.agents import registry
+    from remem.services import doctor as doctor_service
+
+    adapters = registry.discover()
+    if agent is not None:
+        if agent not in adapters:
+            known = ", ".join(sorted(adapters)) or "none"
+            typer.echo(f"unknown agent '{agent}'. Available: {known}")
+            raise typer.Exit(1)
+        adapters = {agent: adapters[agent]}
+
+    reports = doctor_service.check(
+        adapters, scope=scope, home=Path.home(), env=dict(os.environ)
+    )
+    if as_json:
+        typer.echo(json.dumps(doctor_service.to_dict(reports), indent=2))
+    else:
+        typer.echo(doctor_service.render(reports))
+    raise typer.Exit(1 if doctor_service.failed(reports) else 0)
+
+
 def _message(exc: Exception) -> str:
     """An exception's message, without KeyError's repr quotes.
 
