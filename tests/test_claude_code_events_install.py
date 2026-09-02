@@ -109,3 +109,29 @@ def test_install_verification_reports_a_failure_rather_than_raising():
     assert report.warnings != []
     assert any("verify" in w.lower() for w in report.warnings)
     assert report.actions == []
+
+
+def test_the_hook_table_names_every_hook_the_install_registers():
+    """The table install() reads and the table hook_state() reads are one
+    table. Literals, not the constant: a guard that agrees with a wrong
+    table is how PostToolUse went missing for the life of the pipeline."""
+    from remem.agents.claude_code.adapter import HOOK_ENTRIES
+
+    assert [h.event for h in HOOK_ENTRIES] == [
+        "SessionStart", "SessionEnd", "PostToolUse", "UserPromptSubmit",
+    ]
+
+
+def test_only_the_hooks_that_lose_events_are_required():
+    """SessionEnd loses no events, only the promptness of the idle timer.
+    UserPromptSubmit is the handoff warning, not the record path."""
+    from remem.agents.claude_code.adapter import HOOK_ENTRIES
+
+    required = {h.event for h in HOOK_ENTRIES if h.required}
+    assert required == {"SessionStart", "PostToolUse"}
+
+
+def test_every_expected_hook_says_what_is_lost_without_it():
+    from remem.agents.claude_code.adapter import HOOK_ENTRIES
+
+    assert all(h.provides.strip() for h in HOOK_ENTRIES)

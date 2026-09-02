@@ -14,6 +14,7 @@ from remem import jsonfile
 from remem.agents.base import (
     RECORD_NOTE,
     EnvVar,
+    ExpectedHook,
     HarnessEvent,
     Identity,
     InstallReport,
@@ -111,6 +112,62 @@ def resolve_paths(home: Path, env: Mapping[str, str]) -> ClaudePaths:
     return ClaudePaths(home / ".claude", home / ".claude.json", relocated=False)
 
 
+@dataclass(frozen=True, slots=True)
+class ClaudeHook:
+    """One hook entry, as this adapter installs it.
+
+    Carries `timeout`, which `ExpectedHook` deliberately does not: it is a
+    fact about Claude Code's hook runner and means nothing to another
+    harness. `expected()` projects it away.
+    """
+
+    event: str
+    command: str
+    timeout: int
+    required: bool
+    provides: str
+
+    def expected(self) -> ExpectedHook:
+        return ExpectedHook(
+            event=self.event,
+            command=self.command,
+            required=self.required,
+            provides=self.provides,
+        )
+
+
+#: The one table. `_install_hook` writes from it and `hook_state` checks
+#: against it, so the installer and the check cannot disagree about which
+#: hooks exist - the same reason `extraction.awaiting_sessions` is the only
+#: place the attempt-cap rule is evaluated.
+HOOK_ENTRIES: tuple[ClaudeHook, ...] = (
+    ClaudeHook(
+        "SessionStart", HOOK_COMMAND, 10, True,
+        "context injection, and the spawn that drains the extraction backlog",
+    ),
+    # A hint, not a requirement: extraction runs on an idle timer now, so a
+    # harness with no SessionEnd loses no events at all - only the
+    # promptness of the timer. It records through the same command and the
+    # same event() mapping as PostToolUse.
+    ClaudeHook(
+        "SessionEnd", RECORD_EVENT_COMMAND, 10, False,
+        "a prompt end-of-session record; the idle timer covers it either way",
+    ),
+    # Runs once per tool call and does one INSERT, so it gets the short
+    # budget UserPromptSubmit has, not the 10s SessionStart needs.
+    ClaudeHook(
+        "PostToolUse", RECORD_EVENT_COMMAND, 5, True,
+        "every tool call - without it nothing is recorded at all",
+    ),
+    # Runs on every prompt, so it gets the shortest timeout of the four; it
+    # reads one file and never opens Postgres.
+    ClaudeHook(
+        "UserPromptSubmit", SESSION_SIZE_COMMAND, 5, False,
+        "the handoff size warning on long sessions",
+    ),
+)
+
+
 class ClaudeCodeAdapter:
     name = "claude-code"
 
@@ -187,21 +244,8 @@ class ClaudeCodeAdapter:
         hooks = settings.setdefault("hooks", {})
 
         changed = False
-        for event, command, timeout in (
-            ("SessionStart", HOOK_COMMAND, 10),
-            # A hint, not a requirement: extraction runs on an idle timer
-            # now, so a harness with no SessionEnd loses nothing but a
-            # slightly longer wait. It records through the same command and
-            # the same event() mapping as PostToolUse.
-            ("SessionEnd", RECORD_EVENT_COMMAND, 10),
-            # Runs once per tool call and does one INSERT, so it gets the
-            # short budget UserPromptSubmit has, not the 10s SessionStart
-            # needs.
-            ("PostToolUse", RECORD_EVENT_COMMAND, 5),
-            # Runs on every prompt, so it gets the shortest timeout of the
-            # three; it reads one file and never opens Postgres.
-            ("UserPromptSubmit", SESSION_SIZE_COMMAND, 5),
-        ):
+        for entry in HOOK_ENTRIES:
+            event, command, timeout = entry.event, entry.command, entry.timeout
             groups = hooks.setdefault(event, [])
 
             # Normalise remem's own entries before testing membership, so a

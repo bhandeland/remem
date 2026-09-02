@@ -69,6 +69,45 @@ class InstallReport:
     notes: list[str] = field(default_factory=list)
 
 
+@dataclass(frozen=True, slots=True)
+class ExpectedHook:
+    """One hook remem registers, as an adapter declares it.
+
+    Generic on purpose: it carries nothing harness-specific. Claude Code's
+    per-hook timeout has no meaning to Cursor, so it stays on that
+    adapter's own table and is projected away here.
+    """
+
+    #: The harness's own hook name, spelled as the harness spells it.
+    event: str
+    #: The canonical remem command for that hook.
+    command: str
+    #: False means the install degrades without it; True means a core path
+    #: stops working. Only the adapter knows which.
+    required: bool
+    #: One line, rendered to the user, naming what stops working without it.
+    provides: str
+
+
+@dataclass(frozen=True, slots=True)
+class HookState:
+    """What an adapter expects, and what it found on disk. Facts, not
+    verdicts - `services/doctor.py` decides what counts as a problem, so
+    that every adapter agrees on what "missing" means and so one
+    computation feeds the report, the --json form and the `record status`
+    advisory line."""
+
+    expected: tuple[ExpectedHook, ...]
+    #: The config file read, or None when it does not exist.
+    path: Path | None
+    #: Hook event -> the remem commands found registered for it, in file
+    #: order. Repeats are preserved: two entries is the finding, not an
+    #: implementation detail to collapse. Only remem's own commands appear
+    #: here - another tool's hooks in a shared file are not remem's
+    #: business, the same rule `_install_hook` follows when it repairs.
+    found: Mapping[str, tuple[str, ...]]
+
+
 class Kind(StrEnum):
     """How a setting's value is interpreted."""
 
@@ -182,3 +221,25 @@ class AgentAdapter(Protocol):
     # without the capability deciding where that goes; keep it optional so
     # an adapter or caller that ignores it still works. Same degradation
     # contract as the rest: a capability that raises warns and continues.
+    #
+    #     def verify(
+    #         self, env: Mapping[str, str] | None = None, home: Path | None = None
+    #     ) -> InstallReport: ...
+    #
+    # Record an event, read it back, delete it - see `agents/verify.py`.
+    # Probed by `remem verify`; an adapter without it is reported as having
+    # nothing to verify rather than as verified.
+    #
+    #     def hook_state(
+    #         self, scope: str, home: Path, env: Mapping[str, str]
+    #     ) -> HookState: ...
+    #
+    # What this adapter's config actually registers, against what it
+    # installs. Returns facts; `services/doctor.py` judges them. The pair
+    # with verify() is deliberate and neither subsumes the other:
+    # hook_state asks whether the harness will ever call remem, verify asks
+    # whether remem works when called. An adapter with no hook
+    # configuration at all - opencode ships a plugin file instead - simply
+    # does not implement it, and the report says "no hook registration to
+    # check", never "ok". Same degradation contract as the rest: a
+    # capability that raises warns and continues.
