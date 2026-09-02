@@ -22,6 +22,7 @@ from remem.config import load
 from remem.domain import CollectionQuery, Entry, Kind, Match, Origin, Query
 from remem.embed import EmbedderUnavailable, load_embedder
 from remem.project import resolve_project
+from remem.services import ingest as ingest_service
 from remem.services import kb, write
 from remem.services.embed import backfill
 from remem.services.search import find
@@ -236,6 +237,46 @@ def rule(
 
 
 @app.command()
+def ingest(
+    paths: Annotated[list[Path], typer.Argument(help="Files or directories.")],
+    archive: Annotated[bool, typer.Option("--archive")] = False,
+    project: Annotated[Optional[str], typer.Option("--project")] = None,
+    is_global: Annotated[bool, typer.Option("--global")] = False,
+    dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
+):
+    """Load markdown documents in as searchable, heading-sized entries.
+
+    Re-ingesting is safe and cheap: unchanged sections are skipped entirely,
+    edited ones supersede their previous version, and sections that have
+    disappeared from the file are superseded by the document's anchor entry
+    so nothing is left live and stale.
+
+    --archive stores these documents under the 'archived' origin, which is
+    excluded from default search results and reachable with
+    `remem search --archived`. Use it for material that is history rather
+    than reference - executed implementation plans, for instance.
+    """
+    resolved = _resolve_project(project, is_global)
+    with _session() as s:
+        report = ingest_service.ingest_paths(
+            s.store, s.owner.id, list(paths),
+            project=resolved, archive=archive, dry_run=dry_run,
+        )
+    prefix = "Would write: " if dry_run else ""
+    typer.echo(
+        f"{prefix}{report.created} new, {report.changed} changed, "
+        f"{report.unchanged} unchanged, {report.swept} swept."
+    )
+    for path, reason in report.failures:
+        typer.echo(f"failed: {path}: {reason}", err=True)
+    if report.failures:
+        # Fail-loud, unlike every hook in this repo: a person typed this.
+        raise typer.Exit(1)
+    if report.created or report.changed:
+        typer.echo("Run `remem embed` to give the new entries vectors.")
+
+
+@app.command()
 def search(
     query: str,
     kind: Annotated[Optional[list[Kind]], typer.Option("--kind")] = None,
@@ -244,6 +285,7 @@ def search(
     limit: Annotated[int, typer.Option("--limit")] = 20,
     as_json: Annotated[bool, typer.Option("--json")] = False,
     handoff: Annotated[bool, typer.Option("--handoff")] = False,
+    archived: Annotated[bool, typer.Option("--archived")] = False,
 ):
     """Search stored knowledge.
 
@@ -251,6 +293,8 @@ def search(
     entries with related meaning (marked ~), then typo-tolerant matching
     (marked ?). --json reports which as "match".
     --handoff also searches session handoffs, which are excluded by default.
+    --archived also searches archived document chunks, which are excluded
+    by default.
     """
     with _session() as s:
         # No embedder is passed. The service builds one only if the semantic
@@ -263,6 +307,7 @@ def search(
                   tags=list(tag or []), limit=limit),
             fuzzy_threshold=s.config.fuzzy_threshold,
             include_handoffs=handoff,
+            include_archived=archived,
             semantic_threshold=s.config.semantic_threshold,
             embed_model=s.config.embed_model,
         )
