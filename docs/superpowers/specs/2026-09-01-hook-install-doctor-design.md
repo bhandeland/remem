@@ -136,8 +136,24 @@ Not every hook is load-bearing, and the difference is adapter knowledge:
 | claude-code | `SessionEnd` | no | "a hint, not a requirement" per its own comment - extraction runs on an idle timer |
 | cursor | `sessionStart` | yes | injection, and the only extraction trigger a Cursor-only install has |
 | cursor | `postToolUse` | yes | no tool calls recorded |
-| cursor | `beforeSubmitPrompt` | no | prompts missing from extraction input |
-| cursor | `afterAgentResponse` | no | responses missing from extraction input |
+| cursor | `beforeSubmitPrompt` | yes | prompts missing from extraction input |
+| cursor | `afterAgentResponse` | yes | responses missing from extraction input |
+
+Cursor's two message hooks are required, and that is a change of mind worth
+recording. The first draft marked them optional on the grounds that losing
+them costs extraction *quality* rather than recording itself. The
+render-budget work of 2026-08-31 (commit 8cb186c) measured that distinction
+away: on one 112-event session, showing the extractor a fragment returned
+nothing in three runs where showing it the whole session returned entries in
+five of five. Coverage is what the extractor needs, and a Cursor install
+missing both message hooks records only tool calls - a session with its
+prompts and its answers cut out. That is a fragment, and the measurement says
+a fragment yields nothing.
+
+Claude Code's `SessionEnd` stays optional for a different reason that survives
+the same argument: it loses no events at all, only the promptness of the idle
+timer. `UserPromptSubmit` stays optional because the handoff warning is not
+part of the record-and-extract path.
 
 ### The service
 
