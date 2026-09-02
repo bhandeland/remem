@@ -254,3 +254,11 @@ class AgentAdapter(Protocol):
     # does not implement it, and the report says "no hook registration to
     # check", never "ok". Same degradation contract as the rest: a
     # capability that raises warns and continues.
+    #
+    # Raise `UnsupportedScope` for a scope this adapter cannot install to:
+    # it is the skip signal for `services/doctor.check()`'s sweep, which is
+    # what lets an adapter that only installs at one scope be found there
+    # rather than reported "not installed". Note that the same raise means
+    # something different when the user typed `--scope`: there it stays
+    # UNCHECKED-with-a-warning, because the question was about exactly that
+    # scope and "I could not tell" is the honest reply.

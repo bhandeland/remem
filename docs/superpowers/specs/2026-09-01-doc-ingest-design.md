@@ -16,8 +16,17 @@ passage that answers the question rather than the file that contains it.
 ## What gets built
 
 One new service (`services/ingest.py`), one new CLI command (`remem ingest`),
-two new `Origin` members, and a flag on `search`/`recall`. No new tables and
-no migration.
+two new `Origin` members, and a flag on `search`/`recall`. One migration,
+which adds two enum values and nothing else. No new tables.
+
+`entry_origin` is a Postgres enum, so an origin is never a pure Python
+change. `005_handoff.sql` is the precedent, including the constraint it
+documents: a value added by `alter type ... add value` cannot be USED in the
+transaction that added it, unless the type was created there too. `migrate()`
+runs every pending migration in one transaction, so migration 012 adds the
+two values and writes no row carrying them. Nothing else is needed - the
+`conn` test fixture applies 001 through 012 in a single transaction, which
+created the type, so tests may write the new origins immediately.
 
 ## Decisions
 
