@@ -47,6 +47,13 @@ def test_dry_run_says_so_and_writes_nothing(env, docs):
     assert "No matches." in result.stdout
 
 
+def test_dry_run_does_not_tell_you_to_embed(env, docs):
+    result = runner.invoke(app, ["ingest", str(docs), "--project", "remem", "--dry-run"])
+
+    assert "Would write" in result.stdout
+    assert "remem embed" not in result.stdout
+
+
 def test_archived_chunks_are_hidden_until_asked_for(env, docs):
     runner.invoke(app, ["ingest", str(docs), "--project", "remem", "--archive"])
 

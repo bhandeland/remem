@@ -272,7 +272,9 @@ def ingest(
     if report.failures:
         # Fail-loud, unlike every hook in this repo: a person typed this.
         raise typer.Exit(1)
-    if report.created or report.changed:
+    if not dry_run and (report.created or report.changed):
+        # Not after a dry run: nothing was written, so there is nothing to
+        # embed, and saying otherwise sends the user to a no-op.
         typer.echo("Run `remem embed` to give the new entries vectors.")
 
 

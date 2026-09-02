@@ -219,6 +219,35 @@ tag - no separate table. Invariants:
   prompt via the `UserPromptSubmit` hook. Warn state lives in the platform
   cache dir and fails toward warning, never toward silence.
 
+### Ingested documents
+
+`remem ingest <path>` loads markdown in as one entry per `h1`-`h3` heading,
+plus an anchor entry per file. Identity is two tags, `src:<path>` and
+`sec:<slug>`, so re-ingest is idempotent: unchanged sections are skipped
+without a write, edited ones supersede their previous version, and sections
+that vanished from the file are superseded **by that file's anchor** -
+`set_superseded` needs a replacement id and a deleted heading has none. The
+sweep calls `store.set_superseded` directly rather than `write.supersede`,
+which would create a replacement the orphan does not have.
+
+Splitting is on headings and only on headings. A size-based sub-splitter
+would cut through fenced code, which is most of what a plan contains. The
+only fence logic in `markdown.py` is a boolean for heading detection, so a
+`#` comment inside a code block is not mistaken for a section. Chunk titles
+come from the **filename stem**, not the `h1`.
+
+Two origins, because `search.DEFAULT_ORIGINS` is an allowlist and an
+exclude filter was deliberately declined: `INGESTED` (specs, notes,
+decisions) is in that list, `ARCHIVED` (plans, written with `--archive`) is
+not and needs `--archived`. Plans are the minority by count (119 chunks
+against 211) and three times the volume, and their bulk is source code that
+now lives in `src/`. `DEFAULT_ORIGINS` must gain any future origin or that
+origin silently vanishes from search.
+
+`markdown.py` is pure - no I/O, no store - so its tests carry no `db`
+marker and run on CI. Whether a chunk changed is answered by comparing
+bodies, not by a stored hash.
+
 ### Settings
 
 `remem config` reads and writes two files from one command, routed by key

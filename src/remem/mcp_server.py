@@ -94,6 +94,7 @@ def recall_tool(
     tags: list[str] | None = None,
     limit: int = 10,
     include_handoffs: bool = False,
+    include_archived: bool = False,
 ) -> list[dict] | dict:
     """Search stored knowledge before assuming something is unknown.
 
@@ -107,6 +108,11 @@ def recall_tool(
     include_handoffs: session handoffs are excluded by default because a
     project accumulates many of them. Pass true when resuming a workstream
     and looking for where it was left.
+
+    include_archived: archived document chunks - executed implementation
+    plans - are excluded by default because they are three times the volume
+    of the reasoning docs and mostly source code that now lives in the repo.
+    Pass true when looking for how something was originally built.
 
     Every result carries "match", saying how it was found:
       "exact"    - the words are in the entry. Trust it.
@@ -134,6 +140,7 @@ def recall_tool(
                   project=project, tags=list(tags or []), limit=limit),
             fuzzy_threshold=s.config.fuzzy_threshold,
             include_handoffs=include_handoffs,
+            include_archived=include_archived,
             semantic_threshold=s.config.semantic_threshold,
             embed_model=s.config.embed_model,
         )
