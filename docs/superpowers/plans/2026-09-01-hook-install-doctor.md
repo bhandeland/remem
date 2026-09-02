@@ -436,7 +436,7 @@ Add `HookState` to the `remem.agents.base` imports and `import json` if not alre
 - [ ] **Step 4: Run and watch them pass**
 
 Run: `uv run pytest tests/test_claude_code_hook_state.py -q`
-Expected: PASS, 7 tests.
+Expected: PASS, 8 tests.
 
 - [ ] **Step 5: Mutation-check the "not remem's business" guard**
 

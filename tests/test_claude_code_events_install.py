@@ -135,13 +135,3 @@ def test_every_expected_hook_says_what_is_lost_without_it():
     from remem.agents.claude_code.adapter import HOOK_ENTRIES
 
     assert all(h.provides.strip() for h in HOOK_ENTRIES)
-
-
-def test_opencode_declines_the_capability_rather_than_answering_ok():
-    """opencode ships a plugin file, not hook configuration, so there is no
-    registration to check. It must DECLINE - an adapter that answered with
-    an empty expected set would render as a clean bill of health for
-    something never examined."""
-    from remem.agents.opencode.adapter import OpenCodeAdapter
-
-    assert not hasattr(OpenCodeAdapter, "hook_state")
