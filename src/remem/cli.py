@@ -630,7 +630,12 @@ def verify(
 @app.command("doctor")
 def doctor(
     agent: Annotated[Optional[str], typer.Argument()] = None,
-    scope: Annotated[str, typer.Option("--scope")] = "user",
+    # No default scope. `--scope` unset means "look everywhere this adapter
+    # can be installed" - the service sweeps - because defaulting to user
+    # scope made this command report cursor "not installed" on a machine
+    # where cursor was installed at project scope and recording events. An
+    # unexamined scope must never produce a confident answer about it.
+    scope: Annotated[Optional[str], typer.Option("--scope")] = None,
     as_json: Annotated[bool, typer.Option("--json")] = False,
 ):
     """Check that each harness's config registers the hooks remem installs.
@@ -1202,6 +1207,12 @@ def record_status(
     # Wrapped: an unreadable config file must not take down a status
     # command that is otherwise about the database. doctor.check already
     # degrades per adapter; this covers the registry call itself.
+    #
+    # No scope is passed, so this sweeps every scope - the same question
+    # `remem doctor` with no arguments asks. It has to: the harness this
+    # advisory exists for is the one that has recorded nothing ever, and on
+    # the machine that motivated the feature that harness is Cursor at
+    # project scope, which a user-scope-only check cannot see at all.
     try:
         advisories = doctor_service.advisories(
             doctor_service.check(registry.discover(), env=dict(os.environ))
