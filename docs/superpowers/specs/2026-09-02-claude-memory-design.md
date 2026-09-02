@@ -64,6 +64,25 @@ Nothing else reads it, so no existing behaviour moves.
 `kind` is `note` and `origin` is `agent` on adopt. An agent wrote it, which is
 precisely true, and it avoids adding an `Origin` - see Invariants.
 
+### A title a stray file does not have
+
+The link text lives in `MEMORY.md`, not in the fact file, so a stray Claude
+wrote and has not yet indexed has no title to adopt. Rather than leave the
+entry titleless, the title is derived from the `name:` slug - kebab-case to
+sentence case, `cursor-runs-claude-code-hooks` becoming "Cursor runs claude
+code hooks". Deliberately mechanical and deliberately a little ugly: it is
+meant to be visibly a placeholder, so the next `MEMORY.md` line the user or
+Claude writes for it reads as an improvement rather than a conflict. Parsing a
+directory is therefore one operation over the index plus the files, never a
+file in isolation.
+
+### `MEMORY.md` ordering
+
+Generated sorted by `name`. Any deterministic order would do and this one needs
+no stored state; the requirement is only that it not depend on iteration order,
+because an index that reshuffles itself makes every sync look like a change.
+The first sync of an existing directory will reorder its `MEMORY.md`, once.
+
 `[[link]]` stays literal. It is already a slug that round-trips to `mem:<slug>`,
 so resolving it into an entry id at rest would create a second identity to keep
 in step with the first.
