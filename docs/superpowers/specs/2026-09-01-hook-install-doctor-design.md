@@ -1,7 +1,7 @@
 # Hook install doctor - design
 
 Date: 2026-09-01
-Status: designed
+Status: implemented (2026-09-01)
 Builds on: docs/superpowers/specs/2026-08-28-events-and-recall-design.md
 Follows: docs/superpowers/specs/2026-08-29-cursor-adapter-design.md
 

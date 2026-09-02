@@ -156,6 +156,38 @@ Invariants worth not breaking:
 - `install()` performs a live database round-trip (it proves the record/extract
   path actually works), which is why the install tests are marked `db`.
 
+### Checking the install
+
+`remem doctor` answers the one question a fail-soft pipeline cannot ask
+itself: **does the installed config actually register the hooks this adapter
+installs?** It reads files and opens no database - a diagnostic that needs
+the system healthy is no use when it is not.
+
+Each adapter answers with facts (`hook_state()`, a probed optional
+capability returning `HookState`); `services/doctor.py` makes every
+judgement, so all adapters agree on what "missing" means and one
+computation feeds `remem doctor`, its `--json`, and one advisory line in
+`remem record status`.
+
+Three rules worth not breaking:
+
+- **One table per adapter.** `HOOK_ENTRIES` is read by both `install()` and
+  `hook_state()`. Two tables kept in step would drift, and drift is the
+  whole bug: settings.json held three hooks for the life of the events
+  pipeline and nothing could see it.
+- **Unchecked never renders as `ok`.** opencode ships a plugin file rather
+  than hook configuration, so it does not implement `hook_state()` and the
+  report says "no hook registration to check". Reporting success for
+  something never verified is the failure this command exists to catch.
+- **Only a missing *required* hook exits non-zero.** `STALE` and
+  `DUPLICATED` still fire the hook; `UNCHECKED` reports the absence of a
+  check. Exiting non-zero for "I could not tell" trains people to ignore
+  the exit code.
+
+`doctor` and `verify` are a pair and neither subsumes the other: doctor asks
+whether the harness will ever call remem, `verify` asks whether remem works
+when called.
+
 ### Handoffs
 
 A handoff is an `Entry` with `origin='handoff'`, `kind=doc`, and a `topic:<slug>`
