@@ -183,6 +183,21 @@ Three rules worth not breaking:
   `DUPLICATED` still fire the hook; `UNCHECKED` reports the absence of a
   check. Exiting non-zero for "I could not tell" trains people to ignore
   the exit code.
+- **No confident answer about a scope that was not examined.** With no
+  `--scope`, `check()` sweeps `SCOPES` (remem's own constant - the
+  vocabulary is closed and every adapter hardcodes it; `UnsupportedScope`
+  is the skip signal) and reports one row per *(adapter, scope) that is
+  installed*, so a half-install in one scope cannot hide behind a healthy
+  other. "Not installed" is said once per adapter and **names every path it
+  looked at**. With `--scope X` the question is exactly X, and
+  `UnsupportedScope` stays `UNCHECKED`-with-a-warning rather than becoming
+  a skip - sweeping there would make `remem doctor claude-code --scope
+  project` print nothing and exit 0. This is not hypothetical tidiness:
+  defaulting to user scope made `remem doctor` report cursor "not
+  installed" on the machine where cursor was installed at project scope and
+  recording events. Every pointer carries its scope too - the advisory line
+  and the `Fix:` line both - because a pointer that leads to a
+  contradictory screen teaches the user the line lies.
 
 `doctor` and `verify` are a pair and neither subsumes the other: doctor asks
 whether the harness will ever call remem, `verify` asks whether remem works
@@ -307,9 +322,13 @@ deny a permission by failing. The remaining exclusions are `afterAgentThought`
 the generic `postToolUse` instead - one parser instead of three, and no gap
 opens when Cursor adds a tool type.
 
-**Injection is the fourth optional adapter capability** -
+**Injection is one of six optional adapter capabilities** -
 `inject(self, block, payload) -> str | None`, probed with `getattr` exactly as
-`event()`, `env_settings()` and `settings_path()` are. Cursor needs the
+`event()`, `env_settings()`, `settings_path()`, `verify()` and `hook_state()`
+are (the full six, with the reasoning for each, are the comment block on
+`agents/base.py`'s Protocol - keep the count there and here in step, because
+an author who learns a capability exists by accident is how the missing
+`PostToolUse` survived). Cursor needs the
 context block written to a file rather than printed or returned, so `cli.py`
 never has to know what an `.mdc` is; Claude Code simply does not implement
 `inject()`. This is the one probed capability where a **missing**
