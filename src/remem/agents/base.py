@@ -98,7 +98,13 @@ class HookState:
     advisory line."""
 
     expected: tuple[ExpectedHook, ...]
-    #: The config file read, or None when it does not exist.
+    #: The config file EXAMINED, whether or not it exists. Not None for a
+    #: missing file: `services/doctor.py` renders this path on the "not
+    #: installed" line, and "not installed" asserted without naming a file
+    #: is indistinguishable from a check that looked somewhere else - the
+    #: precise error that had `remem doctor` reporting cursor absent while
+    #: it was installed at project scope and recording events. None only
+    #: when an adapter genuinely has no single file to point at.
     path: Path | None
     #: Hook event -> the remem commands found registered for it, in file
     #: order. Repeats are preserved: two entries is the finding, not an
@@ -106,6 +112,11 @@ class HookState:
     #: here - another tool's hooks in a shared file are not remem's
     #: business, the same rule `_install_hook` follows when it repairs.
     found: Mapping[str, tuple[str, ...]]
+    #: Whether that file was there. Split out because `path` no longer
+    #: carries it, and a caller that wants to distinguish "no such file"
+    #: from "a file naming no remem hooks" should not have to stat it
+    #: again. Defaulted, so it sits last: `found` has no default.
+    exists: bool = False
 
 
 class Kind(StrEnum):

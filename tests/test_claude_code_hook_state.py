@@ -69,7 +69,7 @@ def test_another_tool_s_hook_on_the_same_event_is_not_remem_s_business(tmp_path)
 
 def test_no_settings_file_at_all_is_an_answer_not_an_error(tmp_path):
     state = ClaudeCodeAdapter().hook_state("user", tmp_path, {})
-    assert state.path is None
+    assert state.exists is False
     assert all(v == () for v in state.found.values())
 
 
@@ -99,3 +99,12 @@ def test_opencode_declines_the_capability_rather_than_answering_ok():
     from remem.agents.opencode.adapter import OpenCodeAdapter
 
     assert not hasattr(OpenCodeAdapter, "hook_state")
+
+
+def test_a_missing_settings_file_still_names_the_path_examined(tmp_path):
+    """"Not installed" without a path is indistinguishable from a check
+    that looked somewhere else entirely - which is exactly how `remem
+    doctor` came to report cursor absent while it was installed."""
+    state = ClaudeCodeAdapter().hook_state("user", tmp_path, {})
+    assert state.path == tmp_path / ".claude" / "settings.json"
+    assert state.exists is False

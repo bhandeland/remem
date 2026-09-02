@@ -49,7 +49,7 @@ def test_both_message_hooks_are_required(tmp_path):
 
 def test_no_hooks_file_is_an_answer_not_an_error(tmp_path):
     state = CursorAdapter().hook_state("user", tmp_path, {})
-    assert state.path is None
+    assert state.exists is False
     assert all(v == () for v in state.found.values())
 
 
@@ -66,3 +66,9 @@ def test_project_scope_reads_the_repository_s_own_hooks_file(tmp_path, monkeypat
     state = CursorAdapter().hook_state("project", tmp_path / "elsewhere", {})
     assert state.found["postToolUse"] == (RECORD,)
     assert state.path == path
+
+
+def test_a_missing_hooks_file_still_names_the_path_examined(tmp_path):
+    state = CursorAdapter().hook_state("user", tmp_path, {})
+    assert state.path == tmp_path / ".cursor" / "hooks.json"
+    assert state.exists is False

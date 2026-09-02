@@ -86,3 +86,15 @@ def test_doctor_needs_no_database(tmp_path, monkeypatch):
     settings_with(tmp_path, COMPLETE)
     result = runner.invoke(app, ["doctor", "claude-code"])
     assert result.exit_code == 0
+
+
+def test_not_installed_names_the_file_it_looked_in(tmp_path, monkeypatch):
+    """The bar this feature is held to: never a confident answer about
+    something that was not examined. "not installed" is a confident answer,
+    so it has to say where it looked."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.chdir(tmp_path)
+    result = runner.invoke(app, ["doctor", "claude-code"])
+    assert result.exit_code == 0
+    assert "not installed" in result.stdout
+    assert str(tmp_path / ".claude" / "settings.json") in result.stdout

@@ -298,6 +298,7 @@ class CursorAdapter:
 
         return HookState(
             expected=tuple(h.expected() for h in HOOK_ENTRIES),
-            path=path if path.exists() else None,
+            path=path,
+            exists=path.exists(),
             found=found,
         )
