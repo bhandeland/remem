@@ -337,3 +337,27 @@ def test_a_clean_status_says_nothing_about_duplicates(store, owner):
     out = events.render(events.status(store, owner.id, idle_seconds=IDLE))
 
     assert "duplicate" not in out.lower()
+
+
+def test_the_status_report_carries_hook_advisories(store, owner):
+    """`record status` is what a user runs when a harness looks quiet, and
+    is otherwise structurally incapable of answering - it reports what WAS
+    recorded and cannot know what should have been. It is also the only
+    place that can reach a harness which has recorded nothing ever and so
+    appears nowhere in event_stats."""
+    report = events.status(
+        store, owner.id, idle_seconds=IDLE,
+        hook_advisories=["claude-code is installed but its hooks are "
+                         "incomplete: PostToolUse (missing) - run "
+                         "`remem doctor claude-code`"],
+    )
+    text = events.render(report)
+    assert "PostToolUse" in text
+    assert "remem doctor claude-code" in text
+    assert events.to_dict(report)["hook_advisories"] == report.hook_advisories
+
+
+def test_a_healthy_install_adds_no_advisory_lines(store, owner):
+    report = events.status(store, owner.id, idle_seconds=IDLE)
+    assert report.hook_advisories == []
+    assert "remem doctor" not in events.render(report)

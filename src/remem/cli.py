@@ -1195,11 +1195,24 @@ def record_status(
     recorded nothing - wrong hook names, a broken adapter, opt-in never
     turned on - becomes visible on demand rather than never.
     """
+    from remem.agents import registry
+    from remem.services import doctor as doctor_service
     from remem.services import events
+
+    # Wrapped: an unreadable config file must not take down a status
+    # command that is otherwise about the database. doctor.check already
+    # degrades per adapter; this covers the registry call itself.
+    try:
+        advisories = doctor_service.advisories(
+            doctor_service.check(registry.discover(), env=dict(os.environ))
+        )
+    except Exception:
+        advisories = []
 
     with _session() as s:
         report = events.status(
-            s.store, s.owner.id, idle_seconds=s.config.idle_minutes * 60
+            s.store, s.owner.id, idle_seconds=s.config.idle_minutes * 60,
+            hook_advisories=advisories,
         )
 
     if as_json:

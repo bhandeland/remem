@@ -8,7 +8,7 @@ the delete this module has already decided is safe.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from uuid import UUID
 
@@ -142,9 +142,19 @@ class StatusReport:
     #: Repeated events 011's unique index cannot reach - see
     #: `store.duplicate_unkeyed_events`. Advisory: nothing acts on it.
     suspected_duplicates: list[DuplicateGroup]
+    #: Lines from `services/doctor.advisories`, passed in rather than
+    #: computed here: this module is about the database and doctor is about
+    #: the filesystem, and `status` must keep working when a config file
+    #: cannot be read.
+    hook_advisories: list[str] = field(default_factory=list)
 
 
-def status(store: Store, owner_id: UUID, idle_seconds: int) -> StatusReport:
+def status(
+    store: Store,
+    owner_id: UUID,
+    idle_seconds: int,
+    hook_advisories: list[str] | None = None,
+) -> StatusReport:
     """Gather the numbers behind `remem record status`. Read-only.
 
     `extract_model` is resolved from `config.load()` rather than taken as a
@@ -180,6 +190,7 @@ def status(store: Store, owner_id: UUID, idle_seconds: int) -> StatusReport:
         legacy_pending=store.pending_legacy_capture_jobs(owner_id),
         extract_model=load_config().extract_model,
         suspected_duplicates=store.duplicate_unkeyed_events(owner_id),
+        hook_advisories=list(hook_advisories or []),
     )
 
 
@@ -233,6 +244,11 @@ def render(report: StatusReport) -> str:
             f"{report.legacy_pending} job(s) stranded in the retired "
             "capture_jobs_legacy table - see 010_retire_capture_jobs.sql"
         )
+    for line in report.hook_advisories:
+        # "!" and not "warning:" - this is the line that would have saved
+        # an unknown number of unrecorded sessions, and it has to survive
+        # being skimmed.
+        lines.append(f"! {line}")
     return "\n".join(lines)
 
 
@@ -267,6 +283,7 @@ def to_dict(report: StatusReport) -> dict:
             }
             for d in report.suspected_duplicates
         ],
+        "hook_advisories": list(report.hook_advisories),
     }
 
 
