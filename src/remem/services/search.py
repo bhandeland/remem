@@ -20,13 +20,17 @@ MAX_LIMIT = 200
 
 #: What a search returns when the caller did not ask for specific origins.
 #: Handoffs are excluded: a project hands off dozens of times and every one of
-#: them would otherwise sit on top of the results.
+#: them would otherwise sit on top of the results. Archived document chunks
+#: are excluded for the neighbouring reason - they are the minority by count
+#: (111 chunks against 211 at the time of writing) but three times the volume,
+#: and what they contain is executed plan steps and source code that now lives
+#: in src/.
 #:
 #: This list must gain any future origin, or that origin silently vanishes
 #: from search. The alternative - an `exclude_origins` field on Query - avoids
 #: that at the cost of a second overlapping filter in the store's SQL for one
-#: caller. Chosen deliberately; if a fourth origin appears, look here.
-DEFAULT_ORIGINS = [Origin.HUMAN, Origin.AGENT, Origin.EXTRACTED]
+#: caller. Chosen deliberately; if a sixth origin appears, look here.
+DEFAULT_ORIGINS = [Origin.HUMAN, Origin.AGENT, Origin.EXTRACTED, Origin.INGESTED]
 
 #: The default value of `find(embedder=...)`, and not the same thing as None.
 #:
@@ -98,6 +102,7 @@ def find(
     query: Query,
     fuzzy_threshold: float = DEFAULT_FUZZY_THRESHOLD,
     include_handoffs: bool = False,
+    include_archived: bool = False,
     embedder: Embedder | None = _UNSPECIFIED,  # type: ignore[assignment]
     semantic_threshold: float = DEFAULT_SEMANTIC_THRESHOLD,
     embed_model: str = DEFAULT_EMBED_MODEL,
@@ -129,15 +134,22 @@ def find(
     never triggers the model download that importing it can start. Pass an
     explicit embedder (or an explicit None) to override, as the tests do.
 
-    Handoffs are excluded from the default origins unless `include_handoffs`
-    is set or the caller already named specific origins.
+    Handoffs and archived document chunks are excluded from the default
+    origins unless `include_handoffs` / `include_archived` is set, or the
+    caller already named specific origins.
     """
     if query.limit <= 0:
         return []
-    if not include_handoffs and not query.origins:
+    if not query.origins:
         # An explicit origins list is the caller saying exactly what they
-        # want, and is never overridden.
-        query = replace(query, origins=list(DEFAULT_ORIGINS))
+        # want, and is never overridden. Otherwise start from the default
+        # allowlist and add back only what was asked for.
+        origins = list(DEFAULT_ORIGINS)
+        if include_handoffs:
+            origins.append(Origin.HANDOFF)
+        if include_archived:
+            origins.append(Origin.ARCHIVED)
+        query = replace(query, origins=origins)
     query = _clamped(query)
 
     hits = store.search(query, owner_id)

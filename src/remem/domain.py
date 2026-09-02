@@ -25,6 +25,14 @@ class Origin(StrEnum):
     #: Written by the extractor from a session's events. Was 'capture'.
     EXTRACTED = "extracted"
     HANDOFF = "handoff"
+    #: A chunk of a markdown document loaded by `remem ingest`. In
+    #: DEFAULT_ORIGINS: this is the reasoning layer, and it is what ingest
+    #: exists to make searchable.
+    INGESTED = "ingested"
+    #: An ingested chunk held out of default results - implementation plans,
+    #: whose text is mostly source code that now lives in src/. Not in
+    #: DEFAULT_ORIGINS; reachable with --archived.
+    ARCHIVED = "archived"
 
 
 class Match(StrEnum):
