@@ -4,11 +4,25 @@ from __future__ import annotations
 
 import json
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
-from remem.agents.base import UnsupportedScope
+from remem.agents.base import ExpectedHook, UnsupportedScope
 
-#: The hook entries remem installs, hook name to command.
+
+@dataclass(frozen=True, slots=True)
+class CursorHook:
+    event: str
+    command: str
+    required: bool
+    provides: str
+
+    def expected(self) -> ExpectedHook:
+        return ExpectedHook(self.event, self.command, self.required, self.provides)
+
+
+#: The one table. `install()` writes from ENTRIES below and `hook_state()`
+#: checks against this, so they cannot disagree about which hooks exist.
 #:
 #: `remem record event --agent cursor`, NOT `remem hook record-event` -
 #: that one is hardcoded to the Claude Code hook and takes no --agent, so
@@ -16,12 +30,28 @@ from remem.agents.base import UnsupportedScope
 #:
 #: Every name here must be in hooks.HOOK_NAMES and none may be in
 #: hooks.BLOCKING_HOOKS; tests assert both.
-ENTRIES = {
-    "sessionStart": "remem hook context --agent cursor",
-    "postToolUse": "remem record event --agent cursor",
-    "beforeSubmitPrompt": "remem record event --agent cursor",
-    "afterAgentResponse": "remem record event --agent cursor",
-}
+#:
+#: All four are required. The message hooks were optional in the first
+#: draft of the doctor design, on the grounds that losing them costs
+#: extraction quality rather than recording itself; the render-budget
+#: measurement (8cb186c) removed that distinction. Showing the extractor a
+#: fragment of a session returned nothing in three runs where the whole
+#: session returned entries in five of five, and an install missing both
+#: message hooks records tool calls with every prompt and answer cut out -
+#: which is that fragment.
+HOOK_ENTRIES: tuple[CursorHook, ...] = (
+    CursorHook("sessionStart", "remem hook context --agent cursor", True,
+               "context injection, and the only extraction trigger Cursor has"),
+    CursorHook("postToolUse", "remem record event --agent cursor", True,
+               "every tool call"),
+    CursorHook("beforeSubmitPrompt", "remem record event --agent cursor", True,
+               "the user's prompts, as extraction input"),
+    CursorHook("afterAgentResponse", "remem record event --agent cursor", True,
+               "the agent's responses, as extraction input"),
+)
+
+#: hook name to command, the shape `merge()` and `install()` take.
+ENTRIES = {h.event: h.command for h in HOOK_ENTRIES}
 
 
 #: Commands a previous remem wrote for a hook, which install migrates in

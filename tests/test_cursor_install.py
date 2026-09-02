@@ -270,6 +270,14 @@ def test_merge_never_removes_an_entry_remem_did_not_write(tmp_path):
     ]
 
 
+def test_the_hook_table_names_exactly_what_install_writes():
+    from remem.agents.cursor.install import HOOK_ENTRIES
+
+    assert sorted(h.event for h in HOOK_ENTRIES) == sorted([
+        "sessionStart", "postToolUse", "beforeSubmitPrompt", "afterAgentResponse",
+    ])
+
+
 def test_merge_preserves_other_keys_on_an_entry_it_rewrites(tmp_path):
     """Cursor may grow per-entry options. Rewriting the command must not
     drop whatever else the entry carried."""

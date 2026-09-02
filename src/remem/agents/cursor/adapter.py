@@ -17,7 +17,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Mapping
 
-from remem.agents.base import RECORD_NOTE, HarnessEvent, Identity, InstallReport
+from remem.agents.base import (
+    RECORD_NOTE,
+    HarnessEvent,
+    HookState,
+    Identity,
+    InstallReport,
+)
 from remem.domain import EventKind
 from remem.project import resolve_project
 
@@ -248,3 +254,51 @@ class CursorAdapter:
         from remem.agents.verify import round_trip
 
         return round_trip(self.name, env)
+
+    def hook_state(
+        self,
+        scope: str = "user",
+        home: Path | None = None,
+        env: Mapping[str, str] | None = None,
+    ) -> HookState:
+        """What hooks.json actually registers, against HOOK_ENTRIES.
+
+        Read-only: unlike `merge()`, which backs the file up before
+        rewriting it, this never writes. Unreadable JSON reads as no remem
+        hooks - the honest answer, since the file names none that can be
+        found.
+        """
+        from remem.agents.cursor.install import (
+            HOOK_ENTRIES, LEGACY_COMMANDS, hooks_path,
+        )
+
+        home = home or Path.home()
+        env = os.environ if env is None else env
+        path = hooks_path(scope, home=home, cwd=Path.cwd())
+
+        document: dict = {}
+        if path.exists():
+            try:
+                loaded = json.loads(path.read_text())
+                if isinstance(loaded, dict):
+                    document = loaded
+            except (OSError, json.JSONDecodeError):
+                document = {}
+        hooks = document.get("hooks", {})
+        if not isinstance(hooks, dict):
+            hooks = {}
+
+        found: dict[str, tuple[str, ...]] = {}
+        for entry in HOOK_ENTRIES:
+            ours = tuple(LEGACY_COMMANDS.get(entry.event, ())) + (entry.command,)
+            found[entry.event] = tuple(
+                h["command"]
+                for h in hooks.get(entry.event, []) or []
+                if isinstance(h, dict) and h.get("command") in ours
+            )
+
+        return HookState(
+            expected=tuple(h.expected() for h in HOOK_ENTRIES),
+            path=path if path.exists() else None,
+            found=found,
+        )
