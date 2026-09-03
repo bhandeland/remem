@@ -671,6 +671,38 @@ class PostgresStore:
             row = cur.fetchone()
         return bool(row["enabled"]) if row else False
 
+    def set_memory_collection(
+        self, owner_id: UUID, project: str, slug: str | None
+    ) -> None:
+        with self._cur() as cur:
+            if slug is None:
+                cur.execute(
+                    "delete from memory_settings "
+                    "where owner_id = %s and project = %s",
+                    (owner_id, project),
+                )
+                return
+            cur.execute(
+                """
+                insert into memory_settings (owner_id, project, collection_slug)
+                values (%s, %s, %s)
+                on conflict (owner_id, project)
+                  do update set collection_slug = excluded.collection_slug,
+                                updated_at = clock_timestamp()
+                """,
+                (owner_id, project, slug),
+            )
+
+    def memory_collection(self, owner_id: UUID, project: str) -> str | None:
+        with self._cur() as cur:
+            cur.execute(
+                "select collection_slug from memory_settings "
+                "where owner_id = %s and project = %s",
+                (owner_id, project),
+            )
+            row = cur.fetchone()
+        return row["collection_slug"] if row else None
+
     def pending_legacy_capture_jobs(self, owner_id: UUID) -> int:
         """How many rows the retired capture spool still holds as pending.
 
