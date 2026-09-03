@@ -12,13 +12,17 @@ def test_the_slug_is_the_absolute_path_with_separators_replaced():
     )
 
 
-def test_a_worktree_gets_its_own_slug():
-    # Deliberately NOT the project name: remem's project resolves through
-    # --git-common-dir so a worktree shares it, while Claude Code keys the
-    # directory on the working directory alone.
+def test_two_checkouts_of_one_repo_share_a_project_name_but_not_a_slug():
+    # remem resolves a project through --git-common-dir, so both of these
+    # are project "remem". Claude Code keys its directory on the whole path,
+    # so the slugs must differ - which is the entire reason memory_dir takes
+    # a path and not a project name. A slug built from the directory's name
+    # would collide here and silently hand two checkouts one memory store.
     a = cc_memory.slug_for(Path("/Users/b/work/remem"))
-    b = cc_memory.slug_for(Path("/Users/b/work/remem-feature"))
+    b = cc_memory.slug_for(Path("/Users/b/other/remem"))
     assert a != b
+    assert a.endswith("-work-remem")
+    assert b.endswith("-other-remem")
 
 
 def test_memory_dir_sits_under_the_claude_home():
