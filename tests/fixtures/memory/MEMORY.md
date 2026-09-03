@@ -1,0 +1,5 @@
+- [GitLab pushes need HTTPS, not SSH](gitlab-push-needs-https-not-ssh.md) — the SSH key here belongs to a different GitLab account; nighthawk-oss pushes fail without the glab credential helper.
+- [Recreate a failed GitLab push mirror](gitlab-push-mirror-recreate-after-failure.md) — force-sync won't clear the retry backoff; also two ways GitHub PAT permissions mislead you.
+- [Cursor runs Claude Code's hooks](cursor-runs-claude-code-hooks.md) — Cursor 3.x executes ~/.claude/settings.json hooks with Cursor payloads; remem's Claude hooks fire inside Cursor and silently no-op.
+- [Fail-soft hides budget failures](remem-fail-soft-hides-budget-failures.md) — RulesExceedBudget kills context injection on every harness with a 0 exit; REMEM_HOOK_DEBUG=1 is the only way to see it.
+- [remem PATH shadows the uv tool install](remem-path-shadows-uv-tool-install.md) — two editable installs; the venv copy shadowed the uv tool one and lacked the embed extra. Fixed 2026-09-02.
