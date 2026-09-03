@@ -58,11 +58,22 @@ Nothing else reads it, so no existing behaviour moves.
 | `MEMORY.md` link text | `Entry.title` |
 | `description:` | `Entry.summary` |
 | `metadata.type:` | `type:<user\|feedback\|project\|reference>` tag |
+| other `metadata:` keys | `MemoryFile.extra`, preserved verbatim on disk |
 | body | `Entry.body` |
 | `[[link]]` | left as literal text |
 
 `kind` is `note` and `origin` is `agent` on adopt. An agent wrote it, which is
 precisely true, and it avoids adding an `Origin` - see Invariants.
+
+### Metadata remem does not own
+
+Real memory files carry keys under `metadata:` beyond `type:` - Claude Code's
+own bookkeeping (`node_type`, `originSessionId`, `modified`). `MemoryFile`
+carries them in an `extra` mapping and renders them back verbatim, because a
+renderer that dropped them would destroy provenance on a file remem did not
+write. An `Entry` has nowhere to store them, so regenerating a file that
+already exists reads the file first and preserves its `extra`; a file remem
+creates from scratch simply has none.
 
 ### A title a stray file does not have
 
@@ -280,11 +291,21 @@ The overlap count lives only in `remem memory status`.
 
 ## Testing
 
-- `tests/test_memory_file.py` - no marker, runs on CI. Round-trip properties
-  both directions, and the strongest test in the design: a vendored fixture
-  corpus copied from the real memory files, asserting `render(parse(f)) == f`
-  **byte for byte**. If that holds, "in sync, no write" is real rather than
-  aspirational and the watermark cannot churn.
+- `tests/test_memory_file.py` - no marker, runs on CI. A vendored fixture
+  corpus copied from the real memory files, asserting three properties over
+  every file: the **body** round-trips byte for byte, `render` is idempotent
+  (`render(parse(render(parse(f)))) == render(parse(f))`), and no `metadata:`
+  key is lost.
+
+  This started life as whole-file byte equality, `render(parse(f)) == f`, and
+  the real corpus disproved it during implementation: one file carries
+  `node_type`, `originSessionId` and `modified` under `metadata:`, plus a
+  trailing space after `metadata:` that the others do not have. Whole-file
+  equality is stricter than the invariant the sync needs anyway - the
+  watermark hashes the body alone, deliberately excluding frontmatter, so
+  body-exactness is what prevents churn and whole-file exactness never was.
+  Idempotence covers the rest: a file with non-canonical frontmatter is
+  normalised once, on first write, and is stable afterwards.
 - `tests/test_memory_service.py` - marked `db`. One test per case, named for
   the case, plus a double-sync test asserting the second run writes nothing at
   all. That is the property everything else rests on.
