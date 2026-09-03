@@ -351,9 +351,12 @@ class ClaudeCodeAdapter:
         return resolve_paths(home, env).settings
 
     def memory_dir(
-        self, cwd: Path, env: Mapping[str, str] | None = None
+        self,
+        cwd: Path,
+        home: Path | None = None,
+        env: Mapping[str, str] | None = None,
     ) -> Path | None:
-        return cc_memory.memory_dir(cwd, env)
+        return cc_memory.memory_dir(cwd, home, env)
 
     def env_settings(self) -> Mapping[str, EnvVar]:
         """The environment variables `remem config` may write for this agent.

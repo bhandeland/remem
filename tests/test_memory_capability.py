@@ -28,10 +28,19 @@ def test_memory_dir_sits_under_the_claude_home():
     assert got == Path("/cfg/projects/-w-proj/memory")
 
 
-def test_memory_dir_defaults_to_dot_claude_in_home(monkeypatch, tmp_path):
-    monkeypatch.setenv("HOME", str(tmp_path))
-    got = cc_memory.memory_dir(Path("/w/proj"), env={})
+def test_memory_dir_defaults_to_dot_claude_in_home(tmp_path):
+    # `home` is an explicit parameter, the same shape settings_path/
+    # hook_state/install already take one - not read out of `env`, which
+    # would leave a caller with no way to control it (Path("~").expanduser()
+    # reads the real os.environ, ignoring whatever HOME an `env` mapping
+    # names).
+    got = cc_memory.memory_dir(Path("/w/proj"), home=tmp_path, env={})
     assert got == tmp_path / ".claude" / "projects" / "-w-proj" / "memory"
+
+
+def test_memory_dir_falls_back_to_the_real_home_when_none_is_given():
+    got = cc_memory.memory_dir(Path("/w/proj"), env={})
+    assert got == Path.home() / ".claude" / "projects" / "-w-proj" / "memory"
 
 
 def test_the_adapter_exposes_the_capability():

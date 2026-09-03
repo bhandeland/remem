@@ -264,7 +264,10 @@ class AgentAdapter(Protocol):
     # capability that raises warns and continues.
     #
     #     def memory_dir(
-    #         self, cwd: Path, env: Mapping[str, str] | None = None
+    #         self,
+    #         cwd: Path,
+    #         home: Path | None = None,
+    #         env: Mapping[str, str] | None = None,
     #     ) -> Path | None: ...
     #
     # Where this harness keeps a file-based memory directory that remem can
