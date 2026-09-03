@@ -241,7 +241,17 @@ def sync(
 
     # --- classify and apply ---------------------------------------------
     now = datetime.now(timezone.utc).isoformat()
+    unreadable = {name for name, _ in report.failures}
     for name in sorted(set(files) | set(entries)):
+        if name in unreadable:
+            # Unreadable is not absent. A file we could not parse has no
+            # file_sha, and classify would read that as "no file" and
+            # regenerate this one from the entry - overwriting whatever the
+            # user has on disk. An unparseable file is the strongest possible
+            # signal that something happened to it which remem did not do, so
+            # it is reported and otherwise left completely alone: no write, no
+            # watermark, no counter.
+            continue
         mf = files.get(name)
         entry = entries.get(name)
         case = classify(

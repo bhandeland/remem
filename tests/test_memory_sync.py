@@ -259,6 +259,26 @@ def test_memory_md_is_written_and_indexes_every_file(store, owner, tmp_path):
     assert index.index("a-fact.md") < index.index("b-fact.md")
 
 
+def test_a_malformed_file_with_a_live_entry_is_never_overwritten(
+    store, owner, tmp_path
+):
+    # The dangerous half of "malformed". The entry still exists, so a file
+    # treated as absent would be regenerated from the store and the user's
+    # text destroyed. Unreadable is not absent.
+    _designated(store, owner)
+    _write_file(tmp_path, "a-fact", "a hook", "the body\n")
+    memory.sync(store, owner.id, project="proj", directory=tmp_path)
+    path = tmp_path / "a-fact.md"
+    path.write_text("--\nbroken frontmatter\n--\nhand written and precious\n")
+    before = path.read_bytes()
+
+    report = memory.sync(store, owner.id, project="proj", directory=tmp_path)
+
+    assert path.read_bytes() == before
+    assert report.regenerated == 0
+    assert [name for name, _ in report.failures] == ["a-fact"]
+
+
 def test_a_malformed_file_is_reported_and_costs_nothing_else(
     store, owner, tmp_path
 ):
