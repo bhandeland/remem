@@ -153,6 +153,53 @@ def test_sync_exits_nonzero_when_a_file_is_left_in_conflict(
     assert "conflict" in result.stderr
 
 
+def test_a_bare_designate_refuses_rather_than_clearing(env):
+    # `None if clear else slug` used to collapse "argument omitted" into
+    # "clear it", so a user who typed this to see the current designation had
+    # destroyed it by the time they read the output.
+    store, conn = _designated_store(env)
+    conn.commit()
+    owner = store.ensure_principal("brandon")
+
+    result = runner.invoke(app, ["memory", "designate"], env=env)
+
+    assert result.exit_code != 0
+    conn.rollback()  # a fresh read, not this transaction's snapshot
+    assert memory.designation(store, owner.id, PROJECT) == "proj-memory"
+    conn.close()
+
+
+def test_designate_none_still_clears(env):
+    store, conn = _designated_store(env)
+    conn.commit()
+    owner = store.ensure_principal("brandon")
+
+    result = runner.invoke(app, ["memory", "designate", "--none"], env=env)
+
+    assert result.exit_code == 0
+    conn.rollback()
+    assert memory.designation(store, owner.id, PROJECT) is None
+    conn.close()
+
+
+def test_a_dry_run_conflict_does_not_promise_a_sidecar(
+    env, memory_dir_in_conflict
+):
+    result = runner.invoke(app, ["memory", "sync", "--dry-run"], env=env)
+
+    assert result.exit_code == 1
+    assert f"no {memory.CONFLICT_SUFFIX} file was written" in result.stderr
+    assert list(memory_dir_in_conflict.glob(f"*{memory.CONFLICT_SUFFIX}")) == []
+
+
+def test_a_conflict_with_a_sidecar_names_it(env, memory_dir_in_conflict):
+    result = runner.invoke(app, ["memory", "sync"], env=env)
+
+    assert result.exit_code == 1
+    assert f"a-fact{memory.CONFLICT_SUFFIX}" in result.stderr
+    assert (memory_dir_in_conflict / f"a-fact{memory.CONFLICT_SUFFIX}").exists()
+
+
 def test_status_reports_the_designation_and_the_overlap(env):
     result = runner.invoke(app, ["memory", "status"], env=env)
     assert result.exit_code == 0

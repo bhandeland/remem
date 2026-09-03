@@ -84,6 +84,22 @@ def parse_index(text: str) -> dict[str, str]:
     return out
 
 
+def index_lines(text: str) -> dict[str, str]:
+    """MEMORY.md filename -> the whole line, verbatim.
+
+    parse_index() keeps only the link text; this keeps the hook after the
+    separator too, which is what lets a line be carried through unchanged for
+    a file remem could not parse and therefore has no entry to rebuild from.
+    """
+    out: dict[str, str] = {}
+    for line in text.splitlines():
+        stripped = line.strip()
+        m = _INDEX_LINE.match(stripped)
+        if m:
+            out[m.group("file")] = stripped
+    return out
+
+
 def parse(text: str, *, name: str, title: str) -> MemoryFile:
     """One file plus its index title. Never a file in isolation.
 
@@ -164,11 +180,22 @@ def render(mf: MemoryFile) -> str:
     return "\n".join(lines) + "\n" + mf.body
 
 
-def render_index(files: list[MemoryFile]) -> str:
-    """Sorted by name. Any deterministic order would do; the requirement is
-    only that it not depend on iteration order, because an index that
-    reshuffles itself makes every sync look like a change."""
-    return "".join(
-        f"- [{mf.title}]({mf.name}.md){INDEX_SEPARATOR}{mf.description}\n"
-        for mf in sorted(files, key=lambda m: m.name)
-    )
+def render_index(
+    files: list[MemoryFile], carried: dict[str, str] | None = None
+) -> str:
+    """Sorted by filename. Any deterministic order would do; the requirement
+    is only that it not depend on iteration order, because an index that
+    reshuffles itself makes every sync look like a change.
+
+    `carried` maps a filename to a line to emit verbatim - for files the
+    caller has on disk but cannot rebuild a line for. They sort in among the
+    generated ones rather than being appended, so a file that becomes
+    unparseable does not also jump to the bottom of the index.
+    """
+    rows = [
+        (f"{mf.name}.md",
+         f"- [{mf.title}]({mf.name}.md){INDEX_SEPARATOR}{mf.description}")
+        for mf in files
+    ]
+    rows += list((carried or {}).items())
+    return "".join(f"{line}\n" for _, line in sorted(rows))

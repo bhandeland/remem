@@ -1499,12 +1499,28 @@ def memory_designate(
     project: Annotated[Optional[str], typer.Option("--project")] = None,
 ):
     """Point this project's memory export at an existing collection."""
+    if (slug is None) == (not clear):
+        # Exactly one of the two, because `None if clear else slug` would
+        # otherwise read a bare `remem memory designate` as "clear it" - a
+        # user who typed it to see the current designation would have
+        # destroyed it and been told so in the past tense.
+        raise typer.BadParameter(
+            "pass a collection slug, or --none to clear the designation"
+        )
     resolved = _resolve_project(project, False)
     with _session() as s:
         try:
             memory_service.designate(
                 s.store, s.owner.id, resolved, None if clear else slug,
             )
+        except memory_service.NoProject:
+            typer.echo(
+                "No project here: remem resolves one from the git repository "
+                "root, and this directory is not in a repository. Pass "
+                "--project <name> to designate one explicitly.",
+                err=True,
+            )
+            raise typer.Exit(1)
         except kb.CollectionNotFound as exc:
             typer.echo(
                 f"No collection {exc}. Create it with `remem kb create` "
@@ -1540,6 +1556,16 @@ def memory_sync(
                 err=True,
             )
             raise typer.Exit(1)
+        except memory_service.CollectionTooLarge as exc:
+            typer.echo(
+                f"Collection '{exc.slug}' resolves to {exc.limit} entries, "
+                f"the limit remem reads a collection at. Past it, an entry "
+                f"remem cannot see is indistinguishable from one that left "
+                f"the collection, and its file would be deleted - so nothing "
+                f"was written. Narrow the collection's query.",
+                err=True,
+            )
+            raise typer.Exit(1)
     prefix = "Would write: " if dry_run else ""
     typer.echo(
         f"{prefix}{report.adopted} adopted, {report.edited} edited, "
@@ -1547,12 +1573,25 @@ def memory_sync(
         f"{report.deleted} deleted, {report.unchanged} unchanged."
     )
     for name in report.conflicts:
-        typer.echo(
-            f"conflict: {name} changed on both sides; remem's version is "
-            f"in {name}{memory_service.CONFLICT_SUFFIX} - yours to resolve "
-            f"and delete, nothing here does it for you.",
-            err=True,
-        )
+        # Only a conflict that actually wrote a sidecar names one. A dry run
+        # writes none, and neither does a file edited for an entry that left
+        # the collection, so pointing at the file unconditionally would send
+        # the user looking for something that is not there.
+        if name in report.sidecars:
+            typer.echo(
+                f"conflict: {name} changed on both sides; remem's version is "
+                f"in {name}{memory_service.CONFLICT_SUFFIX} - yours to "
+                f"resolve and delete, nothing here does it for you.",
+                err=True,
+            )
+        else:
+            typer.echo(
+                f"conflict: {name} was left alone and no "
+                f"{memory_service.CONFLICT_SUFFIX} file was written for it - "
+                f"a dry run writes none, and neither does a file whose entry "
+                f"has left the collection.",
+                err=True,
+            )
     for name, reason in report.failures:
         typer.echo(f"failed: {name}: {reason}", err=True)
     if report.conflicts or report.failures:

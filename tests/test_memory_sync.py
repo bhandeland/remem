@@ -294,6 +294,117 @@ def test_a_malformed_file_is_reported_and_costs_nothing_else(
     assert [name for name, _ in report.failures] == ["bad"]
 
 
+def test_an_unparseable_file_keeps_its_memory_md_line(store, owner, tmp_path):
+    # The index is rebuilt from live entries, and a file remem could not parse
+    # has none - so without carrying the old line through, "reported and
+    # otherwise left completely alone" would still cost the file its index
+    # line, and Claude Code would stop loading it.
+    _designated(store, owner)
+    _write_file(tmp_path, "a-fact", "a hook", "the body\n")
+    memory.sync(store, owner.id, project="proj", directory=tmp_path)
+    line = (tmp_path / "MEMORY.md").read_text().strip()
+    (tmp_path / "a-fact.md").write_text("--\nbroken\n--\nprecious\n")
+
+    report = memory.sync(store, owner.id, project="proj", directory=tmp_path)
+
+    assert [name for name, _ in report.failures] == ["a-fact"]
+    assert (tmp_path / "MEMORY.md").read_text().strip() == line
+
+
+def test_regenerating_keeps_the_frontmatter_name_the_user_wrote(
+    store, owner, tmp_path
+):
+    # Identity is the filename stem; the frontmatter `name:` is the user's
+    # and remem does not own it, so a regenerate must not rewrite it.
+    _designated(store, owner)
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    (tmp_path / "a-fact.md").write_text(
+        memory_file.render(
+            memory_file.MemoryFile(
+                name="a-different-slug", title="A fact", description="a hook",
+                type="project", body="the body\n", extra={},
+            )
+        )
+    )
+    memory.sync(store, owner.id, project="proj", directory=tmp_path)
+    entry = kb.resolve(store, owner.id, "proj-memory")[0]
+    supersede(store, owner.id, entry.id, title=entry.title, body="from remem\n")
+
+    report = memory.sync(store, owner.id, project="proj", directory=tmp_path)
+
+    assert report.regenerated == 1
+    text = (tmp_path / "a-fact.md").read_text()
+    assert "name: a-different-slug" in text
+    assert "from remem" in text
+    # The index still links the file that exists, not the frontmatter slug.
+    assert "(a-fact.md)" in (tmp_path / "MEMORY.md").read_text()
+
+
+def test_a_conflict_that_writes_no_sidecar_says_so(store, owner, tmp_path):
+    # A file edited for an entry that has left the collection is reported as
+    # a conflict and touches nothing - including writing no sidecar.
+    _designated(store, owner)
+    _write_file(tmp_path, "a-fact", "a hook", "the body\n")
+    memory.sync(store, owner.id, project="proj", directory=tmp_path)
+    kb.set_query(
+        store, owner.id, "proj-memory",
+        CollectionQuery(tags=["nothing-matches-this"]),
+    )
+    _write_file(tmp_path, "a-fact", "a hook", "hand edited\n")
+
+    report = memory.sync(store, owner.id, project="proj", directory=tmp_path)
+
+    assert report.conflicts == ["a-fact"]
+    assert report.sidecars == []
+    assert not (tmp_path / f"a-fact{memory.CONFLICT_SUFFIX}").exists()
+
+
+def test_a_dry_run_conflict_writes_no_sidecar_and_says_so(
+    store, owner, tmp_path
+):
+    _designated(store, owner)
+    _write_file(tmp_path, "a-fact", "a hook", "the body\n")
+    memory.sync(store, owner.id, project="proj", directory=tmp_path)
+    entry = kb.resolve(store, owner.id, "proj-memory")[0]
+    supersede(store, owner.id, entry.id, title=entry.title, body="from remem\n")
+    _write_file(tmp_path, "a-fact", "a hook", "from claude\n")
+
+    report = memory.sync(
+        store, owner.id, project="proj", directory=tmp_path, dry_run=True,
+    )
+
+    assert report.conflicts == ["a-fact"]
+    assert report.sidecars == []
+    assert not (tmp_path / f"a-fact{memory.CONFLICT_SUFFIX}").exists()
+
+
+def test_a_collection_at_the_resolve_limit_refuses_to_sync(
+    store, owner, tmp_path
+):
+    # Past kb.RESOLVE_LIMIT an entry remem cannot see is indistinguishable
+    # from one that left the collection, and its file would be deleted.
+    _designated(store, owner)
+    for n in range(kb.RESOLVE_LIMIT):
+        remember(
+            store, owner.id,
+            title=f"Fact {n}", body=f"body {n}\n",
+            kind=Kind.NOTE, project="proj", origin=Origin.HUMAN,
+        )
+
+    with pytest.raises(memory.CollectionTooLarge):
+        memory.sync(store, owner.id, project="proj", directory=tmp_path)
+
+    assert not (tmp_path / "MEMORY.md").exists()
+
+
+def test_designating_without_a_project_is_refused(store, owner):
+    # Outside a git repository the CLI resolves no project, and the column is
+    # not null - so without this the store raises a NotNullViolation
+    # traceback out of a command a person typed.
+    with pytest.raises(memory.NoProject):
+        memory.designate(store, owner.id, None, "proj-memory")
+
+
 def test_an_entry_with_no_mem_tag_is_exported(store, owner, tmp_path):
     # The store-to-disk direction. Nothing puts a `mem:` tag on an entry
     # written by hand, so an export that only knew about tagged entries would

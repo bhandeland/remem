@@ -35,8 +35,31 @@ class NotDesignated(Exception):
     """
 
 
+class NoProject(Exception):
+    """There is no project to designate against.
+
+    `resolve_project` returns None outside a git repository, and the
+    designation is keyed by project - the column is `not null`. Without this
+    the store raises a NotNullViolation traceback out of a command a person
+    typed, which is the store answering a question the service should have.
+    """
+
+
+class CollectionTooLarge(Exception):
+    """The collection resolves at kb.RESOLVE_LIMIT, so membership is a guess.
+
+    Carries the slug and the limit so the frontend prints the number rather
+    than hardcoding it a second time.
+    """
+
+    def __init__(self, slug: str, limit: int) -> None:
+        super().__init__(slug, limit)
+        self.slug = slug
+        self.limit = limit
+
+
 def designate(
-    store: Store, owner_id: UUID, project: str, slug: str | None
+    store: Store, owner_id: UUID, project: str | None, slug: str | None
 ) -> None:
     """Point a project's memory export at a collection, or clear it.
 
@@ -46,6 +69,8 @@ def designate(
     memory is ever exported. `kb create` says so through kb.advisories();
     this does not get to bypass it.
     """
+    if project is None:
+        raise NoProject()
     if slug is not None:
         kb.get(store, owner_id, slug)  # raises CollectionNotFound
     store.set_memory_collection(owner_id, project, slug)
@@ -182,6 +207,12 @@ class Report:
     deleted: int = 0
     unchanged: int = 0
     conflicts: list[str] = field(default_factory=list)
+    #: The subset of `conflicts` that actually has a `.remem-conflict.md` on
+    #: disk. Not every reported conflict writes one - --dry-run writes none,
+    #: and a file edited for an entry that left the collection has no store
+    #: version to write - so a frontend that pointed at the sidecar
+    #: unconditionally would name a file that is not there.
+    sidecars: list[str] = field(default_factory=list)
     failures: list[tuple[str, str]] = field(default_factory=list)
 
 
@@ -307,9 +338,12 @@ def sync(
     report = Report()
     marks = load_watermarks(directory)
     index: dict[str, str] = {}
+    index_lines: dict[str, str] = {}
     index_path = directory / "MEMORY.md"
     if index_path.exists():
-        index = memory_file.parse_index(index_path.read_text())
+        text = index_path.read_text()
+        index = memory_file.parse_index(text)
+        index_lines = memory_file.index_lines(text)
 
     # --- read both sides ------------------------------------------------
     files: dict[str, memory_file.MemoryFile] = {}
@@ -334,6 +368,15 @@ def sync(
     unreadable = {name for name, _ in report.failures}
 
     resolved = kb.resolve(store, owner_id, slug)
+    if len(resolved) >= kb.RESOLVE_LIMIT:
+        # kb.resolve was written for the context block, where a cap is a
+        # display concern. Here an entry past the cap is indistinguishable
+        # from an entry that left the collection: the delete gate passes (the
+        # file still matches its watermark) and the file goes. So refuse the
+        # whole run, the way ingest refuses a file with too many chunks,
+        # rather than paginating quietly around a limit that would then
+        # decide which memories exist.
+        raise CollectionTooLarge(slug, kb.RESOLVE_LIMIT)
     entries = _adopt_names(
         store, owner_id, resolved,
         taken=set(files) | unreadable, report=report, dry_run=dry_run,
@@ -370,6 +413,10 @@ def sync(
                 (directory / f"{name}{CONFLICT_SUFFIX}").write_text(
                     memory_file.render(_as_file(entry, name))
                 )
+                # Recorded, not assumed: --dry-run writes no sidecar, and
+                # neither does the orphan branch below, so the frontend has to
+                # be told which conflicts actually have a file to point at.
+                report.sidecars.append(name)
             continue
 
         if case is Case.UNCHANGED:
@@ -443,13 +490,8 @@ def sync(
                 # An Entry has nowhere to store the metadata keys remem does
                 # not own, so they are read back off the file being replaced.
                 # A file remem creates from scratch simply has none.
-                # An Entry has nowhere to store the metadata keys remem does
-                # not own, so they are read back off the file being replaced.
-                # A file remem creates from scratch simply has none.
                 (directory / f"{name}.md").write_text(
-                    memory_file.render(
-                        _as_file(entry, name, extra=None if mf is None else mf.extra)
-                    )
+                    memory_file.render(_as_file(entry, name, source=mf))
                 )
                 marks[name] = Watermark(
                     entry_id=str(entry.id),
@@ -464,11 +506,32 @@ def sync(
                 (directory / f"{name}.md").unlink(missing_ok=True)
                 marks.pop(name, None)
             live.pop(name, None)
+            continue
+
+        # A Case added later and not handled above would otherwise fall out of
+        # this loop counted as nothing at all - the silent-vanishing failure
+        # CLAUDE.md already documents for search.DEFAULT_ORIGINS.
+        raise AssertionError(case)
 
     if not dry_run:
         directory.mkdir(parents=True, exist_ok=True)
         index_path.write_text(
-            memory_file.render_index([_as_file(e, n) for n, e in live.items()])
+            memory_file.render_index(
+                [_as_file(e, n) for n, e in live.items()],
+                # A file remem could not parse keeps its MEMORY.md line. The
+                # index is rebuilt from live entries, and that file has none -
+                # so without this, "reported and otherwise left completely
+                # alone" would still cost the file its index line, and Claude
+                # Code would stop loading a file remem deliberately did not
+                # touch.
+                carried={
+                    f"{n}.md": line
+                    for n, line in (
+                        (n, index_lines.get(f"{n}.md")) for n, _ in report.failures
+                    )
+                    if line is not None and n not in live
+                },
+            )
         )
         save_watermarks(directory, marks)
 
@@ -554,17 +617,27 @@ def status(
 
 
 def _as_file(
-    entry: Entry, name: str, extra: dict[str, str] | None = None
+    entry: Entry, name: str, source: memory_file.MemoryFile | None = None
 ) -> memory_file.MemoryFile:
+    """The file remem would write for this entry.
+
+    Identity here is `name`, the filename stem, and the index links to
+    `<name>.md`. The frontmatter `name:` is a different thing: it is the
+    user's, and a file that already carries one keeps it, because rewriting
+    it would edit a field remem does not own on every regenerate. An `Entry`
+    also has nowhere to store the metadata keys remem does not own, so those
+    are read back off the file being replaced; a file remem creates from
+    scratch simply has none.
+    """
     type_ = None
     for tag in entry.tags:
         if tag.startswith("type:"):
             type_ = tag[len("type:"):]
     return memory_file.MemoryFile(
-        name=name,
+        name=name if source is None else source.name,
         title=entry.title,
         description=entry.summary or "",
         type=type_,
         body=entry.body,
-        extra=dict(extra or {}),
+        extra=dict({} if source is None else source.extra),
     )
