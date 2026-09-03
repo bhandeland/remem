@@ -13,6 +13,7 @@ regenerates. See docs/superpowers/specs/2026-09-02-claude-memory-design.md.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import StrEnum
@@ -22,7 +23,7 @@ from uuid import UUID
 from remem import memory_file
 from remem.domain import Entry, Kind, Origin
 from remem.services import kb
-from remem.services.write import remember, supersede
+from remem.services.write import remember, supersede, update
 from remem.store import Store
 
 
@@ -191,6 +192,100 @@ def _name_of(entry: Entry) -> str | None:
     return None
 
 
+#: Names are filenames, so the alphabet is deliberately narrow: lowercase
+#: alphanumerics and hyphens, nothing else. 64 characters is well under every
+#: filesystem's limit and long enough that a truncated title is still
+#: recognisable in a directory listing.
+MAX_NAME = 64
+
+_NOT_NAME_CHARS = re.compile(r"[^a-z0-9]+")
+
+
+def _slugify(title: str) -> str:
+    return _NOT_NAME_CHARS.sub("-", title.lower()).strip("-")[:MAX_NAME].strip("-")
+
+
+def _mint_name(entry: Entry, taken: set[str]) -> str:
+    """A file name for an entry that has never been exported.
+
+    Derived from the title, because that is the only thing about an entry a
+    human would recognise in a directory listing. A title that slugifies to
+    nothing (punctuation, or a script with no ASCII in it) falls back to the
+    entry id, which is stable and unique but tells the reader nothing - the
+    ugly name is the signal that the title was unusable.
+
+    Uniqueness is checked against every name already in play this run, files
+    on disk included: two entries sharing a file would make each sync adopt
+    one over the other, forever.
+    """
+    base = _slugify(entry.title) or f"entry-{entry.id.hex[:8]}"
+    if base not in taken:
+        return base
+    # Two entries whose titles slugify alike. The discriminator comes from the
+    # id rather than a counter so it does not depend on iteration order: the
+    # same entry gets the same name whichever of the pair is seen first.
+    for width in (8, 16, 32):
+        suffix = f"-{entry.id.hex[:width]}"
+        candidate = base[:MAX_NAME - len(suffix)] + suffix
+        if candidate not in taken:
+            return candidate
+    raise AssertionError(f"no unique name for {entry.id}")  # pragma: no cover
+
+
+def _adopt_names(
+    store: Store,
+    owner_id: UUID,
+    entries: list[Entry],
+    *,
+    taken: set[str],
+    report: Report,
+    dry_run: bool,
+) -> dict[str, Entry]:
+    """Give every collection entry a `mem:` name, minting one where needed.
+
+    Without this the export is only ever the entries the sync itself adopted
+    off disk, and a collection of hand-written rules and notes - the shape the
+    spec actually recommends - exports nothing at all. Minting here rather
+    than in the case loop keeps the six cases untouched: an entry that leaves
+    this function with a name and no file is simply a REGENERATE.
+
+    The tag is written back so identity is stable. A name re-minted on every
+    run is a file deleted and rewritten on every run.
+    """
+    named: dict[str, Entry] = {}
+    for entry in entries:
+        name = _name_of(entry)
+        if name is None:
+            name = _mint_name(entry, taken)
+            if not dry_run:
+                try:
+                    entry = update(
+                        store, owner_id, entry.id,
+                        # update() changes only the fields it is given and
+                        # writes the same entry back. supersede() would mint a
+                        # replacement and rewrite this entry's history for what
+                        # is bookkeeping, not a change of knowledge.
+                        tags=[*entry.tags, f"{MEM_TAG_PREFIX}{name}"],
+                    )
+                except Exception as exc:  # noqa: BLE001 - reported, not swallowed
+                    # Nothing is dropped silently: an entry that cannot be
+                    # named cannot be exported, and the user is told which.
+                    report.failures.append((str(entry.id), f"could not name: {exc}"))
+                    continue
+        if name in named:
+            # Two entries carrying the same `mem:` tag - only reachable by
+            # hand-editing tags, since minting checks uniqueness. Keep the
+            # first and report the second rather than letting one silently
+            # win the file.
+            report.failures.append(
+                (name, f"entry {entry.id} shares this name with {named[name].id}")
+            )
+            continue
+        taken.add(name)
+        named[name] = entry
+    return named
+
+
 def sync(
     store: Store,
     owner_id: UUID,
@@ -233,15 +328,24 @@ def sync(
                 # other thirty-seven.
                 report.failures.append((path.stem, str(exc)))
 
-    entries = {
-        name: e
-        for e in kb.resolve(store, owner_id, slug)
-        if (name := _name_of(e)) is not None
-    }
+    # Computed here rather than off report.failures later: from this point on
+    # failures collect naming problems too, and those are not files that
+    # failed to parse.
+    unreadable = {name for name, _ in report.failures}
+
+    resolved = kb.resolve(store, owner_id, slug)
+    entries = _adopt_names(
+        store, owner_id, resolved,
+        taken=set(files) | unreadable, report=report, dry_run=dry_run,
+    )
 
     # --- classify and apply ---------------------------------------------
     now = datetime.now(timezone.utc).isoformat()
-    unreadable = {name for name, _ in report.failures}
+    # What MEMORY.md will list, kept in step as the loop runs rather than
+    # re-resolved at the end: an entry adopted or superseded during this run
+    # is already in hand here, and a second resolve would have to be capped,
+    # ordered and de-tagged all over again to say the same thing.
+    live: dict[str, Entry] = dict(entries)
     for name in sorted(set(files) | set(entries)):
         if name in unreadable:
             # Unreadable is not absent. A file we could not parse has no
@@ -285,6 +389,7 @@ def sync(
                     tags=_tags_for(mf, name),
                     origin=Origin.AGENT,
                 )
+                live[name] = new
                 # Deliberately not pinned. kb.resolve returns pinned members
                 # regardless of the collection's query, so pinning here would
                 # make the query decorative and an entry could never leave the
@@ -313,6 +418,7 @@ def sync(
                     body=mf.body,
                     summary=mf.description,
                 )
+                live[name] = new
                 marks[name] = Watermark(
                     entry_id=str(new.id),
                     body_sha=memory_file.body_sha(mf.body),
@@ -337,6 +443,9 @@ def sync(
                 # An Entry has nowhere to store the metadata keys remem does
                 # not own, so they are read back off the file being replaced.
                 # A file remem creates from scratch simply has none.
+                # An Entry has nowhere to store the metadata keys remem does
+                # not own, so they are read back off the file being replaced.
+                # A file remem creates from scratch simply has none.
                 (directory / f"{name}.md").write_text(
                     memory_file.render(
                         _as_file(entry, name, extra=None if mf is None else mf.extra)
@@ -354,17 +463,13 @@ def sync(
             if not dry_run:
                 (directory / f"{name}.md").unlink(missing_ok=True)
                 marks.pop(name, None)
+            live.pop(name, None)
 
     if not dry_run:
         directory.mkdir(parents=True, exist_ok=True)
-        # Re-read from the store rather than reusing `entries`, so the index
-        # includes anything adopted in this run.
-        live = [
-            _as_file(e, n)
-            for e in kb.resolve(store, owner_id, slug)
-            if (n := _name_of(e)) is not None
-        ]
-        index_path.write_text(memory_file.render_index(live))
+        index_path.write_text(
+            memory_file.render_index([_as_file(e, n) for n, e in live.items()])
+        )
         save_watermarks(directory, marks)
 
     return report

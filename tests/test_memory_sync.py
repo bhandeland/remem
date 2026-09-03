@@ -7,7 +7,8 @@ from remem.backends.postgres.migrate import migrate
 from remem.backends.postgres.store import PostgresStore
 from remem.domain import CollectionQuery
 from remem.services import kb, memory
-from remem.services.write import supersede
+from remem.domain import Kind, Origin
+from remem.services.write import remember, supersede
 
 pytestmark = pytest.mark.db
 
@@ -291,3 +292,73 @@ def test_a_malformed_file_is_reported_and_costs_nothing_else(
 
     assert report.adopted == 1
     assert [name for name, _ in report.failures] == ["bad"]
+
+
+def test_an_entry_with_no_mem_tag_is_exported(store, owner, tmp_path):
+    # The store-to-disk direction. Nothing puts a `mem:` tag on an entry
+    # written by hand, so an export that only knew about tagged entries would
+    # export nothing at all from a collection full of real rules and notes.
+    _designated(store, owner)
+    remember(
+        store, owner.id,
+        title="Deploys need HTTPS", body="use https\n",
+        kind=Kind.RULE, project="proj", origin=Origin.HUMAN,
+    )
+
+    report = memory.sync(store, owner.id, project="proj", directory=tmp_path)
+
+    assert report.regenerated == 1
+    assert (tmp_path / "deploys-need-https.md").read_text().endswith(
+        "use https\n"
+    )
+    assert "deploys-need-https.md" in (tmp_path / "MEMORY.md").read_text()
+
+
+def test_the_minted_name_persists_so_the_next_sync_is_a_no_op(
+    store, owner, tmp_path
+):
+    # Load-bearing: if the tag were not written back, every sync would mint a
+    # fresh name, and a name that moved is a file deleted and rewritten.
+    _designated(store, owner)
+    remember(
+        store, owner.id,
+        title="Deploys need HTTPS", body="use https\n",
+        kind=Kind.RULE, project="proj", origin=Origin.HUMAN,
+    )
+    memory.sync(store, owner.id, project="proj", directory=tmp_path)
+    before = {p.name: p.read_bytes() for p in tmp_path.iterdir() if p.is_file()}
+
+    report = memory.sync(store, owner.id, project="proj", directory=tmp_path)
+
+    assert report.unchanged == 1
+    assert report.regenerated == 0
+    assert {
+        p.name: p.read_bytes() for p in tmp_path.iterdir() if p.is_file()
+    } == before
+    tags = [
+        t
+        for e in kb.resolve(store, owner.id, "proj-memory")
+        for t in e.tags
+        if t.startswith(memory.MEM_TAG_PREFIX)
+    ]
+    assert tags == ["mem:deploys-need-https"]
+
+
+def test_two_titles_that_slugify_alike_get_two_files(store, owner, tmp_path):
+    _designated(store, owner)
+    for body in ("first\n", "second\n"):
+        remember(
+            store, owner.id,
+            title="Same Title!", body=body,
+            kind=Kind.NOTE, project="proj", origin=Origin.HUMAN,
+        )
+
+    report = memory.sync(store, owner.id, project="proj", directory=tmp_path)
+
+    assert report.regenerated == 2
+    written = sorted(
+        p.name for p in tmp_path.glob("*.md") if p.name != "MEMORY.md"
+    )
+    assert len(written) == 2
+    bodies = {(tmp_path / n).read_text().rsplit("---\n", 1)[1] for n in written}
+    assert bodies == {"first\n", "second\n"}
