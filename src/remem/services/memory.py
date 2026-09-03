@@ -377,6 +377,77 @@ def _tags_for(mf: memory_file.MemoryFile, name: str) -> list[str]:
     return tags
 
 
+@dataclass(slots=True)
+class Status:
+    project: str
+    collection: str | None
+    directory: Path | None
+    entries: int = 0
+    files: int = 0
+    #: Files whose checksum no longer matches their watermark - what the next
+    #: sync would adopt or flag.
+    stale: int = 0
+    #: Entries in both the memory collection and the project's knowledge
+    #: base. Not an error: overlapping deliberately is a legitimate choice.
+    #: Reported because MEMORY.md and the SessionStart block are both loaded
+    #: every session, and RulesExceedBudget fails silently on every harness,
+    #: so a number you can see is the cheapest guard available.
+    overlap: int = 0
+    overlap_bytes: int = 0
+    #: `<name>.remem-conflict.md` sidecars still on disk from a past sync.
+    #: Nothing ever deletes one - deliberately, because auto-deleting a
+    #: sidecar risks destroying the copy the user needs - so this is the
+    #: only place an unresolved conflict stays visible between syncs.
+    conflicts: int = 0
+
+
+def status(
+    store: Store,
+    owner_id: UUID,
+    *,
+    project: str,
+    directory: Path | None,
+    kb_slug: str | None = None,
+) -> Status:
+    slug = designation(store, owner_id, project)
+    out = Status(project=project, collection=slug, directory=directory)
+    if slug is None:
+        return out
+
+    entries = kb.resolve(store, owner_id, slug)
+    out.entries = len(entries)
+
+    if directory is not None and directory.exists():
+        marks = load_watermarks(directory)
+        for path in directory.glob("*.md"):
+            if path.name == "MEMORY.md":
+                continue
+            if path.name.endswith(CONFLICT_SUFFIX):
+                out.conflicts += 1
+                continue
+            out.files += 1
+            mark = marks.get(path.stem)
+            try:
+                mf = memory_file.parse(
+                    path.read_text(), name=path.stem, title="",
+                )
+            except (memory_file.MalformedMemoryFile, OSError):
+                out.stale += 1
+                continue
+            if mark is None or mark.body_sha != memory_file.body_sha(mf.body):
+                out.stale += 1
+
+    if kb_slug:
+        try:
+            kb_ids = {e.id for e in kb.resolve(store, owner_id, kb_slug)}
+        except kb.CollectionNotFound:
+            return out
+        shared = [e for e in entries if e.id in kb_ids]
+        out.overlap = len(shared)
+        out.overlap_bytes = sum(len(e.body.encode("utf-8")) for e in shared)
+    return out
+
+
 def _as_file(
     entry: Entry, name: str, extra: dict[str, str] | None = None
 ) -> memory_file.MemoryFile:

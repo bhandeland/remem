@@ -248,6 +248,40 @@ origin silently vanishes from search.
 marker and run on CI. Whether a chunk changed is answered by comparing
 bodies, not by a stored hash.
 
+### Claude Code memory
+
+`remem memory sync` owns `~/.claude/projects/<cwd-slug>/memory/` - Claude
+Code's file-based memory - as a generated view of a designated collection.
+Unlike opencode's `remem.js` and cursor's `remem.mdc`, this generated file
+set has a second writer that cannot be told to stop, so the sync **adopts
+before it regenerates**: anything on disk remem has not seen becomes an
+entry first.
+
+- Opt-in per project, holding a value rather than a boolean: which
+  collection. An undesignated project generates nothing, which is what
+  keeps `MEMORY.md` from double-loading against the `SessionStart` block.
+- `.remem-sync.json` is what makes "which side moved" answerable. This is
+  deliberately the opposite of `ingest`, which compares bodies and stores no
+  hash - ingest has one writer, so "differs" and "the file changed" are the
+  same statement. Here both sides write.
+- Two gates and they are the whole safety story: a file whose checksum does
+  not match its watermark is never deleted, and a file changed on both sides
+  is never overwritten. Conflicts write remem's version alongside as
+  `<name>.remem-conflict.md` and exit non-zero.
+- `memory_file.py` is pure, so its tests carry no `db` marker and run on CI.
+  `render(parse(f)) == f` byte for byte over a corpus copied from the real
+  directory is load-bearing, not cosmetic: the sync decides "unchanged" by
+  checksum, so a renderer that normalised whitespace would report a change
+  on every file forever.
+- The generated `MEMORY.md` uses an em dash between link and hook, against
+  this repo's convention, because that line's format belongs to Claude Code.
+- Not in `remem doctor`: the designation lives in the database and doctor
+  opens no connection. The overlap count lives in `remem memory status`,
+  along with a count of `.remem-conflict.md` sidecars still on disk from a
+  past sync - nothing ever deletes one automatically, since doing so risks
+  destroying the copy the user needs, so `status` is what keeps an
+  unresolved conflict from going unnoticed between syncs.
+
 ### Settings
 
 `remem config` reads and writes two files from one command, routed by key

@@ -24,6 +24,7 @@ from remem.embed import EmbedderUnavailable, load_embedder
 from remem.project import resolve_project
 from remem.services import ingest as ingest_service
 from remem.services import kb, write
+from remem.services import memory as memory_service
 from remem.services.embed import backfill
 from remem.services.search import find
 from remem.session import ensure_database, open_session
@@ -51,6 +52,9 @@ app.add_typer(handoff_app, name="handoff")
 
 config_app = typer.Typer(help="remem and agent settings.")
 app.add_typer(config_app, name="config")
+
+memory_app = typer.Typer(help="Claude Code's memory directory, from remem.")
+app.add_typer(memory_app, name="memory")
 
 
 def _default_project() -> str | None:
@@ -1462,6 +1466,128 @@ def handoff_latest(
     typer.echo(f"{entry.title}  ({entry.id})")
     typer.echo("")
     typer.echo(entry.body)
+
+
+def _memory_dir(cwd: Path) -> Path | None:
+    """The claude-code adapter's answer, or None.
+
+    Probed like every optional adapter capability (`registry.get` returns
+    the class; a broken or absent capability degrades rather than crashing
+    a command a person just typed).
+    """
+    from remem.agents import registry
+
+    try:
+        adapter = registry.get("claude-code")()
+    except registry.UnknownAgent as exc:
+        typer.echo(str(exc), err=True)
+        return None
+    fn = getattr(adapter, "memory_dir", None)
+    if fn is None:
+        return None
+    try:
+        return fn(cwd)
+    except Exception as exc:  # noqa: BLE001 - warn and degrade, never crash
+        typer.echo(f"claude-code: memory_dir failed: {exc}", err=True)
+        return None
+
+
+@memory_app.command("designate")
+def memory_designate(
+    slug: Annotated[Optional[str], typer.Argument()] = None,
+    clear: Annotated[bool, typer.Option("--none")] = False,
+    project: Annotated[Optional[str], typer.Option("--project")] = None,
+):
+    """Point this project's memory export at an existing collection."""
+    resolved = _resolve_project(project, False)
+    with _session() as s:
+        try:
+            memory_service.designate(
+                s.store, s.owner.id, resolved, None if clear else slug,
+            )
+        except kb.CollectionNotFound as exc:
+            typer.echo(
+                f"No collection {exc}. Create it with `remem kb create` "
+                f"first - designating cannot create one, because a "
+                f"collection with an empty query matches nothing forever.",
+                err=True,
+            )
+            raise typer.Exit(1)
+    typer.echo("Cleared." if clear else f"{resolved} -> {slug}")
+
+
+@memory_app.command("sync")
+def memory_sync(
+    dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
+    project: Annotated[Optional[str], typer.Option("--project")] = None,
+):
+    """Adopt what Claude wrote, then regenerate the directory from remem."""
+    resolved = _resolve_project(project, False)
+    directory = _memory_dir(Path.cwd())
+    if directory is None:
+        typer.echo("claude-code has no memory directory here.", err=True)
+        raise typer.Exit(1)
+    with _session() as s:
+        try:
+            report = memory_service.sync(
+                s.store, s.owner.id, project=resolved,
+                directory=directory, dry_run=dry_run,
+            )
+        except memory_service.NotDesignated:
+            typer.echo(
+                f"{resolved} has no memory collection. "
+                f"Run `remem memory designate <slug>` first.",
+                err=True,
+            )
+            raise typer.Exit(1)
+    prefix = "Would write: " if dry_run else ""
+    typer.echo(
+        f"{prefix}{report.adopted} adopted, {report.edited} edited, "
+        f"{report.regenerated} regenerated, {report.healed} healed, "
+        f"{report.deleted} deleted, {report.unchanged} unchanged."
+    )
+    for name in report.conflicts:
+        typer.echo(
+            f"conflict: {name} changed on both sides; remem's version is "
+            f"in {name}{memory_service.CONFLICT_SUFFIX} - yours to resolve "
+            f"and delete, nothing here does it for you.",
+            err=True,
+        )
+    for name, reason in report.failures:
+        typer.echo(f"failed: {name}: {reason}", err=True)
+    if report.conflicts or report.failures:
+        # Fail-loud: a person typed this, and a conflict is a definite
+        # statement that work was not done - not an "I could not tell".
+        raise typer.Exit(1)
+
+
+@memory_app.command("status")
+def memory_status(
+    project: Annotated[Optional[str], typer.Option("--project")] = None,
+):
+    """What is designated, what is on disk, and what overlaps the KB."""
+    resolved = _resolve_project(project, False)
+    directory = _memory_dir(Path.cwd())
+    with _session() as s:
+        st = memory_service.status(
+            s.store, s.owner.id, project=resolved,
+            directory=directory, kb_slug=resolved,
+        )
+    if st.collection is None:
+        typer.echo(f"{resolved}: not designated.")
+        return
+    typer.echo(f"{resolved}: {st.collection} -> {st.directory}")
+    typer.echo(f"  {st.entries} entries, {st.files} files, {st.stale} stale")
+    if st.conflicts:
+        typer.echo(
+            f"  {st.conflicts} conflict sidecar(s) on disk from a past "
+            f"sync - yours to resolve and delete, remem never does."
+        )
+    if st.overlap:
+        typer.echo(
+            f"  {st.overlap} entries ({st.overlap_bytes} bytes) are also in "
+            f"the '{resolved}' knowledge base, so they load twice per session"
+        )
 
 
 if __name__ == "__main__":
