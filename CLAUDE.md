@@ -351,10 +351,10 @@ deny a permission by failing. The remaining exclusions are `afterAgentThought`
 the generic `postToolUse` instead - one parser instead of three, and no gap
 opens when Cursor adds a tool type.
 
-**Injection is one of six optional adapter capabilities** -
+**Injection is one of seven optional adapter capabilities** -
 `inject(self, block, payload) -> str | None`, probed with `getattr` exactly as
-`event()`, `env_settings()`, `settings_path()`, `verify()` and `hook_state()`
-are (the full six, with the reasoning for each, are the comment block on
+`event()`, `env_settings()`, `settings_path()`, `verify()`, `hook_state()` and
+`memory_dir()` are (the full seven, with the reasoning for each, are the comment block on
 `agents/base.py`'s Protocol - keep the count there and here in step, because
 an author who learns a capability exists by accident is how the missing
 `PostToolUse` survived). Cursor needs the

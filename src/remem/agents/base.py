@@ -263,6 +263,19 @@ class AgentAdapter(Protocol):
     # check", never "ok". Same degradation contract as the rest: a
     # capability that raises warns and continues.
     #
+    #     def memory_dir(
+    #         self, cwd: Path, env: Mapping[str, str] | None = None
+    #     ) -> Path | None: ...
+    #
+    # Where this harness keeps a file-based memory directory that remem can
+    # own, given a working directory. Probed by services/memory.py; an
+    # adapter without it simply has no such directory, which is the default
+    # and not a degradation - opencode and Cursor have none. Note the
+    # argument is a path, not a project: Claude Code keys its directory on
+    # the working directory, which a worktree changes and remem's project
+    # name does not. Same degradation contract as the rest: a capability
+    # that raises warns and continues.
+    #
     # Raise `UnsupportedScope` for a scope this adapter cannot install to:
     # it is the skip signal for `services/doctor.check()`'s sweep, which is
     # what lets an adapter that only installs at one scope be found there

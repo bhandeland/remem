@@ -21,6 +21,7 @@ from remem.agents.base import (
     InstallReport,
     UnsupportedScope,
 )
+from remem.agents.claude_code import memory as cc_memory
 from remem.agents.claude_code.env_vars import CLAUDE_CODE_ENV_VARS
 from remem.agents.verify import VERIFY_PROJECT, round_trip
 from remem.domain import EventKind
@@ -348,6 +349,11 @@ class ClaudeCodeAdapter:
         the two commands can never disagree about which file they mean.
         """
         return resolve_paths(home, env).settings
+
+    def memory_dir(
+        self, cwd: Path, env: Mapping[str, str] | None = None
+    ) -> Path | None:
+        return cc_memory.memory_dir(cwd, env)
 
     def env_settings(self) -> Mapping[str, EnvVar]:
         """The environment variables `remem config` may write for this agent.
