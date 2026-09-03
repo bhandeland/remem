@@ -33,8 +33,8 @@ from remem.domain import (
 from remem.store import NotOwner
 
 ENTRY_FIELDS = [
-    "id", "kind", "title", "body", "project", "scope", "owner_id", "tags",
-    "links", "agent", "session_id", "origin", "superseded_by",
+    "id", "kind", "title", "body", "summary", "project", "scope", "owner_id",
+    "tags", "links", "agent", "session_id", "origin", "superseded_by",
     "created_at", "updated_at",
 ]
 
@@ -99,6 +99,7 @@ def _row_to_entry(row: dict) -> Entry:
         title=row["title"],
         body=row["body"],
         owner_id=row["owner_id"],
+        summary=row["summary"],
         project=row["project"],
         scope=Scope(row["scope"]),
         tags=list(row["tags"] or []),
@@ -260,16 +261,17 @@ class PostgresStore:
             cur.execute(
                 f"""
                 insert into entries (
-                  id, kind, title, body, project, scope, owner_id, tags, links,
-                  agent, session_id, origin, superseded_by
+                  id, kind, title, body, summary, project, scope, owner_id,
+                  tags, links, agent, session_id, origin, superseded_by
                 ) values (
-                  %(id)s, %(kind)s, %(title)s, %(body)s, %(project)s, %(scope)s,
-                  %(owner_id)s, %(tags)s, %(links)s, %(agent)s, %(session_id)s,
-                  %(origin)s, %(superseded_by)s
+                  %(id)s, %(kind)s, %(title)s, %(body)s, %(summary)s,
+                  %(project)s, %(scope)s, %(owner_id)s, %(tags)s, %(links)s,
+                  %(agent)s, %(session_id)s, %(origin)s, %(superseded_by)s
                 )
                 on conflict (id) do update set
                   kind = excluded.kind, title = excluded.title,
-                  body = excluded.body, project = excluded.project,
+                  body = excluded.body, summary = excluded.summary,
+                  project = excluded.project,
                   scope = excluded.scope, tags = excluded.tags,
                   links = excluded.links, agent = excluded.agent,
                   session_id = excluded.session_id, origin = excluded.origin,
@@ -283,6 +285,7 @@ class PostgresStore:
                     "kind": str(entry.kind),
                     "title": entry.title,
                     "body": entry.body,
+                    "summary": entry.summary,
                     "project": entry.project,
                     "scope": str(entry.scope),
                     "owner_id": entry.owner_id,

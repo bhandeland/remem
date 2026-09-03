@@ -88,6 +88,9 @@ class Entry:
     body: str
     owner_id: UUID
     project: str | None = None
+    #: The one-line description a Claude Code memory file carries in its
+    #: frontmatter. Nullable because every other origin has no such thing.
+    summary: str | None = None
     scope: Scope = Scope.PERSONAL
     tags: list[str] = field(default_factory=list)
     links: list[UUID] = field(default_factory=list)

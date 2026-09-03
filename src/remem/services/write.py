@@ -36,6 +36,7 @@ def remember(
     *,
     title: str,
     body: str,
+    summary: str | None = None,
     kind: Kind = Kind.NOTE,
     project: str | None = None,
     tags: list[str] | None = None,
@@ -51,6 +52,7 @@ def remember(
         body=body,
         owner_id=owner_id,
         project=project,
+        summary=summary,
         tags=list(tags or []),
         links=list(links or []),
         agent=agent,
@@ -99,6 +101,7 @@ def supersede(
     *,
     title: str,
     body: str,
+    summary: str | None = None,
 ) -> Entry:
     """Replace knowledge that stopped being true. The old entry is kept."""
     old = _require(store, owner_id, entry_id)
@@ -107,6 +110,12 @@ def supersede(
         owner_id,
         title=title,
         body=body,
+        # Carried, not defaulted to None: supersede's contract is that the
+        # replacement inherits everything the caller did not restate, which
+        # is what makes tag-based identity survive an edit. A summary silently
+        # dropped on every supersede would empty the frontmatter description
+        # of any memory file that was ever edited.
+        summary=old.summary if summary is None else summary,
         kind=old.kind,
         project=old.project,
         tags=list(old.tags),

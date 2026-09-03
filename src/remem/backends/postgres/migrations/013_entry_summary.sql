@@ -1,0 +1,11 @@
+-- A memory file carries three strings where an entry had two: the MEMORY.md
+-- link text (title), the frontmatter description, and the body. Deriving the
+-- description from the body was rejected because it would be rewritten on
+-- every export, so the file's checksum would never match its watermark and
+-- the sync would report a change on a file nobody touched.
+--
+-- Nullable and unread by anything else today. `entries.search` is a generated
+-- column over title/body/tags and is deliberately NOT extended to cover
+-- summary: the summary is a restatement of the body, so indexing it would
+-- weight the same words twice.
+alter table entries add column summary text;
