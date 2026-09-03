@@ -268,11 +268,24 @@ entry first.
   not match its watermark is never deleted, and a file changed on both sides
   is never overwritten. Conflicts write remem's version alongside as
   `<name>.remem-conflict.md` and exit non-zero.
+- Identity is the **filename stem**, recorded as a `mem:<name>` tag. An
+  entry written by hand has no such tag, so the export mints one from the
+  title and writes it back before the cases run - without that pre-pass the
+  export is only ever what the sync adopted off disk, which is silently the
+  "directory owns it, remem ingests" design the spec rejected. The
+  frontmatter `name:` is the user's field, carried through a regenerate
+  rather than rewritten; a file renamed on disk therefore mints a new entry
+  and the old name is regenerated.
+- A collection that resolves at `kb.RESOLVE_LIMIT` refuses to sync. Past the
+  cap an entry remem cannot see is indistinguishable from one that left the
+  collection, and the delete gate would pass.
 - `memory_file.py` is pure, so its tests carry no `db` marker and run on CI.
-  `render(parse(f)) == f` byte for byte over a corpus copied from the real
-  directory is load-bearing, not cosmetic: the sync decides "unchanged" by
-  checksum, so a renderer that normalised whitespace would report a change
-  on every file forever.
+  The round trip is load-bearing rather than cosmetic, but whole-file byte
+  equality is not the property - a real fixture disproved it. What the sync
+  needs is that the **body** round-trips byte for byte (the watermark hashes
+  the body alone, so frontmatter whitespace can never read as a content
+  change), that `render` is idempotent, and that no `metadata:` key parse
+  saw is ever dropped.
 - The generated `MEMORY.md` uses an em dash between link and hook, against
   this repo's convention, because that line's format belongs to Claude Code.
 - Not in `remem doctor`: the designation lives in the database and doctor

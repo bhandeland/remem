@@ -37,11 +37,38 @@ undesignated project generates nothing.
 
 ## Identity and field mapping
 
-One file, one entry, one tag: `mem:<name>`, from the frontmatter `name:` slug.
-That slug is already the file's stable id - it survives a rename of the file
-and it is what `[[wiki-links]]` resolve against. Same shape as `topic:<slug>`
-for handoffs and `src:`/`sec:` for ingest. On export the filename is derived
-from the slug, so there is one identity and no way for two to disagree.
+One file, one entry, one tag: `mem:<name>`, where `<name>` is the **filename
+stem**. Same shape as `topic:<slug>` for handoffs and `src:`/`sec:` for
+ingest. On export the filename is the name, so there is one identity and no
+way for two to disagree.
+
+Amended during implementation. This said the identity was the frontmatter
+`name:` slug, on the grounds that it survives a rename of the file. The
+implementation keys on the filename stem throughout - the directory scan, the
+watermark, and the `MEMORY.md` link all do - and the two disagree the moment a
+file's frontmatter says something its filename does not, which real files are
+free to do. So the honest statement is the one above: **a file renamed on disk
+mints a new entry, and the old name is regenerated from its entry.** Following
+a rename is not implemented and would need an identity the frontmatter field
+cannot provide anyway, since it is the user's to edit and two files may carry
+the same one. The frontmatter `name:` is still what `[[wiki-links]]` resolve
+against and is carried through a regenerate unchanged rather than rewritten
+from the stem, because remem does not own that field.
+
+### A collection entry that has never been exported
+
+The `mem:` tag exists on an entry the sync adopted off disk. An entry written
+by hand - the whole point of the recommended collection below - has none, so
+the export mints one before the cases run: a name slugified from the title
+(lowercase, non-alphanumeric runs to a single `-`, 64 characters, the entry id
+as both the fallback for an unusable title and the discriminator for a
+collision), written back with `write.update`. Persisting it is what makes
+identity stable: a name re-minted each run is a file deleted and rewritten
+each run. `write.supersede` would be wrong here - this is bookkeeping, not a
+change of knowledge, and it would rewrite the entry's history to record one.
+
+Without this, only entries the sync itself adopted are ever exported, which is
+silently the "directory owns it, remem ingests" design this spec rejected.
 
 A memory file carries three strings where `Entry` had two. The `MEMORY.md` link
 text, the frontmatter `description:` and the body are all distinct, and
@@ -157,6 +184,15 @@ Two gates, and they are the whole safety story:
 
 remem removes and rewrites only what it wrote and knows to be untouched.
 Anything else it hands back to the user.
+
+A third rule, added during implementation for the same reason as the first
+two: **a collection that resolves at `kb.RESOLVE_LIMIT` refuses to sync.**
+`kb.resolve` was written for the context block, where a cap is a display
+concern; here an entry past the cap is indistinguishable from an entry that
+left the collection, so case 6 fires, the delete gate passes (the file still
+matches its watermark) and the file goes. Refusing the run and naming the
+limit follows `ingest`'s `TooManyChunks`: paginating quietly around a cap
+would let it decide which memories exist.
 
 ## Selection, opt-in, and the budget
 

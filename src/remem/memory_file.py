@@ -37,9 +37,11 @@ class MalformedMemoryFile(Exception):
 
 @dataclass(slots=True, frozen=True)
 class MemoryFile:
-    #: The frontmatter `name:` slug. The file's identity, and what
-    #: `[[wiki-links]]` resolve against - not the filename, though the
-    #: filename is derived from it on export.
+    #: The frontmatter `name:` slug, and what `[[wiki-links]]` resolve
+    #: against. Not identity: the sync keys on the filename stem, and this
+    #: field is carried through a regenerate rather than rewritten, because
+    #: it is the user's. parse() falls back to the stem when a file has no
+    #: `name:` at all.
     name: str
     #: The MEMORY.md link text. Lives in the index, not in this file, which
     #: is why parse() takes it as an argument.
@@ -103,9 +105,13 @@ def index_lines(text: str) -> dict[str, str]:
 def parse(text: str, *, name: str, title: str) -> MemoryFile:
     """One file plus its index title. Never a file in isolation.
 
-    `name` is passed in rather than trusted from the frontmatter so the
-    caller can key on the filename when the two disagree; when frontmatter
-    carries a name it wins, since that is the identity `[[links]]` use.
+    `name` is the filename stem and that is what identity is: the sync keys
+    on it, MEMORY.md links to it, and the `mem:<name>` tag records it. The
+    frontmatter `name:` is kept on the returned MemoryFile - it is the user's
+    field and a regenerate writes it back unchanged - but it does not decide
+    which entry this file is. A file renamed on disk therefore mints a new
+    entry and the old name is regenerated from its entry; following a rename
+    would need identity that survives one, which this does not have.
     """
     if not text.startswith("---\n"):
         raise MalformedMemoryFile("no frontmatter")

@@ -186,8 +186,11 @@ def save_watermarks(directory: Path, marks: dict[str, Watermark]) -> None:
 
 
 #: Identity. One file, one entry, one tag - following handoff's `topic:` and
-#: ingest's `src:`/`sec:`. The slug survives a rename of the file itself and
-#: is what `[[wiki-links]]` resolve against.
+#: ingest's `src:`/`sec:`. The name is the **filename stem**, not the
+#: frontmatter `name:`, so a file renamed on disk mints a new entry and the
+#: old name is regenerated from its entry. Following a rename would need an
+#: identity that survives one, and the frontmatter field is not it: it is the
+#: user's to edit, and two files are free to carry the same one.
 MEM_TAG_PREFIX = "mem:"
 
 #: Written beside a memory when both sides moved, so the store's version is
