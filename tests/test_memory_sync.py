@@ -473,3 +473,30 @@ def test_two_titles_that_slugify_alike_get_two_files(store, owner, tmp_path):
     assert len(written) == 2
     bodies = {(tmp_path / n).read_text().rsplit("---\n", 1)[1] for n in written}
     assert bodies == {"first\n", "second\n"}
+
+
+def test_a_tagged_entry_with_no_file_keeps_its_name_against_a_minting_collision(
+    store, owner, tmp_path
+):
+    # The seeding-order bug: `taken` starts from the files on disk, and an
+    # entry's EXISTING `mem:` name only joins it when the loop reaches that
+    # entry. So a tagged entry whose file is absent - deleted, fresh machine,
+    # never synced - has not reserved its name yet, and an untagged entry
+    # whose title slugifies to the same string can mint it out from under
+    # them. The tagged entry is then refused, every run, permanently.
+    tagged = remember(
+        store, owner.id, title="Already tagged", body="tagged\n",
+        project="proj", tags=[f"{memory.MEM_TAG_PREFIX}foo"],
+    )
+    untagged = remember(
+        store, owner.id, title="Foo", body="untagged\n", project="proj",
+    )
+
+    # Untagged first, which is the order that triggers it.
+    named = memory._adopt_names(
+        store, owner.id, [untagged, tagged],
+        taken=set(), report=memory.Report(), dry_run=False,
+    )
+
+    assert named["foo"].id == tagged.id, "the tagged entry must keep its name"
+    assert len(named) == 2, "both entries must be exportable"

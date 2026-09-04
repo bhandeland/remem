@@ -286,6 +286,15 @@ def _adopt_names(
     The tag is written back so identity is stable. A name re-minted on every
     run is a file deleted and rewritten on every run.
     """
+    # Reserve every name an entry already holds BEFORE minting anything.
+    # Seeding `taken` from the files on disk is not enough: an entry tagged
+    # `mem:foo` whose file is absent - deleted, a fresh machine, a directory
+    # never synced - has reserved nothing yet, so an untagged entry whose
+    # title slugifies to `foo` would mint it first and the tagged entry would
+    # be refused on every subsequent run, permanently, until someone
+    # hand-edited a tag.
+    taken |= {name for entry in entries if (name := _name_of(entry)) is not None}
+
     named: dict[str, Entry] = {}
     for entry in entries:
         name = _name_of(entry)
