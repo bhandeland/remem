@@ -246,3 +246,59 @@ def test_kb_new_with_a_project_does_not_warn(env):
                             "--project", "myapp"])
     assert r.exit_code == 0
     assert r.stderr.strip() == ""
+
+
+def _summary_of(dsn, entry_id):
+    """Read the stored summary directly.
+
+    No CLI surface prints it - the summary exists to be exported into a
+    Claude Code memory file's frontmatter - so asserting through the store
+    tests what was written rather than what some formatter chose to show.
+    """
+    import psycopg
+    with psycopg.connect(dsn) as c:
+        row = c.execute(
+            "select summary from entries where id = %s", (entry_id,)
+        ).fetchone()
+    return row[0]
+
+
+def test_remember_stores_a_summary(env):
+    r = runner.invoke(app, ["remember", "Has a summary", "--body", "b",
+                            "--summary", "one line about it"])
+    assert r.exit_code == 0, r.stdout
+    assert _summary_of(env, r.stdout.strip()) == "one line about it"
+
+
+def test_rule_stores_a_summary(env):
+    r = runner.invoke(app, ["rule", "A rule with a summary", "--body", "b",
+                            "--summary", "why the rule exists"])
+    assert r.exit_code == 0, r.stdout
+    assert _summary_of(env, r.stdout.strip()) == "why the rule exists"
+
+
+def test_supersede_can_correct_a_summary(env):
+    first = runner.invoke(app, ["remember", "Original", "--body", "b",
+                                "--summary", "the old one"])
+    assert first.exit_code == 0, first.stdout
+
+    second = runner.invoke(app, ["supersede", first.stdout.strip(),
+                                 "--title", "Corrected", "--body", "b2",
+                                 "--summary", "the new one"])
+    assert second.exit_code == 0, second.stdout
+    assert _summary_of(env, second.stdout.strip()) == "the new one"
+
+
+def test_supersede_without_a_summary_carries_the_old_one(env):
+    # supersede's contract is that the replacement inherits everything the
+    # caller did not restate. Adding the flag must not turn "omitted" into
+    # "clear it" - that would silently empty the frontmatter description of
+    # any memory file whose entry was ever corrected.
+    first = runner.invoke(app, ["remember", "Original", "--body", "b",
+                                "--summary", "kept across the correction"])
+    assert first.exit_code == 0, first.stdout
+
+    second = runner.invoke(app, ["supersede", first.stdout.strip(),
+                                 "--title", "Corrected", "--body", "b2"])
+    assert second.exit_code == 0, second.stdout
+    assert _summary_of(env, second.stdout.strip()) == "kept across the correction"

@@ -193,6 +193,7 @@ def whoami():
 def remember(
     title: str,
     body: Annotated[Optional[str], typer.Option("--body")] = None,
+    summary: Annotated[Optional[str], typer.Option("--summary")] = None,
     edit: Annotated[bool, typer.Option("--edit")] = False,
     kind: Annotated[Kind, typer.Option("--kind")] = Kind.NOTE,
     project: Annotated[Optional[str], typer.Option("--project")] = None,
@@ -210,6 +211,7 @@ def remember(
     with _session() as s:
         entry = write.remember(
             s.store, s.owner.id, title=title, body=text, kind=kind,
+            summary=summary,
             project=resolved, tags=list(tag or []), origin=Origin.HUMAN,
         )
         typer.echo(entry.id)
@@ -219,6 +221,7 @@ def remember(
 def rule(
     title: str,
     body: Annotated[Optional[str], typer.Option("--body")] = None,
+    summary: Annotated[Optional[str], typer.Option("--summary")] = None,
     edit: Annotated[bool, typer.Option("--edit")] = False,
     project: Annotated[Optional[str], typer.Option("--project")] = None,
     is_global: Annotated[bool, typer.Option("--global")] = False,
@@ -235,6 +238,7 @@ def rule(
     with _session() as s:
         entry = write.remember(
             s.store, s.owner.id, title=title, body=text, kind=Kind.RULE,
+            summary=summary,
             project=resolved, tags=list(tag or []), origin=Origin.HUMAN,
         )
         typer.echo(entry.id)
@@ -447,14 +451,21 @@ def supersede(
     entry_id: str,
     title: Annotated[str, typer.Option("--title")],
     body: Annotated[Optional[str], typer.Option("--body")] = None,
+    summary: Annotated[Optional[str], typer.Option("--summary")] = None,
 ):
-    """Replace knowledge that stopped being true. The old entry is kept."""
+    """Replace knowledge that stopped being true. The old entry is kept.
+
+    Omitting --summary carries the old entry's summary onto the replacement,
+    the same way tags and project are carried. That is deliberate: making
+    "omitted" mean "clear it" would silently empty the frontmatter
+    description of any memory file whose entry was ever corrected.
+    """
     parsed = _entry_id(entry_id)
     text = _read_body(body)
     with _session() as s:
         try:
             entry = write.supersede(s.store, s.owner.id, parsed,
-                                    title=title, body=text)
+                                    title=title, body=text, summary=summary)
         except write.EntryNotFound:
             typer.echo(f"No entry {entry_id}", err=True)
             raise typer.Exit(1)
