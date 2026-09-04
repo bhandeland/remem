@@ -30,6 +30,11 @@ INDEX_SEPARATOR = " — "
 
 _INDEX_LINE = re.compile(r"^- \[(?P<title>.+?)\]\((?P<file>[^)]+)\)")
 
+#: The frontmatter keys remem itself understands and rebuilds from an entry.
+#: Everything else in the frontmatter belongs to whoever wrote the file, and
+#: is carried through rather than interpreted.
+_OWN_KEYS = frozenset({"name", "description"})
+
 
 class MalformedMemoryFile(Exception):
     """A file that does not have the frontmatter a memory file must have."""
@@ -144,7 +149,25 @@ def parse(text: str, *, name: str, title: str) -> MemoryFile:
                 extra[key] = value
         else:
             in_metadata = False
-            fields[key] = value
+            if key in _OWN_KEYS:
+                fields[key] = value
+            elif key == "type":
+                # The other dialect. Claude Code writes `type:` and its
+                # bookkeeping keys at the top level too, with no `metadata:`
+                # line anywhere - sixteen real files across two project
+                # directories, against five in the indented form. setdefault
+                # rather than assignment so that a file carrying both forms
+                # keeps the indented one, which is what render() writes and
+                # therefore what remem last agreed to.
+                fields.setdefault("metadata.type", value)
+            else:
+                # Anything else at the top level is bookkeeping remem does
+                # not own, and lands in `extra` for exactly the reason the
+                # indented keys do: dropping it destroys provenance on a
+                # file remem did not write. It comes back indented, because
+                # render() has one output shape and normalising to it is
+                # what makes the two dialects indistinguishable downstream.
+                extra[key] = value
 
     return MemoryFile(
         name=fields.get("name") or name,

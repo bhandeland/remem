@@ -84,3 +84,43 @@ def test_a_missing_watermark_file_is_an_empty_mapping(tmp_path):
 def test_a_corrupt_watermark_file_is_an_empty_mapping(tmp_path):
     (tmp_path / memory.WATERMARK_NAME).write_text("{not json")
     assert memory.load_watermarks(tmp_path) == {}
+
+
+# --- _as_file, and the type it does not carry --------------------------
+# An Entry records its type as a `type:<t>` tag, minted when the file was
+# adopted. Entries adopted before parse() understood the flat frontmatter
+# dialect have no such tag - the type was on disk the whole time, in a
+# shape parse() dropped - so rebuilding a file from the entry alone would
+# strip a `type:` the user never removed. `extra` is already read back off
+# the file being replaced for exactly this reason; `type` belongs on the
+# same footing whenever the entry has nothing to say about it.
+def _entry(tags):
+    from remem.domain import Entry, Kind, Origin, new_id
+    return Entry(
+        id=new_id(), owner_id=new_id(), title="T", body="B",
+        kind=Kind.NOTE, origin=Origin.AGENT, tags=list(tags), summary="S",
+    )
+
+
+def _source(type_):
+    from remem import memory_file
+    return memory_file.MemoryFile(
+        name="n", title="T", description="S", type=type_, body="B",
+        extra={"originSessionId": "x"},
+    )
+
+
+def test_the_entry_tag_decides_the_type_when_it_has_one():
+    mf = memory._as_file(
+        _entry(["type:project"]), "n", source=_source("reference"),
+    )
+    assert mf.type == "project"
+
+
+def test_a_type_only_on_disk_is_carried_through_a_regenerate():
+    mf = memory._as_file(_entry(["mem:n"]), "n", source=_source("reference"))
+    assert mf.type == "reference"
+
+
+def test_a_file_remem_creates_from_scratch_still_has_no_type():
+    assert memory._as_file(_entry(["mem:n"]), "n").type is None

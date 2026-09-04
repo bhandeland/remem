@@ -645,6 +645,14 @@ def _as_file(
     for tag in entry.tags:
         if tag.startswith("type:"):
             type_ = tag[len("type:"):]
+    if type_ is None and source is not None:
+        # Same footing as `extra`, and for the same reason. The tag is
+        # minted at adoption from what parse() could see, so an entry
+        # adopted while parse() still dropped the flat dialect's top-level
+        # `type:` has none - and rebuilding from the entry alone would then
+        # strip a type the user never touched. The entry wins when it has
+        # something to say; the file answers when it does not.
+        type_ = source.type
     return memory_file.MemoryFile(
         name=name if source is None else source.name,
         title=entry.title,

@@ -128,3 +128,36 @@ def test_title_from_name_is_mechanical():
 def test_body_sha_ignores_nothing_and_is_stable():
     assert memory_file.body_sha("a") == memory_file.body_sha("a")
     assert memory_file.body_sha("a") != memory_file.body_sha("a\n")
+
+
+# --- the flat frontmatter dialect -------------------------------------
+# Claude Code writes memory files in two shapes, and only one of them was
+# known when parse() was written. Sixteen real files across two project
+# directories put `type:` and their bookkeeping keys at the top level of
+# the frontmatter with no `metadata:` line at all. Read as though the
+# indented form were the only one, every such key lands in the "fields
+# remem understands" bucket, is understood by nothing, and is dropped by
+# the next render - taking the file's type and its provenance with it.
+def test_a_top_level_type_is_the_type():
+    mf = _parse_fixture(FIXTURES / "flat-frontmatter-dialect.md")
+    assert mf.type == "reference"
+
+
+def test_a_top_level_bookkeeping_key_survives_a_render():
+    mf = _parse_fixture(FIXTURES / "flat-frontmatter-dialect.md")
+    assert mf.extra.get("originSessionId") == (
+        "00000000-0000-0000-0000-000000000000"
+    )
+    assert "originSessionId:" in memory_file.render(mf)
+
+
+def test_the_two_dialects_parse_to_the_same_shape():
+    # The point of the fix: which dialect a file happens to be written in
+    # must not be observable downstream of parse().
+    flat = _parse_fixture(FIXTURES / "flat-frontmatter-dialect.md")
+    nested = memory_file.parse(
+        memory_file.render(flat), name=flat.name, title=flat.title,
+    )
+    assert (nested.type, nested.extra, nested.body) == (
+        flat.type, flat.extra, flat.body,
+    )
