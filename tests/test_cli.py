@@ -302,3 +302,46 @@ def test_supersede_without_a_summary_carries_the_old_one(env):
                                  "--title", "Corrected", "--body", "b2"])
     assert second.exit_code == 0, second.stdout
     assert _summary_of(env, second.stdout.strip()) == "kept across the correction"
+
+
+def test_search_json_carries_the_summary(env):
+    r = runner.invoke(app, ["remember", "Summarised", "--body", "long body here",
+                            "--summary", "the one-line version"])
+    assert r.exit_code == 0, r.stdout
+    s = runner.invoke(app, ["search", "Summarised", "--json"])
+    assert json.loads(s.stdout)[0]["summary"] == "the one-line version"
+
+
+def test_get_json_carries_the_summary(env):
+    runner.invoke(app, ["remember", "Gettable", "--body", "body",
+                        "--summary", "read me back"])
+    s = runner.invoke(app, ["search", "Gettable", "--json"])
+    entry_id = json.loads(s.stdout)[0]["id"]
+    g = runner.invoke(app, ["get", entry_id, "--json"])
+    assert json.loads(g.stdout)["summary"] == "read me back"
+
+
+def test_the_summary_key_is_present_and_null_when_there_is_none(env):
+    # A key that appears only sometimes makes every consumer write a
+    # membership test; nullable is the honest shape for a nullable column.
+    runner.invoke(app, ["remember", "Unsummarised", "--body", "body"])
+    s = runner.invoke(app, ["search", "Unsummarised", "--json"])
+    assert json.loads(s.stdout)[0]["summary"] is None
+
+
+def test_get_shows_the_summary_above_the_body(env):
+    runner.invoke(app, ["remember", "Printable", "--body", "the body",
+                        "--summary", "the gist"])
+    s = runner.invoke(app, ["search", "Printable", "--json"])
+    entry_id = json.loads(s.stdout)[0]["id"]
+    g = runner.invoke(app, ["get", entry_id])
+    assert "the gist" in g.stdout
+    assert g.stdout.index("the gist") < g.stdout.index("the body")
+
+
+def test_get_prints_no_summary_line_when_there_is_none(env):
+    runner.invoke(app, ["remember", "Bare", "--body", "just a body"])
+    s = runner.invoke(app, ["search", "Bare", "--json"])
+    entry_id = json.loads(s.stdout)[0]["id"]
+    g = runner.invoke(app, ["get", entry_id])
+    assert g.stdout == "# Bare\n\njust a body\n"

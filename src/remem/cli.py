@@ -119,6 +119,9 @@ def _entry_dict(entry: Entry, snippet: str | None = None) -> dict:
         "id": str(entry.id),
         "kind": str(entry.kind),
         "title": entry.title,
+        # Always present, null when unset: a key that appears only sometimes
+        # makes every consumer write a membership test.
+        "summary": entry.summary,
         "project": entry.project,
         "tags": list(entry.tags),
         "created_at": entry.created_at.isoformat() if entry.created_at else None,
@@ -405,6 +408,10 @@ def get(
         typer.echo(json.dumps(_entry_dict(entry), indent=2))
     else:
         typer.echo(f"# {entry.title}\n")
+        # Only when there is one: a blockquote holding nothing reads as a
+        # rendering bug rather than as an entry with no summary.
+        if entry.summary:
+            typer.echo(f"> {entry.summary}\n")
         typer.echo(entry.body)
 
 
