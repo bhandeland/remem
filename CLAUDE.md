@@ -264,6 +264,19 @@ entry first.
 - Opt-in per project, holding a value rather than a boolean: which
   collection. An undesignated project generates nothing, which is what
   keeps `MEMORY.md` from double-loading against the `SessionStart` block.
+- The designation also records the **working directory it was made from**
+  (migration 015), because the two halves are keyed on different things:
+  the designation on the project, the memory directory on the absolute
+  cwd. Neither derives the other - a worktree and its main checkout share
+  a project and have two memory directories - so `remem memory sync --all`
+  is only expressible because the answer is stored. `designate` therefore
+  refuses a `--project` naming anything but the current directory's
+  project: recording a working directory that has nothing to do with the
+  designation would surface much later, as a sync writing to the wrong
+  place. Rows written before 015 read back as `None` and `--all` skips
+  them by name rather than guessing; re-designating is the fix, and the
+  skip exits non-zero because a directory that was not synced is a
+  definite statement, not an "I could not tell".
 - `.remem-sync.json` is what makes "which side moved" answerable. This is
   deliberately the opposite of `ingest`, which compares bodies and stores no
   hash - ingest has one writer, so "differs" and "the file changed" are the

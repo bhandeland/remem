@@ -204,3 +204,76 @@ def test_status_reports_the_designation_and_the_overlap(env):
     result = runner.invoke(app, ["memory", "status"], env=env)
     assert result.exit_code == 0
     assert "not designated" in result.stdout
+
+
+# --- sync --all ---------------------------------------------------------
+def test_designate_records_the_working_directory(env):
+    conn = psycopg.connect(env["REMEM_DSN"])
+    store = PostgresStore(conn)
+    owner = store.ensure_principal("brandon")
+    kb.create(
+        store, owner.id, slug="proj-memory", title="Memory",
+        project=PROJECT, query=CollectionQuery(project=PROJECT),
+    )
+    conn.commit()
+    conn.close()
+
+    result = runner.invoke(app, ["memory", "designate", "proj-memory"], env=env)
+    assert result.exit_code == 0, result.output
+
+    conn = psycopg.connect(env["REMEM_DSN"])
+    store = PostgresStore(conn)
+    owner = store.ensure_principal("brandon")
+    [d] = memory.designations(store, owner.id)
+    conn.close()
+    assert d.working_dir == str(Path.cwd().resolve())
+
+
+def test_designate_refuses_a_project_that_is_not_this_directory(env):
+    # The designation records this cwd, so designating some other project
+    # from here would record a directory that has nothing to do with it -
+    # and the mismatch would surface much later, as a sync writing to the
+    # wrong place.
+    result = runner.invoke(
+        app,
+        ["memory", "designate", "proj-memory", "--project", "somewhere-else"],
+        env=env,
+    )
+    assert result.exit_code == 1
+    assert "Refusing" in result.output
+
+
+def test_sync_all_and_project_are_mutually_exclusive(env):
+    result = runner.invoke(
+        app, ["memory", "sync", "--all", "--project", "x"], env=env,
+    )
+    assert result.exit_code != 0
+
+
+def test_sync_all_with_nothing_designated_says_so_and_exits_zero(env):
+    result = runner.invoke(app, ["memory", "sync", "--all"], env=env)
+    assert result.exit_code == 0, result.output
+    assert "No project has a memory collection" in result.output
+
+
+def test_sync_all_reports_one_line_per_project(env, memory_dir_with_one_stray):
+    # Designated by the fixture through the service, which records no
+    # working directory - exactly the pre-migration-015 row shape - so this
+    # also pins that such a row is skipped loudly rather than synced.
+    result = runner.invoke(app, ["memory", "sync", "--all"], env=env)
+    assert result.exit_code == 1
+    assert "skipped" in result.output
+    assert "designate" in result.output
+
+
+def test_sync_all_syncs_a_designation_that_has_a_directory(
+    env, memory_dir_with_one_stray
+):
+    # Re-designate through the CLI so the working directory is recorded.
+    assert runner.invoke(
+        app, ["memory", "designate", "proj-memory"], env=env,
+    ).exit_code == 0
+    result = runner.invoke(app, ["memory", "sync", "--all"], env=env)
+    assert result.exit_code == 0, result.output
+    assert "1 adopted" in result.output
+    assert PROJECT in result.output

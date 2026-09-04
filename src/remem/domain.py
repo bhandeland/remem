@@ -135,6 +135,25 @@ class CollectionQuery:
         return self.to_dict() == other.to_dict()
 
 
+@dataclass(slots=True, frozen=True)
+class MemoryDesignation:
+    """A project's memory export: which collection, and from where.
+
+    `working_dir` is the directory the designation was made from, and it is
+    here because the two halves are keyed on different things - the
+    designation on the project, Claude Code's memory directory on the
+    absolute working directory. A worktree and its main checkout share a
+    project and have two separate memory directories, so neither key
+    derives the other and the answer has to be recorded rather than
+    computed. None for a designation made before it was recorded: an
+    honest gap, not a default.
+    """
+
+    project: str
+    collection: str
+    working_dir: str | None = None
+
+
 @dataclass(slots=True)
 class Collection:
     id: UUID

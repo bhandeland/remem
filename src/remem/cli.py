@@ -1519,10 +1519,26 @@ def memory_designate(
             "pass a collection slug, or --none to clear the designation"
         )
     resolved = _resolve_project(project, False)
+    if not clear and resolved != _default_project():
+        # The designation now records this directory, and `sync --all` syncs
+        # the memory directory that *this* cwd maps to. Designating some
+        # other project from here would record a working directory that has
+        # nothing to do with it, and the mismatch would only surface later,
+        # as a sync writing to the wrong place. Fail here instead.
+        typer.echo(
+            f"Refusing: --project names '{resolved}' but this directory is "
+            f"'{_default_project()}'. The designation records the working "
+            f"directory it was made from, because Claude Code's memory "
+            f"directory is keyed on it - so designate from the project's "
+            f"own directory.",
+            err=True,
+        )
+        raise typer.Exit(1)
     with _session() as s:
         try:
             memory_service.designate(
                 s.store, s.owner.id, resolved, None if clear else slug,
+                working_dir=None if clear else str(Path.cwd().resolve()),
             )
         except memory_service.NoProject:
             typer.echo(
@@ -1543,12 +1559,68 @@ def memory_designate(
     typer.echo("Cleared." if clear else f"{resolved} -> {slug}")
 
 
+def _memory_sync_all(dry_run: bool) -> None:
+    """Every designated project, one line each.
+
+    Prints a line per project rather than a total, because the failure this
+    command exists to make visible is one project quietly not syncing - and
+    a total of "40 unchanged" hides that as well as a silent skip would.
+    """
+    with _session() as s:
+        outcomes = memory_service.sync_all(
+            s.store, s.owner.id, resolve_directory=_memory_dir,
+            dry_run=dry_run,
+        )
+    if not outcomes:
+        typer.echo(
+            "No project has a memory collection. "
+            "Run `remem memory designate <slug>` in one first."
+        )
+        return
+    width = max(len(o.project) for o in outcomes)
+    problems = 0
+    for o in outcomes:
+        if o.skipped is not None:
+            problems += 1
+            typer.echo(f"{o.project:<{width}}  skipped: {o.skipped}", err=True)
+            continue
+        r = o.report
+        typer.echo(
+            f"{o.project:<{width}}  {r.adopted} adopted, {r.edited} edited, "
+            f"{r.regenerated} regenerated, {r.healed} healed, "
+            f"{r.deleted} deleted, {r.unchanged} unchanged"
+        )
+        for name in r.conflicts:
+            problems += 1
+            typer.echo(
+                f"{o.project:<{width}}  conflict: {name} changed on both "
+                f"sides; see {o.directory}",
+                err=True,
+            )
+        for name, reason in r.failures:
+            problems += 1
+            typer.echo(
+                f"{o.project:<{width}}  failed: {name}: {reason}", err=True,
+            )
+    if problems:
+        # Same fail-loud contract as a single sync, and for the same reason:
+        # a person typed this, and a skip is a definite statement that a
+        # directory was not synced - not an "I could not tell".
+        raise typer.Exit(1)
+
+
 @memory_app.command("sync")
 def memory_sync(
     dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
     project: Annotated[Optional[str], typer.Option("--project")] = None,
+    every: Annotated[bool, typer.Option("--all")] = False,
 ):
     """Adopt what Claude wrote, then regenerate the directory from remem."""
+    if every:
+        if project is not None:
+            raise typer.BadParameter("pass --project or --all, not both")
+        _memory_sync_all(dry_run)
+        return
     resolved = _resolve_project(project, False)
     directory = _memory_dir(Path.cwd())
     if directory is None:

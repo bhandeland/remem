@@ -500,3 +500,79 @@ def test_a_tagged_entry_with_no_file_keeps_its_name_against_a_minting_collision(
 
     assert named["foo"].id == tagged.id, "the tagged entry must keep its name"
     assert len(named) == 2, "both entries must be exportable"
+
+
+# --- sync --all ---------------------------------------------------------
+# One invocation for every designated project. The loop lives here rather
+# than in the frontend because deciding *which* designations are syncable
+# is policy: a row with no recorded working directory, a directory that has
+# since been deleted, and a collection that was dropped out from under a
+# designation are three different answers, and every frontend has to give
+# the same ones.
+def _dir_for(cwd):
+    return cwd / "memory"
+
+
+def test_sync_all_syncs_every_designation_that_records_a_directory(
+    store, owner, tmp_path
+):
+    for p in ("a", "b"):
+        _designated(store, owner, project=p, slug=f"{p}-memory")
+        memory.designate(
+            store, owner.id, p, f"{p}-memory", working_dir=str(tmp_path / p),
+        )
+        _write_file(tmp_path / p / "memory", f"{p}-note", "d", "body\n")
+
+    out = memory.sync_all(store, owner.id, resolve_directory=_dir_for)
+
+    assert {o.project for o in out} == {"a", "b"}
+    assert all(o.skipped is None for o in out)
+    assert [o.report.adopted for o in out] == [1, 1]
+    # Adopted into the right project's collection, not pooled: the whole
+    # point of walking designations is that each has its own directory.
+    assert (tmp_path / "a" / "memory" / "a-note.md").exists()
+    assert (tmp_path / "b" / "memory" / "b-note.md").exists()
+
+
+def test_sync_all_skips_a_designation_with_no_recorded_directory(store, owner):
+    _designated(store, owner, project="a", slug="a-memory")
+    [out] = memory.sync_all(store, owner.id, resolve_directory=_dir_for)
+    assert out.report is None
+    assert out.skipped is not None
+    # Names the fix, because the fix is not obvious: re-designating is what
+    # records the directory, and nothing else does.
+    assert "designate" in out.skipped
+
+
+def test_sync_all_reports_a_working_directory_that_is_gone(
+    store, owner, tmp_path
+):
+    _designated(store, owner, project="a", slug="a-memory")
+    memory.designate(
+        store, owner.id, "a", "a-memory", working_dir=str(tmp_path / "gone"),
+    )
+    [out] = memory.sync_all(store, owner.id, resolve_directory=_dir_for)
+    assert out.report is None
+    assert "gone" in out.skipped or "exist" in out.skipped
+
+
+def test_one_project_failing_does_not_stop_the_others(
+    store, owner, tmp_path, conn
+):
+    for p in ("a", "b"):
+        _designated(store, owner, project=p, slug=f"{p}-memory")
+        memory.designate(
+            store, owner.id, p, f"{p}-memory", working_dir=str(tmp_path / p),
+        )
+        _write_file(tmp_path / p / "memory", f"{p}-note", "d", "body\n")
+    # A collection dropped out from under its designation - migration 014
+    # deliberately has no foreign key, so this is a state that really occurs.
+    with conn.cursor() as cur:
+        cur.execute("delete from collections where slug = 'a-memory'")
+
+    out = {o.project: o for o in memory.sync_all(
+        store, owner.id, resolve_directory=_dir_for,
+    )}
+
+    assert out["a"].report is None and out["a"].skipped is not None
+    assert out["b"].report is not None and out["b"].report.adopted == 1

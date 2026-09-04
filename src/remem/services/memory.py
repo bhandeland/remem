@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import StrEnum
@@ -21,7 +22,7 @@ from pathlib import Path
 from uuid import UUID
 
 from remem import memory_file
-from remem.domain import Entry, Kind, Origin
+from remem.domain import Entry, Kind, MemoryDesignation, Origin
 from remem.services import kb
 from remem.services.write import remember, supersede, update
 from remem.store import Store
@@ -59,7 +60,8 @@ class CollectionTooLarge(Exception):
 
 
 def designate(
-    store: Store, owner_id: UUID, project: str | None, slug: str | None
+    store: Store, owner_id: UUID, project: str | None, slug: str | None,
+    working_dir: str | None = None,
 ) -> None:
     """Point a project's memory export at a collection, or clear it.
 
@@ -73,11 +75,21 @@ def designate(
         raise NoProject()
     if slug is not None:
         kb.get(store, owner_id, slug)  # raises CollectionNotFound
-    store.set_memory_collection(owner_id, project, slug)
+    store.set_memory_collection(owner_id, project, slug, working_dir)
 
 
 def designation(store: Store, owner_id: UUID, project: str) -> str | None:
     return store.memory_collection(owner_id, project)
+
+
+def designations(store: Store, owner_id: UUID) -> list[MemoryDesignation]:
+    """Every project this owner has designated, with where it was made from.
+
+    The list `sync --all` walks. It is the store's answer verbatim: which
+    of these can actually be synced is a policy question, and it is decided
+    in `sync_all` rather than here or in a frontend.
+    """
+    return store.memory_designations(owner_id)
 
 
 #: Dot-prefixed so Claude Code does not index it as a memory.
@@ -327,6 +339,85 @@ def _adopt_names(
         taken.add(name)
         named[name] = entry
     return named
+
+
+@dataclass(slots=True)
+class AllOutcome:
+    """What `sync_all` did about one designation.
+
+    Exactly one of `report` and `skipped` is set. A skip is not a failure of
+    the sync - it is remem declining to guess which directory a project
+    means, which is the only honest answer when the designation predates the
+    recorded working directory or that directory has since gone.
+    """
+
+    project: str
+    collection: str
+    directory: Path | None = None
+    report: Report | None = None
+    skipped: str | None = None
+
+
+def sync_all(
+    store: Store,
+    owner_id: UUID,
+    *,
+    resolve_directory: Callable[[Path], Path | None],
+    dry_run: bool = False,
+) -> list[AllOutcome]:
+    """Sync every designated project, one outcome each.
+
+    `resolve_directory` is the adapter capability that turns a working
+    directory into a memory directory - passed in rather than imported,
+    the same way `sync` takes the directory itself, because which harness
+    owns a memory directory is not something this service decides.
+
+    Collects rather than aborts, for the same reason the file loop inside
+    `sync` does: one project whose collection was deleted must not cost the
+    other seven their sync. Every skip carries the reason, because a silent
+    short list is indistinguishable from having nothing to do.
+    """
+    out: list[AllOutcome] = []
+    for d in designations(store, owner_id):
+        if d.working_dir is None:
+            out.append(AllOutcome(
+                d.project, d.collection,
+                skipped=(
+                    "no working directory recorded - re-run `remem memory "
+                    "designate` from the project's directory"
+                ),
+            ))
+            continue
+        cwd = Path(d.working_dir)
+        if not cwd.is_dir():
+            out.append(AllOutcome(
+                d.project, d.collection,
+                skipped=f"{cwd} no longer exists",
+            ))
+            continue
+        directory = resolve_directory(cwd)
+        if directory is None:
+            out.append(AllOutcome(
+                d.project, d.collection,
+                skipped=f"no memory directory for {cwd}",
+            ))
+            continue
+        try:
+            report = sync(
+                store, owner_id, project=d.project, directory=directory,
+                dry_run=dry_run,
+            )
+        except (NotDesignated, CollectionTooLarge, kb.CollectionNotFound,
+                OSError) as exc:
+            out.append(AllOutcome(
+                d.project, d.collection, directory=directory,
+                skipped=f"{type(exc).__name__}: {exc}",
+            ))
+            continue
+        out.append(AllOutcome(
+            d.project, d.collection, directory=directory, report=report,
+        ))
+    return out
 
 
 def sync(

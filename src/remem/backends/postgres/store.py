@@ -22,6 +22,7 @@ from remem.domain import (
     JobStatus,
     Kind,
     Match,
+    MemoryDesignation,
     Origin,
     Principal,
     PrincipalKind,
@@ -672,7 +673,8 @@ class PostgresStore:
         return bool(row["enabled"]) if row else False
 
     def set_memory_collection(
-        self, owner_id: UUID, project: str, slug: str | None
+        self, owner_id: UUID, project: str, slug: str | None,
+        working_dir: str | None = None,
     ) -> None:
         with self._cur() as cur:
             if slug is None:
@@ -684,14 +686,33 @@ class PostgresStore:
                 return
             cur.execute(
                 """
-                insert into memory_settings (owner_id, project, collection_slug)
-                values (%s, %s, %s)
+                insert into memory_settings
+                    (owner_id, project, collection_slug, working_dir)
+                values (%s, %s, %s, %s)
                 on conflict (owner_id, project)
                   do update set collection_slug = excluded.collection_slug,
+                                working_dir = excluded.working_dir,
                                 updated_at = clock_timestamp()
                 """,
-                (owner_id, project, slug),
+                (owner_id, project, slug, working_dir),
             )
+
+    def memory_designations(self, owner_id: UUID) -> list[MemoryDesignation]:
+        with self._cur() as cur:
+            cur.execute(
+                "select project, collection_slug, working_dir "
+                "from memory_settings where owner_id = %s order by project",
+                (owner_id,),
+            )
+            rows = cur.fetchall()
+        return [
+            MemoryDesignation(
+                project=r["project"],
+                collection=r["collection_slug"],
+                working_dir=r["working_dir"],
+            )
+            for r in rows
+        ]
 
     def memory_collection(self, owner_id: UUID, project: str) -> str | None:
         with self._cur() as cur:

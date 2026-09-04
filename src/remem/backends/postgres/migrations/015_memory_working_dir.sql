@@ -1,0 +1,14 @@
+-- Where a designation was made from.
+--
+-- The designation is keyed on the *project*; Claude Code's memory directory
+-- is keyed on the absolute *working directory*, and neither is derivable
+-- from the other (a worktree and its main checkout share a project and have
+-- two different memory directories). Without this column `remem memory sync`
+-- could only ever be run from the right directory by hand, one project at a
+-- time, and `sync --all` was not expressible at all.
+--
+-- Nullable, and deliberately not backfilled: a row written before this
+-- migration has no honest answer, and guessing one would point a sync at a
+-- directory nobody chose. `sync --all` reports those rows and skips them.
+-- Re-running `remem memory designate` from the right directory is the fix.
+alter table memory_settings add column working_dir text;

@@ -16,6 +16,7 @@ from remem.domain import (
     HarnessStats,
     Hit,
     JobStatus,
+    MemoryDesignation,
     Principal,
     Query,
     SessionRef,
@@ -88,9 +89,14 @@ class Store(Protocol):
 
     # memory export
     def set_memory_collection(
-        self, owner_id: UUID, project: str, slug: str | None
+        self, owner_id: UUID, project: str, slug: str | None,
+        working_dir: str | None = None,
     ) -> None: ...
     def memory_collection(self, owner_id: UUID, project: str) -> str | None: ...
+    #: Every designation this owner has, for `sync --all`. Returns the
+    #: recorded working directory too, which is the only thing that makes
+    #: syncing a project other than the current one possible at all.
+    def memory_designations(self, owner_id: UUID) -> list[MemoryDesignation]: ...
 
     # events
     def put_event(self, event: Event) -> Event: ...
