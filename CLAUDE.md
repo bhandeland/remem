@@ -39,8 +39,12 @@ domain:     domain.py (pure dataclasses/enums, no I/O)
   you find yourself adding a policy branch in `cli.py`, it belongs in `services/`.
 - **`store.py` is the portability seam** - a `Protocol`, with Postgres as the only
   implementation. Ownership is enforced *inside* the store (`NotOwner`), not by callers.
-- **`session.open_session()` is the only way to reach the database.** It connects, runs
-  migrations, ensures the principal, and hands back a `Session`. Nothing outside
+- **`session.open_session()` is the only way to reach the database.** It connects,
+  ensures the principal, and hands back a `Session`. It does **not** run migrations -
+  `remem db up` is the only thing that applies them, and `remem db status` names what is
+  pending. A schema behind the code therefore presents as a raw `UndefinedTable` from an
+  ordinary command rather than as anything self-healing, so check `db status` before
+  concluding a new feature is broken. Nothing outside
   `session.py`/`backends/` should import psycopg. `autocommit=True` is for long-running
   work that records its own progress (`remem events process`) - in a single transaction a failed
   statement poisons the connection and the final COMMIT becomes a ROLLBACK.

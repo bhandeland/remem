@@ -10,7 +10,6 @@ from urllib.parse import urlparse, urlunparse
 import psycopg
 from psycopg import sql
 
-from remem.backends.postgres.migrate import migrate
 from remem.backends.postgres.store import PostgresStore
 from remem.config import Config, load
 from remem.domain import Principal
