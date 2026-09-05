@@ -13,7 +13,7 @@ question, less directly.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from uuid import UUID
@@ -96,6 +96,11 @@ class Report:
     unchanged: int = 0
     swept: int = 0
     failures: list[tuple[Path, str]] = field(default_factory=list)
+    #: (new path, existing src path, live chunks under it) - files that came
+    #: in entirely new while an anchor with the same filename was already
+    #: live under another src: tag. See `find_twin`. Advisory: the CLI
+    #: prints them and exits 0, the refresh records them in its run row.
+    twins: list[tuple[str, str, int]] = field(default_factory=list)
 
     def merge(self, other: Report) -> None:
         self.created += other.created
@@ -103,6 +108,7 @@ class Report:
         self.unchanged += other.unchanged
         self.swept += other.swept
         self.failures.extend(other.failures)
+        self.twins.extend(other.twins)
 
 
 def src_tag(path: Path) -> str:
@@ -152,6 +158,36 @@ def _sec_of(entry: Entry) -> str:
     return ""
 
 
+def _src_of(entry: Entry) -> str:
+    """An entry's `src:` path, or "" when it has none."""
+    for tag in entry.tags:
+        if tag.startswith("src:"):
+            return tag[len("src:"):]
+    return ""
+
+
+def find_twin(path: Path, anchors: Iterable[Entry]) -> tuple[str, Entry] | None:
+    """An anchor whose src: path has the same filename as `path`, under a
+    different path - or None.
+
+    Same final component, not same stem: `a.md` and `a.txt` are two files.
+    The file's own src: path is excluded because the caller only asks on
+    the entirely-new branch, where it cannot be live - and if it somehow
+    were, "you are your own twin" is not a useful warning.
+
+    A moved file and a document ingested twice under two identities look
+    identical from here, and the user knows which. So this returns a
+    question, and nothing acts on the answer automatically.
+    """
+    own = Path(path).as_posix()
+    name = PurePosixPath(own).name
+    for anchor in anchors:
+        src = _src_of(anchor)
+        if src and src != own and PurePosixPath(src).name == name:
+            return src, anchor
+    return None
+
+
 def ingest_file(
     store: Store,
     owner_id: UUID,
@@ -186,6 +222,20 @@ def ingest_file(
     report = Report()
     seen: set[str] = set()
     anchor_id = None
+
+    if not existing and project is not None:
+        # Entirely new to remem under this identity. That is what a first
+        # ingest looks like, and also what a second identity for a document
+        # already here looks like - a moved file, or an absolute path once
+        # and a relative one now. The two print identical counts, so this is
+        # the one moment the difference can be pointed at. Read-only, so it
+        # runs on a dry run too. Skipped without a project: anchors are
+        # keyed on one, and a --global ingest has none.
+        twin = find_twin(path, store.anchors(owner_id, project))
+        if twin is not None:
+            src, _ = twin
+            live = len(_live_chunks(store, owner_id, Path(src)))
+            report.twins.append((path.as_posix(), src, live))
 
     for chunk in chunks:
         seen.add(chunk.slug)
