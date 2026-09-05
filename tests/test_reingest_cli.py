@@ -7,6 +7,8 @@ automatic half: what a session start runs with nobody watching.
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from typer.testing import CliRunner
 
@@ -132,9 +134,6 @@ def test_run_exits_zero_with_the_database_down(env, repo, monkeypatch):
 
     assert result.exit_code == 0
     assert result.stdout == ""
-
-
-import json
 
 
 def test_status_shows_the_last_run_after_a_run(env, repo):

@@ -7,11 +7,14 @@ statement - the process died - and must read back that way.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from remem.backends.postgres.migrate import migrate
 from remem.backends.postgres.store import PostgresStore
-from remem.domain import IngestTrigger
+from remem.domain import IngestTrigger, Kind, Origin
+from remem.services import ingest, write
 from remem.store import NotOwner
 
 pytestmark = pytest.mark.db
@@ -95,12 +98,6 @@ def test_finishing_someone_elses_row_raises_not_owner(store, owner, other):
             failures=[], twins=[], embed_error=None,
         )
     assert store.latest_ingest_run(other.id, "proj").finished_at is None
-
-
-from pathlib import Path
-
-from remem.domain import Kind, Origin
-from remem.services import ingest, write
 
 
 def _ingest(store, owner, tmp_path, rel, project="proj", archive=False):

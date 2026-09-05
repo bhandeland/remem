@@ -113,6 +113,40 @@ def test_the_twin_check_never_sees_another_owners_chunks(store, owner, other, tm
 
 
 @pytest.mark.db
+def test_a_twin_at_the_chunk_limit_does_not_fail_the_new_files_ingest(
+    store, owner, tmp_path, monkeypatch
+):
+    """`_live_chunks` is called twice per new-file check: once for the
+    incoming path's own existing chunks, once for the twin's live count.
+    A TooManyChunks from the SECOND call is about the twin's file, not the
+    one being ingested - an advisory check must not be able to fail the
+    operation it decorates, so the new file still ingests and the twin is
+    still reported, just without a precise count."""
+    _write(tmp_path, "notes/docs/a.md")
+    _write(tmp_path, "docs/a.md")
+    ingest.ingest_file(store, owner.id, Path("notes/docs/a.md"),
+                       project="proj", root=tmp_path)
+
+    calls = 0
+    real = ingest._live_chunks
+
+    def flaky(store, owner_id, path):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise ingest.TooManyChunks("twin is at the limit")
+        return real(store, owner_id, path)
+
+    monkeypatch.setattr(ingest, "_live_chunks", flaky)
+
+    report = ingest.ingest_file(store, owner.id, Path("docs/a.md"),
+                                project="proj", root=tmp_path)
+
+    assert report.created == 2
+    assert report.twins == [("docs/a.md", "notes/docs/a.md", ingest.MAX_CHUNKS_PER_FILE)]
+
+
+@pytest.mark.db
 def test_a_dry_run_still_reports_the_twin(store, owner, tmp_path):
     _write(tmp_path, "notes/docs/a.md")
     _write(tmp_path, "docs/a.md")

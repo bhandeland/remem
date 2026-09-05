@@ -278,7 +278,17 @@ def ingest_file(
         twin = find_twin(path, store.anchors(owner_id, project))
         if twin is not None:
             src, _ = twin
-            live = len(_live_chunks(store, owner_id, Path(src)))
+            try:
+                live = len(_live_chunks(store, owner_id, Path(src)))
+            except TooManyChunks:
+                # An advisory check must not be able to fail the operation
+                # it decorates - this count is for the twin's file, not the
+                # new one being ingested, and letting it propagate would
+                # attribute the failure to the wrong file and skip ingesting
+                # it entirely. The twin's file is at or over the limit by
+                # definition of the exception it just raised, so that count
+                # is still an honest (if imprecise) thing to report.
+                live = MAX_CHUNKS_PER_FILE
             report.twins.append((path.as_posix(), src, live))
 
     for chunk in chunks:
@@ -511,6 +521,12 @@ def refresh(
     guard. The reason is kept in the row rather than lost to a debug
     channel nobody reads. A path that vanished lands in `report.failures`
     and an absent embedder in `embed_error`; neither raises.
+
+    The "the reason is kept" promise above holds only when the caller runs
+    autocommit, as `_reingest_once` does: the `except BaseException` below
+    writes `finish_ingest_run` and re-raises, and a caller inside an open
+    transaction would have that write rolled back along with everything
+    else when the exception propagates.
     """
     result = RefreshResult()
     designated = store.ingest_designations(owner_id, project)

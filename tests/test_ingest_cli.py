@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import subprocess
+
 import pytest
 from typer.testing import CliRunner
 
@@ -78,9 +80,6 @@ def test_a_failure_is_named_and_exits_non_zero(env, docs):
     # Failures go to stderr; stdout carries the counts and nothing else.
     assert "bad.md" in result.stderr
     assert "2 new" in result.stdout  # anchor + one section from good.md
-
-
-import subprocess
 
 
 @pytest.fixture

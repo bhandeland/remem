@@ -370,13 +370,16 @@ not checked" rather than letting silence pass for "all present". A project
 with no designation at all still shows its latest run - a plain `remem
 ingest` writes a row too - as the not-designated sentence plus the run line
 and no disk-check line, since nothing was designated to check.
-`remem record status` carries one advisory line per unhealthy project.
+`remem record status` carries one advisory line per unhealthy **designated**
+project - an undesignated project's manual run shows in `reingest status` but
+never raises one.
 
 Inside a repository, `remem ingest` identifies a chunk by its path relative
 to the working tree's top level (`project.toplevel`, not `repo_root`, which
 would resolve a worktree to the main checkout), so a subdirectory run or an
 absolute path produces the same `src:` tag the refresh does. A path outside
-the repository is refused. When a file comes in entirely new and a live
+the repository is refused. Outside any repository, identity stays the path
+as typed. When a file comes in entirely new and a live
 anchor with the same filename exists under another `src:` path,
 `Report.twins` names it: printed to stderr with exit 0 by the CLI, recorded
 in the run row by the refresh. Nothing supersedes a twin automatically - a
