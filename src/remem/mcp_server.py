@@ -72,18 +72,31 @@ def remember_tool(
     kind: "note" (something learned), "doc" (reference material), or
     "rule" (a convention that must be followed - these are always injected
     into future sessions).
+
+    summary: REQUIRED for kind "rule", ignored-if-absent for everything
+    else. One line stating the rule itself, because the context block
+    injected into every session renders this and not the body. Put the
+    case for the rule - the incident, the reasoning - in body, where it
+    stays one recall away.
     """
     try:
         parsed_kind = Kind(kind)
     except ValueError:
         return {"error": _invalid_kind_message(kind)}
     with open_session() as s:
-        entry = write.remember(
-            s.store, s.owner.id, title=title, body=body, summary=summary,
-            kind=parsed_kind, project=project or _default_project(),
-            tags=list(tags or []), agent=AGENT_NAME,
-            session_id=_session_id(), origin=Origin.AGENT,
-        )
+        try:
+            entry = write.remember(
+                s.store, s.owner.id, title=title, body=body, summary=summary,
+                kind=parsed_kind, project=project or _default_project(),
+                tags=list(tags or []), agent=AGENT_NAME,
+                session_id=_session_id(), origin=Origin.AGENT,
+            )
+        except write.RuleNeedsSummary:
+            # An error dict, not a raise: a raise reaches the model as a
+            # stack trace, and this is a correctable mistake it can retry.
+            return {"error": "a rule needs a summary - one line stating the "
+                             "rule, which is what every session's context "
+                             "block renders instead of the body"}
         return {"id": str(entry.id), "title": entry.title}
 
 
