@@ -148,7 +148,36 @@ class RulesExceedBudget(Exception):
 def _render_entry(entry: Entry) -> str:
     tags = ", ".join(entry.tags)
     meta = f"_id: {entry.id}_" + (f" _tags: {tags}_" if tags else "")
-    return f"### {entry.title}\n\n{entry.body}\n\n{meta}\n"
+    return f"### {entry.title}\n\n{_content(entry)}{meta}\n"
+
+
+def _content(entry: Entry) -> str:
+    """What an entry contributes to the block, above its id line.
+
+    A rule contributes its SUMMARY, not its body. Rule bodies here are
+    essays - the incident that produced the rule, the reasoning, the
+    lesson - and every session was paying for case history that nothing
+    reads unless someone asks why. The body is one `recall` away, and the
+    id line above is how to reach it.
+
+    A rule with no summary contributes nothing but its title. That is the
+    deliberate floor rather than a fallback to the body: the rules written
+    before the summary requirement must keep rendering, and rendering
+    their bodies is the failure this change exists to fix. Titles here are
+    already written as directives ("Run remem ingest from the repository
+    root, never a subdirectory"), so a title alone still instructs.
+
+    Deriving a short form from the body was measured and rejected: the
+    first paragraph of a rule is the incident, not the instruction.
+
+    Every other kind renders its body unchanged. Notes and docs are not
+    injected into every session, so their cost was never the problem.
+    """
+    if entry.kind is not Kind.RULE:
+        return f"{entry.body}\n\n"
+    if entry.summary:
+        return f"{entry.summary}\n\n"
+    return ""
 
 
 def render(collection: Collection, entries: list[Entry], max_chars: int) -> str:

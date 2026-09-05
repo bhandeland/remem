@@ -11,9 +11,9 @@ def collection(**kw):
                       title=kw.pop("title", "My KB"), owner_id=OWNER, **kw)
 
 
-def entry(title, body, kind=Kind.NOTE, tags=None):
+def entry(title, body, kind=Kind.NOTE, tags=None, summary=None):
     return Entry(id=new_id(), kind=kind, title=title, body=body,
-                 owner_id=OWNER, tags=tags or [])
+                 owner_id=OWNER, tags=tags or [], summary=summary)
 
 
 def test_renders_the_collection_title_and_description():
@@ -93,6 +93,55 @@ def test_total_output_never_exceeds_the_budget():
     for budget in (400, 600, 800, 1500):
         out = render(collection(slug="my-kb"), entries, max_chars=budget)
         assert len(out) <= budget, (budget, len(out))
+
+
+def test_a_rule_renders_its_summary_and_not_its_body():
+    """The block carries the rule; the entry keeps the case for it.
+
+    Rule bodies in this project are essays - the incident, the reasoning,
+    the lesson - and shipping all of them is what kept blowing the budget.
+    """
+    e = entry("Mark tests by behaviour", "y" * 2000, kind=Kind.RULE,
+              summary="If a test can open a socket, its marker says so.")
+
+    out = render(collection(), [e], max_chars=5000)
+
+    assert "Mark tests by behaviour" in out
+    assert "If a test can open a socket, its marker says so." in out
+    assert "y" * 2000 not in out
+
+
+def test_a_rule_without_a_summary_renders_title_only():
+    """The graceful floor: 17 rules predate the summary requirement and
+    must keep rendering rather than vanishing or dragging their bodies in."""
+    e = entry("Run ingest from the repository root", "z" * 900, kind=Kind.RULE)
+
+    out = render(collection(), [e], max_chars=5000)
+
+    assert "Run ingest from the repository root" in out
+    assert "z" * 900 not in out
+
+
+def test_a_rule_keeps_its_id_line_with_and_without_a_summary():
+    """The id is how an agent fetches the full rule. Without it the block
+    is a dead end rather than an index into the knowledge base."""
+    with_summary = entry("A", "body", kind=Kind.RULE, summary="short form")
+    without = entry("B", "body", kind=Kind.RULE)
+
+    out = render(collection(), [with_summary, without], max_chars=5000)
+
+    assert str(with_summary.id) in out
+    assert str(without.id) in out
+
+
+def test_a_note_still_renders_its_body():
+    """Only rules change. Notes and docs are not injected into every
+    session, so nothing about their cost changed."""
+    e = entry("A note", "the whole body stays")
+
+    out = render(collection(), [e], max_chars=5000)
+
+    assert "the whole body stays" in out
 
 
 def test_notice_still_appears_when_it_forces_dropping_another_entry():
