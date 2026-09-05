@@ -179,3 +179,47 @@ def render(report: DedupeReport) -> str:
         out.append(f"  {missing} entries were not compared - "
                    f"run `remem embed`.")
     return "\n".join(out)
+
+
+class CannotResolve(Exception):
+    """A resolve that would rewrite history or point at a tombstone.
+
+    Fail-loud, unlike the report and unlike every hook in this repository,
+    for the reason `remem ingest` and `remem handoff write` are: a person is
+    standing there having asked for it.
+    """
+
+
+def resolve(
+    store: Store, owner_id: UUID, drop_id: UUID, keep_id: UUID
+) -> tuple[Entry, Entry]:
+    """Point `drop` at `keep`, both of which already exist.
+
+    This is not `write.supersede`, which requires a title and mints a NEW
+    entry for knowledge that stopped being true. Here both entries exist and
+    one of them is redundant, so the primitive is `store.set_superseded` -
+    the same one the ingest orphan sweep calls directly, and for the same
+    reason: there is no replacement to mint.
+    """
+    if drop_id == keep_id:
+        raise CannotResolve("an entry cannot supersede itself")
+
+    drop = store.get_entry(drop_id, owner_id)
+    if drop is None:
+        raise CannotResolve(f"no entry {drop_id}")
+    keep = store.get_entry(keep_id, owner_id)
+    if keep is None:
+        raise CannotResolve(f"no entry {keep_id}")
+
+    if drop.superseded_by is not None:
+        raise CannotResolve(
+            f"{drop_id} is already superseded by {drop.superseded_by}"
+        )
+    if keep.superseded_by is not None:
+        raise CannotResolve(
+            f"{keep_id} is itself superseded by {keep.superseded_by} - "
+            "resolve into the entry that is still live"
+        )
+
+    store.set_superseded(drop_id, keep_id, owner_id)
+    return drop, keep
