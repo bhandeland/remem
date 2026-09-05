@@ -15,11 +15,12 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path, PurePosixPath
 from uuid import UUID
 
 from remem.domain import (
-    Entry, IngestDesignation, IngestTrigger, Kind, Origin, Query,
+    Entry, IngestDesignation, IngestRun, IngestTrigger, Kind, Origin, Query,
 )
 from remem.embed import Embedder
 from remem.markdown import Chunk, split
@@ -544,3 +545,219 @@ def refresh(
                    embed_error=result.embed_error),
     )
     return result
+
+
+# ---------------- status ----------------
+
+#: Every advisory ends with this, scope and all. A pointer that leads to a
+#: screen that contradicts the line teaches the user the line lies.
+STATUS_POINTER = "see: remem reingest status --project {project}"
+
+
+@dataclass(slots=True)
+class ProjectIngestStatus:
+    """What `remem reingest status` knows about one project.
+
+    `checked_against` is None when the designated paths were NOT checked
+    on disk - the project shown is not the one the current directory
+    resolves to, so there is no root to check against. `missing` is then
+    empty by construction, and the renderer says "not checked" rather
+    than letting an empty list read as "all present".
+    """
+
+    project: str
+    designations: list[IngestDesignation]
+    last_run: IngestRun | None
+    checked_against: Path | None
+    missing: list[str]
+
+
+def status(
+    store: Store,
+    owner_id: UUID,
+    project: str | None,
+    *,
+    current_project: str | None,
+    root: Path | None,
+) -> list[ProjectIngestStatus]:
+    """The facts behind `remem reingest status`. Read-only.
+
+    `project=None` lists every designated project, as the command always
+    has. The on-disk check runs only for `current_project`, against
+    `root`: designations belong to a project and store no working
+    directory (016_ingest_designations.sql), so the root is only known
+    for the project this process is running inside. Every other project
+    gets `checked_against=None`, which renders as "not checked" - a
+    negative verdict has to name the ground it covered.
+    """
+    by_project: dict[str, list[IngestDesignation]] = {}
+    for d in store.ingest_designations(owner_id, project):
+        by_project.setdefault(d.project, []).append(d)
+
+    found: list[ProjectIngestStatus] = []
+    for name, designations in by_project.items():
+        checked_against = None
+        missing: list[str] = []
+        if root is not None and name == current_project:
+            checked_against = root
+            for d in designations:
+                for p in d.paths:
+                    if not _exists(root / p):
+                        missing.append(p)
+        found.append(ProjectIngestStatus(
+            project=name,
+            designations=designations,
+            last_run=store.latest_ingest_run(owner_id, name),
+            checked_against=checked_against,
+            missing=missing,
+        ))
+    return found
+
+
+def _exists(path: Path) -> bool:
+    """`Path.exists`, with an unreadable path reading as missing rather
+    than as a crash - this is a status command."""
+    try:
+        return path.exists()
+    except OSError:
+        return False
+
+
+def _when(at: datetime | None) -> str:
+    return at.astimezone().strftime("%Y-%m-%d %H:%M") if at else "?"
+
+
+def _run_lines(run: IngestRun | None) -> list[str]:
+    """The last-run block. Four states, four spellings - each calls for a
+    different action, so none may be mistaken for another."""
+    if run is None:
+        return ["last run: never. A session start inside this repository "
+                "spawns one."]
+    if run.finished_at is None:
+        return [f"last run: {run.trigger}, started {_when(run.started_at)}, "
+                f"did not finish"]
+    lines = [
+        f"last run: {run.trigger}, {_when(run.started_at)}, "
+        f"{run.created} new, {run.changed} changed, {run.unchanged} unchanged, "
+        f"{run.swept} swept, {run.embedded} embedded"
+    ]
+    for f in run.failures:
+        lines.append(f"  failed: {f['path']}: {f['reason']}")
+    for t in run.twins:
+        lines.append(
+            f"  twin: {t['path']} is new, but src:{t['existing']} has "
+            f"{t['live']} live chunks"
+        )
+    if run.embed_error:
+        lines.append(f"  embed skipped: {run.embed_error}")
+    return lines
+
+
+def render_status(found: list[ProjectIngestStatus], project: str | None) -> str:
+    """Human-readable `remem reingest status`. `status_to_dict` is the
+    `--json` half; both read the same objects so they cannot disagree."""
+    if not found:
+        return (
+            f"{project or 'This project'} is not designated for automatic "
+            f"re-ingest. Designate it with `remem reingest designate "
+            f"<paths>`."
+        )
+    lines: list[str] = []
+    for s in found:
+        for d in s.designations:
+            half = "archive" if d.archive else "default"
+            lines.append(f"{s.project} ({half}): {', '.join(d.paths)}")
+        lines.extend(_run_lines(s.last_run))
+        if s.checked_against is None:
+            lines.append(
+                f"paths not checked: run from inside {s.project}'s repository"
+            )
+        elif s.missing:
+            lines.append(
+                f"missing on disk: {', '.join(s.missing)}  "
+                f"(checked against {s.checked_against})"
+            )
+        else:
+            lines.append(
+                f"all designated paths present  "
+                f"(checked against {s.checked_against})"
+            )
+    return "\n".join(lines)
+
+
+def _run_to_dict(run: IngestRun | None) -> dict | None:
+    if run is None:
+        return None
+    return {
+        "id": str(run.id),
+        "trigger": str(run.trigger),
+        "archive": run.archive,
+        "started_at": run.started_at.isoformat() if run.started_at else None,
+        "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+        "created": run.created, "changed": run.changed,
+        "unchanged": run.unchanged, "swept": run.swept,
+        "embedded": run.embedded,
+        "failures": list(run.failures),
+        "twins": list(run.twins),
+        "embed_error": run.embed_error,
+    }
+
+
+def status_to_dict(found: list[ProjectIngestStatus]) -> list[dict]:
+    return [
+        {
+            "project": s.project,
+            "designations": [
+                {"archive": d.archive, "paths": list(d.paths)}
+                for d in s.designations
+            ],
+            "last_run": _run_to_dict(s.last_run),
+            "check": {
+                "checked_against": (
+                    str(s.checked_against) if s.checked_against else None
+                ),
+                "missing": list(s.missing),
+            },
+        }
+        for s in found
+    ]
+
+
+def advisories(
+    store: Store,
+    owner_id: UUID,
+    *,
+    current_project: str | None,
+    root: Path | None,
+) -> list[str]:
+    """One line per designated project whose last run is unhealthy, for
+    `remem record status` - the fail-loud half of a fail-soft pipeline,
+    which already carries the doctor advisory the same way.
+
+    Unhealthy is: the latest run finished with failures, or started and
+    never finished, or (for the current project only, the one with a root
+    to check against) a designated path is missing on disk. Every line
+    ends with STATUS_POINTER, scope included.
+    """
+    lines: list[str] = []
+    for s in status(store, owner_id, None, current_project=current_project,
+                    root=root):
+        pointer = STATUS_POINTER.format(project=s.project)
+        run = s.last_run
+        if run is not None and run.finished_at is None:
+            lines.append(
+                f"{s.project}: {run.trigger} ingest started "
+                f"{_when(run.started_at)} and did not finish - {pointer}"
+            )
+        elif run is not None and run.failures:
+            lines.append(
+                f"{s.project}: last {run.trigger} ingest "
+                f"({_when(run.started_at)}) had {len(run.failures)} "
+                f"failure(s) - {pointer}"
+            )
+        if s.missing:
+            lines.append(
+                f"{s.project}: designated path(s) missing on disk: "
+                f"{', '.join(s.missing)} - {pointer}"
+            )
+    return lines
