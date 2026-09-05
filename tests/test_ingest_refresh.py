@@ -15,7 +15,7 @@ import pytest
 
 from remem.backends.postgres.migrate import migrate
 from remem.backends.postgres.store import PostgresStore
-from remem.domain import Origin, Query
+from remem.domain import IngestTrigger, Origin, Query
 from remem.embed import EmbedderUnavailable
 from remem.services import ingest
 
@@ -206,3 +206,94 @@ def test_refresh_stores_repo_relative_source_tags(store, owner, root):
     }
     assert tags == {"src:docs/specs/one.md"}
     assert not any(t.startswith("src:/") for t in tags)
+
+
+def test_refresh_records_a_finished_run_row(store, owner, root):
+    ingest.designate(store, owner.id, "proj", ["docs/specs"])
+    ingest.designate(store, owner.id, "proj", ["docs/plans"], archive=True)
+
+    ingest.refresh(store, owner.id, "proj", root,
+                   embed_model="fake-2", load_embedder=FakeEmbedder)
+
+    run = store.latest_ingest_run(owner.id, "proj")
+    assert run is not None
+    assert run.trigger is IngestTrigger.AUTO
+    assert run.finished_at is not None
+    # two chunks from one.md (anchor + "Detail"); two.md has only its
+    # opening h1, so markdown.split's headingless branch gives it two
+    # chunks too - the anchor plus a duplicate body under its own slug.
+    assert run.created == 4
+    assert run.embedded == 4
+    assert run.failures == []
+    assert run.embed_error is None
+
+
+def test_an_undesignated_project_writes_no_run_row(store, owner, root):
+    ingest.refresh(store, owner.id, "proj", root,
+                   embed_model="fake-2", load_embedder=FakeEmbedder)
+
+    assert store.latest_ingest_run(owner.id, "proj") is None
+
+
+def test_a_missing_designated_path_lands_in_the_rows_failures(store, owner, root):
+    ingest.designate(store, owner.id, "proj", ["docs/specs", "docs/renamed"])
+
+    ingest.refresh(store, owner.id, "proj", root,
+                   embed_model="fake-2", load_embedder=FakeEmbedder)
+
+    run = store.latest_ingest_run(owner.id, "proj")
+    assert run.created == 2
+    assert [f["path"] for f in run.failures] == ["docs/renamed"]
+    assert "No such file" in run.failures[0]["reason"]
+
+
+def test_an_absent_embedder_is_recorded_not_raised(store, owner, root):
+    ingest.designate(store, owner.id, "proj", ["docs/specs"])
+
+    def broken():
+        raise EmbedderUnavailable("fastembed is not installed")
+
+    ingest.refresh(store, owner.id, "proj", root,
+                   embed_model="fake-2", load_embedder=broken)
+
+    run = store.latest_ingest_run(owner.id, "proj")
+    assert run.finished_at is not None
+    assert run.created == 2
+    assert run.embed_error == "fastembed is not installed"
+
+
+def test_an_exception_mid_run_is_recorded_and_re_raised(store, owner, root, monkeypatch):
+    ingest.designate(store, owner.id, "proj", ["docs/specs"])
+
+    def explode(*a, **kw):
+        raise RuntimeError("disk on fire")
+    monkeypatch.setattr(ingest, "ingest_paths", explode)
+
+    with pytest.raises(RuntimeError):
+        ingest.refresh(store, owner.id, "proj", root,
+                       embed_model="fake-2", load_embedder=FakeEmbedder)
+
+    run = store.latest_ingest_run(owner.id, "proj")
+    assert run.finished_at is not None
+    assert run.failures == [{"path": "*", "reason": "RuntimeError: disk on fire"}]
+
+
+def test_ingest_manual_records_a_manual_row(store, owner, root):
+    report = ingest.ingest_manual(
+        store, owner.id, [Path("docs/specs")], project="proj", root=root,
+    )
+
+    run = store.latest_ingest_run(owner.id, "proj")
+    assert report.created == 2
+    assert run.trigger is IngestTrigger.MANUAL
+    assert run.created == 2
+    assert run.embedded == 0
+
+
+def test_ingest_manual_writes_no_row_for_a_dry_run_or_no_project(store, owner, root):
+    ingest.ingest_manual(store, owner.id, [Path("docs/specs")],
+                         project="proj", root=root, dry_run=True)
+    ingest.ingest_manual(store, owner.id, [Path("docs/specs")],
+                         project=None, root=root)
+
+    assert store.latest_ingest_run(owner.id, "proj") is None

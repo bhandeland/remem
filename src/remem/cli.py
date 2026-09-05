@@ -1872,7 +1872,11 @@ def _reingest_once(env: dict[str, str]) -> None:
     if resolved is None:
         hookio.debug(env, "no project to re-ingest")
         return
-    with _session() as s:
+    # autocommit, like `remem events process`: this is long-running work
+    # that records its own progress. The run row is started before any file
+    # is read, and it has to be COMMITTED then, or a process that dies
+    # mid-run rolls its own "I started" back and looks like it never ran.
+    with _session(autocommit=True) as s:
         result = ingest_service.refresh(
             s.store, s.owner.id, resolved, repo_root(),
             embed_model=load().embed_model,

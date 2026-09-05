@@ -18,7 +18,9 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from uuid import UUID
 
-from remem.domain import Entry, IngestDesignation, Kind, Origin, Query
+from remem.domain import (
+    Entry, IngestDesignation, IngestTrigger, Kind, Origin, Query,
+)
 from remem.embed import Embedder
 from remem.markdown import Chunk, split
 from remem.services.embed import backfill_if_pending
@@ -371,6 +373,58 @@ class RefreshResult:
     embed_error: str | None = None
 
 
+def _outcome(report: Report, *, embedded: int, embed_error: str | None) -> dict:
+    """A report as `Store.finish_ingest_run` keyword arguments.
+
+    Paths become strings here, once, so the two callers that write a row
+    cannot disagree about the stored shape.
+    """
+    return dict(
+        created=report.created, changed=report.changed,
+        unchanged=report.unchanged, swept=report.swept, embedded=embedded,
+        failures=[{"path": Path(p).as_posix(), "reason": r}
+                  for p, r in report.failures],
+        twins=[{"path": p, "existing": e, "live": n}
+               for p, e, n in report.twins],
+        embed_error=embed_error,
+    )
+
+
+def ingest_manual(
+    store: Store,
+    owner_id: UUID,
+    paths: list[Path],
+    *,
+    project: str | None,
+    root: Path | None = None,
+    archive: bool = False,
+    dry_run: bool = False,
+) -> Report:
+    """`ingest_paths`, bracketed by a run row - what `remem ingest` calls.
+
+    The row is what lets "when was this project last ingested at all" have
+    one answer whether a person or the refresh did it. No row for a dry run
+    (nothing happened) or without a project (the row is keyed on one, and
+    a --global ingest has none). `ingest_paths` itself stays row-free
+    because `refresh` calls it once per designation half and wraps the
+    whole loop in a single row.
+
+    Fail-loud like its caller: a failure to write the row is an error like
+    any other, and the single transaction rolls the entries back with it.
+    """
+    if dry_run or project is None:
+        return ingest_paths(store, owner_id, paths, project=project,
+                            root=root, archive=archive, dry_run=dry_run)
+    run = store.start_ingest_run(owner_id, project, IngestTrigger.MANUAL,
+                                 archive=archive)
+    report = ingest_paths(store, owner_id, paths, project=project,
+                          root=root, archive=archive)
+    store.finish_ingest_run(
+        run.id, owner_id, **_outcome(report, embedded=0, embed_error=None)
+    )
+    return report
+
+
 def refresh(
     store: Store,
     owner_id: UUID,
@@ -385,43 +439,73 @@ def refresh(
     The policy behind the detached job a session start spawns. An
     undesignated project does nothing at all - that silence is the opt-in,
     and it is also the common case, so it must cost nothing: no file is
-    read and no embedder is built.
+    read, no embedder is built, and no run row is written.
 
     Paths are resolved against `root` (the git root) rather than the process
     working directory. The spawned job inherits whatever directory the
     harness happened to be in, which is not something a designation made
     weeks earlier can know.
 
-    Nothing here raises. Every caller is automatic, and a knowledge tool
-    must never be why a session start goes wrong - a path that vanished
-    lands in `report.failures` and an absent embedder in `embed_error`,
-    both for a debug channel to print and neither for anyone to trip over.
+    Everything this learns goes into a run row (017_ingest_runs.sql),
+    because the caller is a detached process whose stderr is /dev/null: the
+    row is the only record on the machine that this ran. It is started
+    BEFORE any file is read so that a process which dies mid-run leaves a
+    started, unfinished row - "crashed" rather than "never ran". That only
+    holds if the started row is committed first, which is why `reingest
+    run` opens its session with autocommit.
+
+    A Python exception is a third case: recorded as a failure with path
+    `*`, the row finished, and the exception re-raised for the caller's
+    guard. The reason is kept in the row rather than lost to a debug
+    channel nobody reads. A path that vanished lands in `report.failures`
+    and an absent embedder in `embed_error`; neither raises.
     """
     result = RefreshResult()
     designated = store.ingest_designations(owner_id, project)
     if not designated:
         return result
 
-    for designation in designated:
-        result.report.merge(
-            ingest_paths(
-                store, owner_id,
-                [Path(p) for p in designation.paths],
-                project=project,
-                root=root,
-                archive=designation.archive,
-            )
-        )
-
+    run = store.start_ingest_run(owner_id, project, IngestTrigger.AUTO)
     try:
-        embedded = backfill_if_pending(
-            store, owner_id, embed_model, load_embedder
+        for designation in designated:
+            result.report.merge(
+                ingest_paths(
+                    store, owner_id,
+                    [Path(p) for p in designation.paths],
+                    project=project,
+                    root=root,
+                    archive=designation.archive,
+                )
+            )
+
+        try:
+            embedded = backfill_if_pending(
+                store, owner_id, embed_model, load_embedder
+            )
+        except Exception as exc:
+            # Losing the semantic tier is worth strictly less than the
+            # entries just written, and `remem embed` remains the loud way
+            # to find out that the embedder is broken.
+            result.embed_error = str(exc)
+        else:
+            result.embedded = embedded.embedded if embedded else 0
+    except BaseException as exc:
+        # BaseException, matching the guard in `reingest run`: a
+        # `typer.Exit` from a nested helper is a SystemExit, and a row that
+        # says nothing about why it stopped is the gap this table closes.
+        result.report.failures.append(
+            (Path("*"), f"{type(exc).__name__}: {exc}")
         )
-    except Exception as exc:
-        # Losing the semantic tier is worth strictly less than the entries
-        # just written, and `remem embed` remains the loud way to find out
-        # that the embedder is broken.
-        result.embed_error = str(exc)
-    else:
-        result.embedded = embedded.embedded if embedded else 0
+        store.finish_ingest_run(
+            run.id, owner_id,
+            **_outcome(result.report, embedded=result.embedded,
+                       embed_error=result.embed_error),
+        )
+        raise
+
+    store.finish_ingest_run(
+        run.id, owner_id,
+        **_outcome(result.report, embedded=result.embedded,
+                   embed_error=result.embed_error),
+    )
     return result
