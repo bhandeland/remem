@@ -7,6 +7,8 @@ automatic half: what a session start runs with nobody watching.
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from typer.testing import CliRunner
 
@@ -132,3 +134,61 @@ def test_run_exits_zero_with_the_database_down(env, repo, monkeypatch):
 
     assert result.exit_code == 0
     assert result.stdout == ""
+
+
+def test_status_shows_the_last_run_after_a_run(env, repo):
+    runner.invoke(app, ["reingest", "designate", "docs/specs"])
+    runner.invoke(app, ["reingest", "run"])
+
+    result = runner.invoke(app, ["reingest", "status"])
+
+    assert result.exit_code == 0
+    assert "last run: auto" in result.stdout
+    # alpha.md is a single h1 with no sub-headings, which `markdown.split`
+    # renders as two chunks - the anchor (titled from the h1) and the h1's
+    # own heading chunk - so "2 new", not "1": see test_ingest_reports_counts
+    # for the same shape on a file that has a sub-heading too.
+    assert "2 new" in result.stdout
+    assert "all designated paths present" in result.stdout
+
+
+def test_status_reports_a_designated_path_missing_on_disk(env, repo):
+    runner.invoke(app, ["reingest", "designate", "docs/specs", "docs/gone"])
+
+    result = runner.invoke(app, ["reingest", "status"])
+
+    assert "missing on disk: docs/gone" in result.stdout
+    assert f"checked against {repo.resolve()}" in result.stdout
+
+
+def test_status_for_another_project_says_paths_were_not_checked(env, repo):
+    runner.invoke(app, ["reingest", "designate", "docs/specs", "--project", "elsewhere"])
+
+    result = runner.invoke(app, ["reingest", "status", "--project", "elsewhere"])
+
+    assert "paths not checked: run from inside elsewhere's repository" in result.stdout
+
+
+def test_status_json(env, repo):
+    runner.invoke(app, ["reingest", "designate", "docs/specs"])
+    runner.invoke(app, ["reingest", "run"])
+
+    result = runner.invoke(app, ["reingest", "status", "--json"])
+
+    [entry] = json.loads(result.stdout)
+    assert entry["project"] == "repo"
+    assert entry["last_run"]["trigger"] == "auto"
+    assert entry["check"]["missing"] == []
+
+
+def test_status_json_for_an_undesignated_project_with_a_manual_run(env, repo):
+    """The `status()` fallback: nothing is designated, so `designations` is
+    empty and `checked_against` is None - there is no disk check to report."""
+    runner.invoke(app, ["ingest", "docs/specs/alpha.md"])
+
+    result = runner.invoke(app, ["reingest", "status", "--json"])
+
+    [entry] = json.loads(result.stdout)
+    assert entry["designations"] == []
+    assert entry["last_run"]["trigger"] == "manual"
+    assert entry["check"]["checked_against"] is None

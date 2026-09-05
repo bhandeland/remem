@@ -189,6 +189,39 @@ class IngestDesignation:
     archive: bool = False
 
 
+class IngestTrigger(StrEnum):
+    """Who started an ingest run: the spawned refresh, or a person."""
+
+    AUTO = "auto"
+    MANUAL = "manual"
+
+
+@dataclass(slots=True)
+class IngestRun:
+    """One ingest invocation's record - see 017_ingest_runs.sql.
+
+    `finished_at` is None for a row whose process died before finishing.
+    `failures` and `twins` are lists of plain dicts, the shape they are
+    stored in, because the only readers are a status renderer and `--json`.
+    """
+
+    id: UUID
+    owner_id: UUID
+    project: str
+    trigger: IngestTrigger
+    archive: bool = False
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    created: int = 0
+    changed: int = 0
+    unchanged: int = 0
+    swept: int = 0
+    embedded: int = 0
+    failures: list[dict] = field(default_factory=list)
+    twins: list[dict] = field(default_factory=list)
+    embed_error: str | None = None
+
+
 @dataclass(slots=True)
 class Collection:
     id: UUID

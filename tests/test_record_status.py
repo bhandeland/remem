@@ -18,8 +18,8 @@ from typer.testing import CliRunner
 from remem.backends.postgres.migrate import migrate
 from remem.backends.postgres.store import PostgresStore
 from remem.cli import app
-from remem.domain import Event, EventKind, JobStatus, SessionRef, new_id
-from remem.services import events, extraction, record, write
+from remem.domain import Event, EventKind, IngestTrigger, JobStatus, SessionRef, new_id
+from remem.services import events, extraction, ingest, record, write
 
 runner = CliRunner()
 
@@ -361,3 +361,20 @@ def test_a_healthy_install_adds_no_advisory_lines(store, owner):
     report = events.status(store, owner.id, idle_seconds=IDLE)
     assert report.hook_advisories == []
     assert "remem doctor" not in events.render(report)
+
+
+def test_status_carries_an_ingest_advisory(store, owner):
+    ingest.designate(store, owner.id, "remem", ["docs/specs"])
+    run = store.start_ingest_run(owner.id, "remem", IngestTrigger.AUTO)
+    store.finish_ingest_run(
+        run.id, owner.id, created=0, changed=0, unchanged=0, swept=0,
+        embedded=0, twins=[], embed_error=None,
+        failures=[{"path": "docs/specs", "reason": "gone"}],
+    )
+    lines = ingest.advisories(store, owner.id, current_project=None, root=None)
+
+    report = events.status(store, owner.id, idle_seconds=IDLE,
+                           ingest_advisories=lines)
+
+    assert "! remem: last auto ingest" in events.render(report)
+    assert events.to_dict(report)["ingest_advisories"] == lines

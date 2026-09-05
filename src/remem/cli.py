@@ -21,7 +21,7 @@ from remem.backends.postgres.migrate import applied_versions, migrate, pending_v
 from remem.config import load
 from remem.domain import CollectionQuery, Entry, Kind, Match, Origin, Query
 from remem.embed import EmbedderUnavailable, load_embedder
-from remem.project import repo_root, resolve_project
+from remem.project import repo_root, resolve_project, toplevel
 from remem.services import ingest as ingest_service
 from remem.services import kb, write
 from remem.services import memory as memory_service
@@ -292,16 +292,37 @@ def ingest(
     than reference - executed implementation plans, for instance.
     """
     resolved = _resolve_project(project, is_global)
+    given = list(paths)
+    root = None
+    top = toplevel()
+    if top is not None:
+        # Inside a repository, identity is the repository-relative path -
+        # the same one the automatic refresh computes - whatever directory
+        # this was typed from. Outside one, it stays the path as typed.
+        try:
+            given = ingest_service.relative_to_root(given, top, cwd=Path.cwd())
+        except ingest_service.BadDesignation as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(1)
+        root = top
     with _session() as s:
-        report = ingest_service.ingest_paths(
-            s.store, s.owner.id, list(paths),
-            project=resolved, archive=archive, dry_run=dry_run,
+        report = ingest_service.ingest_manual(
+            s.store, s.owner.id, given,
+            project=resolved, root=root, archive=archive, dry_run=dry_run,
         )
     prefix = "Would write: " if dry_run else ""
     typer.echo(
         f"{prefix}{report.created} new, {report.changed} changed, "
         f"{report.unchanged} unchanged, {report.swept} swept."
     )
+    for path, existing, live in report.twins:
+        # A question, not a failure - a moved file and a document ingested
+        # under two identities look the same from here. Exit code unchanged.
+        typer.echo(
+            f"twin: {path} is new, but src:{existing} has {live} live "
+            f"chunks - a moved file, or ingested from a different directory?",
+            err=True,
+        )
     for path, reason in report.failures:
         typer.echo(f"failed: {path}: {reason}", err=True)
     if report.failures:
@@ -1337,9 +1358,21 @@ def record_status(
         advisories = []
 
     with _session() as s:
+        # Wrapped like the doctor call above, and for the same reason: an
+        # ingest status that cannot be computed must not take down the
+        # events status it decorates.
+        try:
+            ingest_advisories = ingest_service.advisories(
+                s.store, s.owner.id,
+                current_project=resolve_project(), root=repo_root(),
+            )
+        except Exception:
+            ingest_advisories = []
+
         report = events.status(
             s.store, s.owner.id, idle_seconds=s.config.idle_minutes * 60,
             hook_advisories=advisories,
+            ingest_advisories=ingest_advisories,
         )
 
     if as_json:
@@ -1820,21 +1853,27 @@ def reingest_designate(
 @reingest_app.command("status")
 def reingest_status(
     project: Annotated[Optional[str], typer.Option("--project")] = None,
+    as_json: Annotated[bool, typer.Option("--json")] = False,
 ):
-    """Show what this project re-ingests automatically, if anything."""
+    """Show what this project re-ingests automatically, and how the last
+    run went.
+
+    Designated paths are checked on disk only for the project this
+    directory resolves to - it is the only one with a known root - and the
+    report says so for any other, rather than letting silence read as
+    "all present".
+    """
     resolved = _resolve_project(project, False)
+    current = resolve_project()
     with _session() as s:
-        found = ingest_service.designations(s.store, s.owner.id, resolved)
-    if not found:
-        typer.echo(
-            f"{resolved or 'This project'} is not designated for automatic "
-            f"re-ingest. Designate it with `remem reingest designate "
-            f"<paths>`."
+        found = ingest_service.status(
+            s.store, s.owner.id, resolved,
+            current_project=current, root=repo_root(),
         )
+    if as_json:
+        typer.echo(json.dumps(ingest_service.status_to_dict(found), indent=2))
         return
-    for d in found:
-        half = "archive" if d.archive else "default"
-        typer.echo(f"{d.project} ({half}): {', '.join(d.paths)}")
+    typer.echo(ingest_service.render_status(found, resolved))
 
 
 @reingest_app.command("run")
@@ -1872,7 +1911,11 @@ def _reingest_once(env: dict[str, str]) -> None:
     if resolved is None:
         hookio.debug(env, "no project to re-ingest")
         return
-    with _session() as s:
+    # autocommit, like `remem events process`: this is long-running work
+    # that records its own progress. The run row is started before any file
+    # is read, and it has to be COMMITTED then, or a process that dies
+    # mid-run rolls its own "I started" back and looks like it never ran.
+    with _session(autocommit=True) as s:
         result = ingest_service.refresh(
             s.store, s.owner.id, resolved, repo_root(),
             embed_model=load().embed_model,

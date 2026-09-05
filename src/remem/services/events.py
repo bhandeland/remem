@@ -147,6 +147,11 @@ class StatusReport:
     #: the filesystem, and `status` must keep working when a config file
     #: cannot be read.
     hook_advisories: list[str] = field(default_factory=list)
+    #: Lines from `services/ingest.advisories`, passed in for the same
+    #: reason `hook_advisories` is: this module is about events, and an
+    #: ingest status that cannot be computed must not take down the
+    #: events status.
+    ingest_advisories: list[str] = field(default_factory=list)
 
 
 def status(
@@ -154,6 +159,7 @@ def status(
     owner_id: UUID,
     idle_seconds: int,
     hook_advisories: list[str] | None = None,
+    ingest_advisories: list[str] | None = None,
 ) -> StatusReport:
     """Gather the numbers behind `remem record status`. Read-only.
 
@@ -191,6 +197,7 @@ def status(
         extract_model=load_config().extract_model,
         suspected_duplicates=store.duplicate_unkeyed_events(owner_id),
         hook_advisories=list(hook_advisories or []),
+        ingest_advisories=list(ingest_advisories or []),
     )
 
 
@@ -249,6 +256,8 @@ def render(report: StatusReport) -> str:
         # an unknown number of unrecorded sessions, and it has to survive
         # being skimmed.
         lines.append(f"! {line}")
+    for line in report.ingest_advisories:
+        lines.append(f"! {line}")
     return "\n".join(lines)
 
 
@@ -284,6 +293,7 @@ def to_dict(report: StatusReport) -> dict:
             for d in report.suspected_duplicates
         ],
         "hook_advisories": list(report.hook_advisories),
+        "ingest_advisories": list(report.ingest_advisories),
     }
 
 

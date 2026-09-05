@@ -109,6 +109,15 @@ def _reset_live_db(request):
                 # record and events tests through the same shared database,
                 # and one test's leftover events are another's phantom
                 # session to extract.
+                #
+                # ingest_runs, ingest_settings and memory_settings are not
+                # named here - they cascade from `principals` via their own
+                # foreign key (e.g. `ingest_runs.owner_id references
+                # principals(id)`), which this truncate's `cascade` follows.
+                # A future migration that dropped that FK would silently
+                # break isolation between tests with no test going red, so
+                # if one of these tables ever stops cascading, add it here
+                # explicitly rather than assuming it still does.
                 "truncate collection_members, collections, entry_events, "
                 "events, extract_jobs, record_settings, entries, principals "
                 "restart identity cascade"

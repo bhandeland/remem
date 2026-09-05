@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import subprocess
+
 import pytest
 from typer.testing import CliRunner
 
@@ -26,10 +28,15 @@ def env(live_dsn, monkeypatch, tmp_path):
 
 
 @pytest.fixture
-def docs(tmp_path):
+def docs(tmp_path, monkeypatch):
     # The chunk title comes from the h1, not the filename stem, so this file
     # produces "Alpha doc" and "Alpha doc § One".
+    #
+    # chdir: the test process runs from the remem checkout, and inside a
+    # repository `remem ingest` refuses a path outside it. tmp_path is not
+    # under any repository, so from here identity is the path as typed.
     (tmp_path / "alpha-doc.md").write_text("# Alpha doc\n\nlead\n\n## One\n\nbody one\n")
+    monkeypatch.chdir(tmp_path)
     return tmp_path
 
 
@@ -73,3 +80,58 @@ def test_a_failure_is_named_and_exits_non_zero(env, docs):
     # Failures go to stderr; stdout carries the counts and nothing else.
     assert "bad.md" in result.stderr
     assert "2 new" in result.stdout  # anchor + one section from good.md
+
+
+@pytest.fixture
+def repo(tmp_path, monkeypatch):
+    """A real repository, because identity resolves against its top level."""
+    root = tmp_path / "repo"
+    (root / "docs").mkdir(parents=True)
+    (root / "docs" / "a.md").write_text("# A\n\nlead\n\n## One\n\nbody one\n")
+    subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+    monkeypatch.chdir(root)
+    return root
+
+
+def test_ingest_from_a_subdirectory_supersedes_rather_than_duplicates(env, repo, monkeypatch):
+    first = runner.invoke(app, ["ingest", "docs/a.md"])
+    assert first.exit_code == 0, first.output
+    assert "2 new" in first.stdout
+
+    (repo / "docs" / "a.md").write_text("# A\n\nlead\n\n## One\n\nbody two\n")
+    monkeypatch.chdir(repo / "docs")
+    second = runner.invoke(app, ["ingest", "a.md"])
+
+    assert second.exit_code == 0, second.output
+    assert "0 new, 1 changed, 1 unchanged" in second.stdout
+
+
+def test_ingest_refuses_a_path_outside_the_repository(env, repo, tmp_path):
+    outside = tmp_path / "elsewhere.md"
+    outside.write_text("# E\n\nbody\n")
+
+    result = runner.invoke(app, ["ingest", str(outside)])
+
+    assert result.exit_code == 1
+    assert "outside the repository" in result.output
+
+
+def test_ingest_records_a_manual_run_row(env, repo):
+    runner.invoke(app, ["ingest", "docs/a.md"])
+
+    result = runner.invoke(app, ["reingest", "status"])
+    assert "last run: manual" in result.stdout
+    # Nothing is designated, so nothing was checked - "all present" would
+    # describe a disk check that never ran.
+    assert "all designated paths present" not in result.stdout
+
+
+def test_ingest_prints_a_twin_and_still_exits_zero(env, repo):
+    (repo / "notes").mkdir()
+    (repo / "notes" / "a.md").write_text("# A\n\nlead\n\n## One\n\nbody one\n")
+    runner.invoke(app, ["ingest", "notes/a.md"])
+
+    result = runner.invoke(app, ["ingest", "docs/a.md"])
+
+    assert result.exit_code == 0
+    assert "twin: docs/a.md is new, but src:notes/a.md has 2 live chunks" in result.output

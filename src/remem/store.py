@@ -3,6 +3,7 @@ would implement this same protocol."""
 
 from __future__ import annotations
 
+from contextlib import AbstractContextManager
 from datetime import datetime
 from typing import Protocol
 from uuid import UUID
@@ -16,6 +17,8 @@ from remem.domain import (
     HarnessStats,
     Hit,
     IngestDesignation,
+    IngestRun,
+    IngestTrigger,
     JobStatus,
     MemoryDesignation,
     Principal,
@@ -114,6 +117,32 @@ class Store(Protocol):
         self, owner_id: UUID, project: str | None = None
     ) -> list[IngestDesignation]: ...
 
+    # ingest runs
+    #: Opens a row and returns it. Called before any file is read, so that a
+    #: process which dies mid-run leaves a started, unfinished row behind.
+    def start_ingest_run(
+        self, owner_id: UUID, project: str, trigger: IngestTrigger,
+        archive: bool = False,
+    ) -> IngestRun: ...
+    #: Records the outcome. Raises NotOwner for a row that is not the
+    #: caller's - ownership is enforced here, not by callers.
+    def finish_ingest_run(
+        self, run_id: UUID, owner_id: UUID, *,
+        created: int, changed: int, unchanged: int, swept: int, embedded: int,
+        failures: list[dict], twins: list[dict], embed_error: str | None,
+    ) -> None: ...
+    #: The newest-started row for one project, finished or not.
+    def latest_ingest_run(
+        self, owner_id: UUID, project: str
+    ) -> IngestRun | None: ...
+
+    #: Live ingested/archived entries in a project that carry a `src:` tag
+    #: and no `sec:` tag - one per ingested document. `search` cannot say
+    #: "has a tag with this prefix and lacks one with that prefix", and
+    #: pulling every chunk through it to filter in Python meets Query.limit
+    #: on any project with a few hundred chunks. Newest first.
+    def anchors(self, owner_id: UUID, project: str) -> list[Entry]: ...
+
     # events
     def put_event(self, event: Event) -> Event: ...
     def events_for_session(
@@ -165,3 +194,20 @@ class Store(Protocol):
         self, owner_id: UUID, limit: int = 5
     ) -> list[ExtractJob]: ...
     def try_advisory_lock(self, name: str, owner_id: UUID) -> bool: ...
+
+    def transaction(self) -> AbstractContextManager[None]:
+        """Group statements that must commit or roll back together.
+
+        Under an autocommit connection this opens a real transaction; inside
+        an already-open transaction (the common case in tests, which run
+        inside one rolled-back transaction per test) it is a savepoint -
+        psycopg's `Connection.transaction()` nests either way. It exists
+        because `write.supersede` is two statements - insert the
+        replacement, then retire the old row - and `reingest run` runs
+        autocommit so its run row survives a crash. Without this, a process
+        killed between those two statements leaves two live entries sharing
+        the same `(src:, sec:)` pair, and no later run can sweep the loser:
+        it is not in `ingest_file`'s `existing` dict (keyed on slug, one
+        winner per slug) so it is never superseded and never swept.
+        """
+        ...
