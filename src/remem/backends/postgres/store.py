@@ -860,6 +860,25 @@ class PostgresStore:
             row = cur.fetchone()
         return _row_to_ingest_run(row) if row else None
 
+    def anchors(self, owner_id: UUID, project: str) -> list[Entry]:
+        # `%%` because this statement takes positional parameters, so a
+        # literal percent has to be doubled for psycopg's formatter.
+        with self._cur() as cur:
+            cur.execute(
+                f"""
+                select {entry_columns("e")} from entries e
+                 where e.owner_id = %s
+                   and e.project = %s
+                   and e.superseded_by is null
+                   and e.origin in ('ingested', 'archived')
+                   and exists (select 1 from unnest(e.tags) t where t like 'src:%%')
+                   and not exists (select 1 from unnest(e.tags) t where t like 'sec:%%')
+                 order by e.created_at desc
+                """,
+                (owner_id, project),
+            )
+            return [_row_to_entry(r) for r in cur.fetchall()]
+
     def pending_legacy_capture_jobs(self, owner_id: UUID) -> int:
         """How many rows the retired capture spool still holds as pending.
 

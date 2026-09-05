@@ -95,3 +95,54 @@ def test_finishing_someone_elses_row_raises_not_owner(store, owner, other):
             failures=[], twins=[], embed_error=None,
         )
     assert store.latest_ingest_run(other.id, "proj").finished_at is None
+
+
+from pathlib import Path
+
+from remem.domain import Kind, Origin
+from remem.services import ingest, write
+
+
+def _ingest(store, owner, tmp_path, rel, project="proj", archive=False):
+    """Write a two-chunk document at tmp_path/rel and ingest it with `rel`
+    as its identity, the way the refresh does."""
+    full = tmp_path / rel
+    full.parent.mkdir(parents=True, exist_ok=True)
+    full.write_text("# Doc\n\nlead\n\n## One\n\nbody\n")
+    return ingest.ingest_file(
+        store, owner.id, Path(rel), project=project, root=tmp_path,
+        archive=archive,
+    )
+
+
+def test_anchors_are_the_entries_with_src_but_no_sec(store, owner, tmp_path):
+    _ingest(store, owner, tmp_path, "docs/a.md")
+    _ingest(store, owner, tmp_path, "docs/b.md", archive=True)
+
+    found = store.anchors(owner.id, "proj")
+
+    assert sorted(e.title for e in found) == ["Doc", "Doc"]
+    assert {t for e in found for t in e.tags} == {"src:docs/a.md", "src:docs/b.md"}
+    assert {e.origin for e in found} == {Origin.INGESTED, Origin.ARCHIVED}
+
+
+def test_anchors_excludes_superseded_other_projects_and_other_owners(
+    store, owner, other, tmp_path
+):
+    _ingest(store, owner, tmp_path, "docs/a.md")
+    _ingest(store, owner, tmp_path, "docs/elsewhere.md", project="other-proj")
+    _ingest(store, other, tmp_path, "docs/theirs.md")
+    # A hand-written doc with a src-looking tag but no ingest origin.
+    write.remember(store, owner.id, title="Hand", body="x", kind=Kind.DOC,
+                   project="proj", tags=["src:docs/hand.md"])
+    [anchor] = [e for e in store.anchors(owner.id, "proj")]
+    theirs = store.anchors(other.id, "proj")
+
+    replacement = write.remember(store, owner.id, title="Doc", body="new",
+                                 kind=Kind.DOC, project="proj",
+                                 tags=["src:docs/a.md"], origin=Origin.INGESTED)
+    store.set_superseded(anchor.id, replacement.id, owner.id)
+
+    after = store.anchors(owner.id, "proj")
+    assert [e.id for e in after] == [replacement.id]
+    assert [e.id for e in theirs] != [] and all(e.owner_id == other.id for e in theirs)

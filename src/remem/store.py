@@ -135,6 +135,13 @@ class Store(Protocol):
         self, owner_id: UUID, project: str
     ) -> IngestRun | None: ...
 
+    #: Live ingested/archived entries in a project that carry a `src:` tag
+    #: and no `sec:` tag - one per ingested document. `search` cannot say
+    #: "has a tag with this prefix and lacks one with that prefix", and
+    #: pulling every chunk through it to filter in Python meets Query.limit
+    #: on any project with a few hundred chunks. Newest first.
+    def anchors(self, owner_id: UUID, project: str) -> list[Entry]: ...
+
     # events
     def put_event(self, event: Event) -> Event: ...
     def events_for_session(
