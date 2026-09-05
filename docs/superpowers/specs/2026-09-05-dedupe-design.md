@@ -36,7 +36,7 @@ answer and hide the rest.
 - `services/dedupe.py`: every judgement - suppression, ranking, thresholds,
   coverage reporting - plus one write, `resolve()`.
 - `remem dedupe report` and `remem dedupe resolve`.
-- `DuplicateGroup`, `NearPair`, `DedupeReport` in `domain.py`.
+- `DuplicateSet`, `NearPair`, `DedupeReport` in `domain.py`.
 
 No migration. `entries` stores no body hash and needs none: `md5(btrim(body))`
 computed in the `group by` is free at this store's size, and a stored hash
@@ -196,7 +196,7 @@ services/dedupe.py                           every judgement, and one write
 store.py  exact_duplicate_groups()           Protocol
           near_duplicate_pairs()
 backends/postgres/store.py                   the two queries
-domain.py  DuplicateGroup NearPair DedupeReport
+domain.py  DuplicateSet NearPair DedupeReport
 ```
 
 Both store methods take a `Query` and reuse `_entry_filters`, so
