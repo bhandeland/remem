@@ -91,6 +91,41 @@ def designations(
     return store.ingest_designations(owner_id, project)
 
 
+def relative_to_root(paths: list[Path], top: Path, cwd: Path) -> list[Path]:
+    """Each path as the repository-relative identity `ingest_file` stores.
+
+    Inside a repository, a chunk's `src:` tag is its path from the working
+    tree's top level - the same identity the automatic refresh computes
+    against the git root - regardless of where the command was typed or
+    whether the argument was absolute. Before this, the tag was the path
+    as typed, and `cd docs && remem ingest a.md` duplicated every chunk a
+    root run had stored under `docs/a.md`.
+
+    A path outside the repository is refused, loudly, because it has no
+    root-relative identity and inventing one (the absolute path, say) is
+    the duplication this exists to end. Same class as `designate`'s
+    refusals, for the same reason: this is the moment there is a human to
+    tell.
+
+    Pure - takes `cwd` rather than reading it - so it is testable without
+    changing directory.
+    """
+    top = top.resolve()
+    out: list[Path] = []
+    for raw in paths:
+        located = (cwd / raw).resolve()
+        try:
+            out.append(located.relative_to(top))
+        except ValueError:
+            raise BadDesignation(
+                f"{raw!s} is outside the repository at {top}. Inside a "
+                f"repository, ingest identifies documents by their "
+                f"repository-relative path; to ingest a file elsewhere, run "
+                f"from outside any repository or pass --project."
+            ) from None
+    return out
+
+
 @dataclass(slots=True)
 class Report:
     created: int = 0

@@ -53,6 +53,36 @@ def resolve_project(start: Path | None = None) -> str | None:
     return name or None
 
 
+def toplevel(start: Path | None = None) -> Path | None:
+    """The WORKING TREE's top level, or None outside a repository.
+
+    Not `repo_root`, which resolves a worktree to the main checkout: a
+    file inside a worktree is not under the main checkout's root, so a
+    path relative to it cannot be computed. The relative path is the same
+    against either, which is what makes a worktree ingest and a
+    main-checkout ingest of the same file the same identity - the same
+    property `resolve_project` gives the project name. Resolved, so a
+    caller can `relative_to` it against a resolved path (macOS /tmp is a
+    symlink to /private/tmp, and `relative_to` is textual).
+    """
+    start = (start or Path.cwd()).resolve()
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(start), "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0 or not result.stdout.strip():
+        return None
+    try:
+        return Path(result.stdout.strip()).resolve()
+    except OSError:
+        return None
+
+
 def repo_root(start: Path | None = None) -> Path:
     """The directory a project-scoped write should land in.
 

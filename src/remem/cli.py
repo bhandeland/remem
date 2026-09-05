@@ -21,7 +21,7 @@ from remem.backends.postgres.migrate import applied_versions, migrate, pending_v
 from remem.config import load
 from remem.domain import CollectionQuery, Entry, Kind, Match, Origin, Query
 from remem.embed import EmbedderUnavailable, load_embedder
-from remem.project import repo_root, resolve_project
+from remem.project import repo_root, resolve_project, toplevel
 from remem.services import ingest as ingest_service
 from remem.services import kb, write
 from remem.services import memory as memory_service
@@ -292,16 +292,37 @@ def ingest(
     than reference - executed implementation plans, for instance.
     """
     resolved = _resolve_project(project, is_global)
+    given = list(paths)
+    root = None
+    top = toplevel()
+    if top is not None:
+        # Inside a repository, identity is the repository-relative path -
+        # the same one the automatic refresh computes - whatever directory
+        # this was typed from. Outside one, it stays the path as typed.
+        try:
+            given = ingest_service.relative_to_root(given, top, cwd=Path.cwd())
+        except ingest_service.BadDesignation as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(1)
+        root = top
     with _session() as s:
-        report = ingest_service.ingest_paths(
-            s.store, s.owner.id, list(paths),
-            project=resolved, archive=archive, dry_run=dry_run,
+        report = ingest_service.ingest_manual(
+            s.store, s.owner.id, given,
+            project=resolved, root=root, archive=archive, dry_run=dry_run,
         )
     prefix = "Would write: " if dry_run else ""
     typer.echo(
         f"{prefix}{report.created} new, {report.changed} changed, "
         f"{report.unchanged} unchanged, {report.swept} swept."
     )
+    for path, existing, live in report.twins:
+        # A question, not a failure - a moved file and a document ingested
+        # under two identities look the same from here. Exit code unchanged.
+        typer.echo(
+            f"twin: {path} is new, but src:{existing} has {live} live "
+            f"chunks - a moved file, or ingested from a different directory?",
+            err=True,
+        )
     for path, reason in report.failures:
         typer.echo(f"failed: {path}: {reason}", err=True)
     if report.failures:
