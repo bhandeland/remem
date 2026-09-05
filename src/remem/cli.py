@@ -1812,6 +1812,9 @@ def memory_status(
         return
     typer.echo(f"{resolved}: {st.collection} -> {st.directory}")
     typer.echo(f"  {st.entries} entries, {st.files} files, {st.stale} stale")
+    # What last happened, beside what is true now. Both are wanted: the
+    # counts above describe the directory, this describes the run.
+    typer.echo(memory_service.render_run(st.run))
     if st.conflicts:
         typer.echo(
             f"  {st.conflicts} conflict sidecar(s) on disk from a past "

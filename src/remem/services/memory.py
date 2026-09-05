@@ -897,6 +897,11 @@ class Status:
     #: so a number you can see is the cheapest guard available.
     overlap: int = 0
     overlap_bytes: int = 0
+    #: The latest run for this project, or None if it has never synced.
+    #: Distinct from the fields around it on purpose: those describe the
+    #: directory NOW, this describes what last happened to it, and a reader
+    #: must not have to infer one from the other.
+    run: MemoryRun | None = None
     #: `<name>.remem-conflict.md` sidecars still on disk from a past sync.
     #: Nothing ever deletes one - deliberately, because auto-deleting a
     #: sidecar risks destroying the copy the user needs - so this is the
@@ -916,6 +921,7 @@ def status(
     out = Status(project=project, collection=slug, directory=directory)
     if slug is None:
         return out
+    out.run = store.latest_memory_run(owner_id, project)
 
     entries = kb.resolve(store, owner_id, slug)
     out.entries = len(entries)
@@ -949,6 +955,32 @@ def status(
         out.overlap = len(shared)
         out.overlap_bytes = sum(len(e.body.encode("utf-8")) for e in shared)
     return out
+
+
+def render_run(run: MemoryRun | None) -> str:
+    """The one-line history, in four distinct spellings.
+
+    Four rather than three because "finished" and "finished with something
+    wrong" are different facts, and a reader scanning for trouble should not
+    have to parse counts to find it. Follows `remem reingest status`.
+    """
+    if run is None:
+        return "  never synced"
+    when = run.started_at.strftime("%Y-%m-%d %H:%M") if run.started_at else "?"
+    if run.finished_at is None:
+        return (f"  last sync {when} did not finish - the process was "
+                f"killed partway")
+    counts = (f"{run.adopted} adopted, {run.edited} edited, "
+              f"{run.regenerated} regenerated, {run.deleted} deleted, "
+              f"{len(run.renamed)} renamed, {run.unchanged} unchanged")
+    trouble = []
+    if run.conflicts:
+        trouble.append(f"{len(run.conflicts)} conflict(s)")
+    if run.failures:
+        trouble.append(f"{len(run.failures)} failure(s)")
+    if trouble:
+        return f"  last sync {when}: {counts} - {', '.join(trouble)}"
+    return f"  last sync {when}: {counts}"
 
 
 def _as_file(
