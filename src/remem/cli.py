@@ -496,6 +496,14 @@ def supersede(
         except write.EntryNotFound:
             typer.echo(f"No entry {entry_id}", err=True)
             raise typer.Exit(1)
+        except write.RuleNeedsSummary:
+            typer.echo(
+                "This rule has no summary to carry onto the replacement - "
+                "pass --summary: it is the line every session sees, since "
+                "the context block renders summaries rather than bodies.",
+                err=True,
+            )
+            raise typer.Exit(1)
         typer.echo(entry.id)
 
 

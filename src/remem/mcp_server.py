@@ -196,20 +196,36 @@ def get_entry_tool(entry_id: str) -> dict:
 
 
 @mcp.tool(name="supersede")
-def supersede_tool(entry_id: str, title: str, body: str) -> dict:
+def supersede_tool(
+    entry_id: str, title: str, body: str, summary: str | None = None
+) -> dict:
     """Replace knowledge that stopped being true.
 
     Use when you discover a stored entry is now wrong or out of date. The
     old entry is kept but stops appearing in searches. Prefer this over
     storing a contradicting second memory.
+
+    summary: omit it and the old entry's summary carries onto the
+    replacement, same as title and tags would. Pass it to correct a rule
+    written before summaries were required - superseding it without one
+    would otherwise fail (see the error this returns).
     """
     with open_session() as s:
         try:
             entry = write.supersede(
-                s.store, s.owner.id, UUID(entry_id), title=title, body=body
+                s.store, s.owner.id, UUID(entry_id), title=title, body=body,
+                summary=summary,
             )
         except (write.EntryNotFound, ValueError):
             return {"error": f"no entry {entry_id}"}
+        except write.RuleNeedsSummary:
+            # An error dict, not a raise, same as remember_tool: this is a
+            # correctable mistake, not a crash. This is the one rule this
+            # entry predates a summary being required, and superseding it
+            # needs one supplied since there is no old one to carry.
+            return {"error": "this rule has no summary to carry onto the "
+                             "replacement - pass summary with the one line "
+                             "the context block should render"}
         return {"id": str(entry.id), "replaced": entry_id}
 
 
