@@ -207,6 +207,34 @@ Three rules worth not breaking:
 whether the harness will ever call remem, `verify` asks whether remem works
 when called.
 
+### What the context block carries
+
+Rules render as **title plus summary**, never their bodies. Rule bodies here
+are essays - the incident that produced the rule, the reasoning, the lesson -
+and shipping all of them is what made the block outgrow `REMEM_MAX_CHARS`
+twice in three days (18,249 chars on 2026-09-02, 25,008 by 2026-09-04). The
+body stays one `recall` away and the rendered `_id:` line is how to reach it.
+
+A rule with no summary renders **title only**. That is the floor, not a
+fallback to the body: rules written before the requirement must keep
+rendering, and rendering their bodies is the failure being fixed. Backfill one
+with `remem update --summary`, which edits in place - `supersede` would mint a
+replacement and churn the memory file whose frontmatter `description` this
+same field feeds.
+
+Deriving the short form from the body was measured and rejected: a rule's
+first paragraph is the incident, not the instruction.
+
+`services/write.remember` raises `RuleNeedsSummary` for a rule without one.
+That check is in the service and not in `cli.py` because `mcp_server`'s
+`remember_tool` takes a `kind` and would otherwise write a summary-less rule
+straight past a frontend check.
+
+The never-truncate invariant is unchanged: `RulesExceedBudget` still raises
+rather than shipping a partial rule set, because an agent given part of the
+conventions proceeds believing it has all of them. Short forms make that
+exception rare; they do not soften it.
+
 ### Handoffs
 
 A handoff is an `Entry` with `origin='handoff'`, `kind=doc`, and a `topic:<slug>`
