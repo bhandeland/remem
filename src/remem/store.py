@@ -22,6 +22,8 @@ from remem.domain import (
     IngestTrigger,
     JobStatus,
     MemoryDesignation,
+    MemoryRun,
+    MemoryTrigger,
     NearPair,
     Principal,
     Query,
@@ -121,6 +123,21 @@ class Store(Protocol):
     #: `paths=None` clears the (project, archive) designation. Passing a
     #: list replaces it wholesale - a designation is the whole set, never
     #: something appended to.
+    def start_memory_run(
+        self, owner_id: UUID, project: str, trigger: MemoryTrigger
+    ) -> MemoryRun: ...
+
+    def finish_memory_run(
+        self, run_id: UUID, owner_id: UUID, *,
+        adopted: int, healed: int, edited: int, regenerated: int,
+        deleted: int, unchanged: int, renamed: list[list[str]],
+        conflicts: list[str], sidecars: list[str], failures: list[dict],
+    ) -> None: ...
+
+    def latest_memory_run(
+        self, owner_id: UUID, project: str
+    ) -> MemoryRun | None: ...
+
     def set_ingest_paths(
         self, owner_id: UUID, project: str, paths: list[str] | None,
         archive: bool = False,

@@ -28,6 +28,8 @@ from remem.domain import (
     Kind,
     Match,
     MemoryDesignation,
+    MemoryRun,
+    MemoryTrigger,
     NearPair,
     Origin,
     Principal,
@@ -64,6 +66,38 @@ def _aliased_entry_columns(alias: str, prefix: str) -> str:
 def _row_to_entry_prefixed(row: dict, prefix: str) -> Entry:
     return _row_to_entry(
         {k[len(prefix):]: v for k, v in row.items() if k.startswith(prefix)}
+    )
+
+
+MEMORY_RUN_FIELDS = [
+    "id", "owner_id", "project", "trigger", "started_at", "finished_at",
+    "adopted", "healed", "edited", "regenerated", "deleted", "unchanged",
+    "renamed", "conflicts", "sidecars", "failures",
+]
+
+
+def memory_run_columns() -> str:
+    return ", ".join(MEMORY_RUN_FIELDS)
+
+
+def _row_to_memory_run(row: dict) -> MemoryRun:
+    return MemoryRun(
+        id=row["id"],
+        owner_id=row["owner_id"],
+        project=row["project"],
+        trigger=MemoryTrigger(row["trigger"]),
+        started_at=row["started_at"],
+        finished_at=row["finished_at"],
+        adopted=row["adopted"],
+        healed=row["healed"],
+        edited=row["edited"],
+        regenerated=row["regenerated"],
+        deleted=row["deleted"],
+        unchanged=row["unchanged"],
+        renamed=list(row["renamed"] or []),
+        conflicts=list(row["conflicts"] or []),
+        sidecars=list(row["sidecars"] or []),
+        failures=list(row["failures"] or []),
     )
 
 
@@ -1020,6 +1054,70 @@ class PostgresStore:
             )
             row = cur.fetchone()
         return _row_to_ingest_run(row) if row else None
+
+    def start_memory_run(
+        self, owner_id: UUID, project: str, trigger: MemoryTrigger
+    ) -> MemoryRun:
+        """The row that exists before any file is read.
+
+        Committed by the caller's autocommit session, which is what makes a
+        `finished_at` of null mean "the process died" rather than "the
+        transaction rolled back".
+        """
+        run_id = new_id()
+        with self._cur() as cur:
+            cur.execute(
+                f"""
+                insert into memory_runs (id, owner_id, project, trigger)
+                values (%s, %s, %s, %s)
+                returning {memory_run_columns()}
+                """,
+                (run_id, owner_id, project, str(trigger)),
+            )
+            return _row_to_memory_run(cur.fetchone())
+
+    def finish_memory_run(
+        self, run_id: UUID, owner_id: UUID, *,
+        adopted: int, healed: int, edited: int, regenerated: int,
+        deleted: int, unchanged: int, renamed: list[list[str]],
+        conflicts: list[str], sidecars: list[str], failures: list[dict],
+    ) -> None:
+        with self._cur() as cur:
+            cur.execute(
+                """
+                update memory_runs
+                   set finished_at = clock_timestamp(),
+                       adopted = %s, healed = %s, edited = %s,
+                       regenerated = %s, deleted = %s, unchanged = %s,
+                       renamed = %s::jsonb, conflicts = %s::jsonb,
+                       sidecars = %s::jsonb, failures = %s::jsonb
+                 where id = %s and owner_id = %s
+                """,
+                (adopted, healed, edited, regenerated, deleted, unchanged,
+                 json.dumps(renamed), json.dumps(conflicts),
+                 json.dumps(sidecars), json.dumps(failures),
+                 run_id, owner_id),
+            )
+            if cur.rowcount == 0:
+                raise NotOwner(
+                    f"memory run {run_id} is not owned by {owner_id}"
+                )
+
+    def latest_memory_run(
+        self, owner_id: UUID, project: str
+    ) -> MemoryRun | None:
+        with self._cur() as cur:
+            cur.execute(
+                f"""
+                select {memory_run_columns()} from memory_runs
+                 where owner_id = %s and project = %s
+                 order by started_at desc
+                 limit 1
+                """,
+                (owner_id, project),
+            )
+            row = cur.fetchone()
+        return _row_to_memory_run(row) if row else None
 
     def anchors(self, owner_id: UUID, project: str) -> list[Entry]:
         # `%%` because this statement takes positional parameters, so a
