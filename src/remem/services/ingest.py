@@ -589,6 +589,18 @@ def status(
     for the project this process is running inside. Every other project
     gets `checked_against=None`, which renders as "not checked" - a
     negative verdict has to name the ground it covered.
+
+    `ingest_manual` writes a run row for whatever project it is given
+    whether or not that project is designated (see its own docstring), so
+    a plain `remem ingest` inside a repository that has never designated
+    anything still leaves a fact worth showing. Without this, that run
+    would be invisible here and `render_status` would say "not
+    designated" even though the last thing this project did was ingest
+    successfully - true of the designation, misleading about the project.
+    Only `current_project` gets this treatment: it is the only project
+    this call has a root for, and every other undesignated project is one
+    this process cannot distinguish from one that was simply never
+    touched.
     """
     by_project: dict[str, list[IngestDesignation]] = {}
     for d in store.ingest_designations(owner_id, project):
@@ -611,6 +623,21 @@ def status(
             checked_against=checked_against,
             missing=missing,
         ))
+
+    if (
+        current_project is not None
+        and current_project not in by_project
+        and (project is None or project == current_project)
+    ):
+        last_run = store.latest_ingest_run(owner_id, current_project)
+        if last_run is not None:
+            found.append(ProjectIngestStatus(
+                project=current_project,
+                designations=[],
+                last_run=last_run,
+                checked_against=root,
+                missing=[],
+            ))
     return found
 
 

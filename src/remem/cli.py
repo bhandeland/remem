@@ -1358,9 +1358,21 @@ def record_status(
         advisories = []
 
     with _session() as s:
+        # Wrapped like the doctor call above, and for the same reason: an
+        # ingest status that cannot be computed must not take down the
+        # events status it decorates.
+        try:
+            ingest_advisories = ingest_service.advisories(
+                s.store, s.owner.id,
+                current_project=resolve_project(), root=repo_root(),
+            )
+        except Exception:
+            ingest_advisories = []
+
         report = events.status(
             s.store, s.owner.id, idle_seconds=s.config.idle_minutes * 60,
             hook_advisories=advisories,
+            ingest_advisories=ingest_advisories,
         )
 
     if as_json:
@@ -1841,21 +1853,27 @@ def reingest_designate(
 @reingest_app.command("status")
 def reingest_status(
     project: Annotated[Optional[str], typer.Option("--project")] = None,
+    as_json: Annotated[bool, typer.Option("--json")] = False,
 ):
-    """Show what this project re-ingests automatically, if anything."""
+    """Show what this project re-ingests automatically, and how the last
+    run went.
+
+    Designated paths are checked on disk only for the project this
+    directory resolves to - it is the only one with a known root - and the
+    report says so for any other, rather than letting silence read as
+    "all present".
+    """
     resolved = _resolve_project(project, False)
+    current = resolve_project()
     with _session() as s:
-        found = ingest_service.designations(s.store, s.owner.id, resolved)
-    if not found:
-        typer.echo(
-            f"{resolved or 'This project'} is not designated for automatic "
-            f"re-ingest. Designate it with `remem reingest designate "
-            f"<paths>`."
+        found = ingest_service.status(
+            s.store, s.owner.id, resolved,
+            current_project=current, root=repo_root(),
         )
+    if as_json:
+        typer.echo(json.dumps(ingest_service.status_to_dict(found), indent=2))
         return
-    for d in found:
-        half = "archive" if d.archive else "default"
-        typer.echo(f"{d.project} ({half}): {', '.join(d.paths)}")
+    typer.echo(ingest_service.render_status(found, resolved))
 
 
 @reingest_app.command("run")

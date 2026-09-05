@@ -117,7 +117,6 @@ def test_ingest_refuses_a_path_outside_the_repository(env, repo, tmp_path):
     assert "outside the repository" in result.output
 
 
-@pytest.mark.xfail(strict=True, reason="rendered by reingest status in Task 7")
 def test_ingest_records_a_manual_run_row(env, repo):
     runner.invoke(app, ["ingest", "docs/a.md"])
 
