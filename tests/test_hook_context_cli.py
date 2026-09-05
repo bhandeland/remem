@@ -33,6 +33,15 @@ def env(live_dsn, monkeypatch, tmp_path):
     monkeypatch.setenv("REMEM_DSN", live_dsn)
     monkeypatch.setenv("REMEM_USER_ID", "brandon")
     monkeypatch.setenv("REMEM_CONFIG", str(tmp_path / "none.toml"))
+    # `hook context` spawns two detached `remem` processes in a `finally`
+    # on every path (extraction and re-ingest). Pointed at this live test
+    # database, those processes outlive the test and race conftest's
+    # truncate-cascade for locks on the same tables - a deadlock seen twice
+    # on this branch. Every test gets the no-op stub by default; the tests
+    # that assert on spawning install their own recorder afterwards, which
+    # wins because monkeypatch applies in call order.
+    monkeypatch.setattr("remem.hookio.spawn_process", lambda env: False)
+    monkeypatch.setattr("remem.hookio.spawn_ingest", lambda env: False)
     return live_dsn
 
 

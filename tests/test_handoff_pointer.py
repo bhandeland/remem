@@ -19,6 +19,14 @@ def live(live_dsn, monkeypatch, tmp_path):
     with psycopg.connect(live_dsn) as c:
         migrate(c)
         c.commit()
+    # session_start spawns two detached `remem` processes in a `finally` on
+    # every path. Pointed at this live test database they outlive the test
+    # and race conftest's truncate-cascade for table locks - the same
+    # deadlock test_hook_context_cli.py's env fixture stubs against.
+    monkeypatch.setattr("remem.agents.claude_code.hook.spawn_process",
+                         lambda env: False)
+    monkeypatch.setattr("remem.agents.claude_code.hook.spawn_ingest",
+                         lambda env: False)
     return {"REMEM_DSN": live_dsn, "REMEM_USER_ID": "brandon",
             "REMEM_CONFIG": str(tmp_path / "none.toml")}
 
