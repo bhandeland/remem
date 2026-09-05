@@ -39,7 +39,7 @@ duplication is visible: when a file comes in entirely new.
 ## What gets built
 
 - A `ingest_runs` table (migration 017) and a row per run, written by the
-  service, opened before any file I/O and finalised in a `finally`.
+  service, opened before any file I/O and finalised when the run completes.
 - `remem reingest status` shows the latest run per project, with a
   `--json` form, and checks designated paths against disk for the project
   the current directory resolves to.
@@ -81,9 +81,20 @@ would only make "did the last run succeed" a two-row question.
 
 **The service writes the row, not the CLI.** `refresh` calls
 `store.start_ingest_run` before reading any file and `store.finish_ingest_run`
-in a `finally`. A run that dies between the two - a crash, a killed process -
-leaves a row with `started_at` set and `finished_at` null. That is what makes
-"crashed" distinguishable from "never ran", which is the exact gap in (a). If
+when the loop and the embed step are done. A Python exception in between is
+recorded as a failure with path `*` and the exception's text, the row is
+finished, and the exception is re-raised - so the reason is kept rather than
+lost to a debug channel nobody reads. A run that dies without raising - a
+killed process, a machine going down - leaves a row with `started_at` set and
+`finished_at` null. That is what makes "crashed" distinguishable from "never
+ran", which is the exact gap in (a).
+
+For the started row to survive either outcome it has to be committed before
+the work begins, so `reingest run` opens its session with `autocommit=True` -
+the same choice `remem events process` makes, and for the same reason
+CLAUDE.md gives: long-running work that records its own progress. Manual
+`remem ingest` keeps its single transaction; its row is written and read back
+in the same commit as the entries, and a failure there exits 1 as today. If
 the database goes away mid-run, the finalising update fails too; that
 exception reaches the `BaseException` guard `reingest run` already has, and
 the row stays unfinished, which is the truth.
@@ -238,7 +249,8 @@ chunks by hand. A `--from` rename flag is out of scope.
 | `CLAUDE.md` | a paragraph under "Ingested documents" |
 
 `ingest_manual` exists so the run-row bracket lives in the service for both
-triggers. `ingest_paths` itself stays row-free, because `refresh` calls it
+triggers. It writes no row for a dry run (nothing happened) or for a global
+ingest (`project=None`; the row is keyed on a project). `ingest_paths` itself stays row-free, because `refresh` calls it
 once per designation half and must wrap the whole loop in one row.
 
 ## Error handling
@@ -272,7 +284,9 @@ Pure, no `db` marker, runs on CI:
 `db` marked:
 
 - `refresh` writes one row with the right counts and `finished_at` set
-- an ingest that raises mid-loop leaves a row with `finished_at` null
+- an ingest that raises mid-loop finishes the row with a `*` failure naming
+  the exception, and re-raises
+- a started row read back before any finish has `finished_at` null
 - a designated path missing on disk lands in the row's `failures`
 - `anchors` returns only anchors, only live ones, only the owner's - with a
   second principal's anchors present and asserted absent by id
