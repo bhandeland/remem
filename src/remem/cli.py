@@ -1373,10 +1373,19 @@ def record_status(
         except Exception:
             ingest_advisories = []
 
+        # Wrapped like the doctor and ingest calls above, and for the same
+        # reason: a memory advisory that cannot be computed must not take
+        # down the events status it decorates.
+        try:
+            memory_advisories = memory_service.advisories(s.store, s.owner.id)
+        except Exception:
+            memory_advisories = []
+
         report = events.status(
             s.store, s.owner.id, idle_seconds=s.config.idle_minutes * 60,
             hook_advisories=advisories,
             ingest_advisories=ingest_advisories,
+            memory_advisories=memory_advisories,
         )
 
     if as_json:
@@ -1657,7 +1666,13 @@ def _memory_sync_all(dry_run: bool) -> None:
     command exists to make visible is one project quietly not syncing - and
     a total of "40 unchanged" hides that as well as a silent skip would.
     """
-    with _session() as s:
+    # autocommit, like `remem reingest run` and `remem events process`: the
+    # started run row has to be committed before any file is read, or a
+    # crash rolls it back and "crashed" becomes indistinguishable from
+    # "never ran". It also stops sync's two halves disagreeing - files are
+    # written to disk as the sync goes, so a single transaction only ever
+    # rolled the store back and left the disk moved.
+    with _session(autocommit=True) as s:
         outcomes = memory_service.sync_all(
             s.store, s.owner.id, resolve_directory=_memory_dir,
             dry_run=dry_run,
@@ -1720,7 +1735,13 @@ def memory_sync(
     if directory is None:
         typer.echo("claude-code has no memory directory here.", err=True)
         raise typer.Exit(1)
-    with _session() as s:
+    # autocommit, like `remem reingest run` and `remem events process`: the
+    # started run row has to be committed before any file is read, or a
+    # crash rolls it back and "crashed" becomes indistinguishable from
+    # "never ran". It also stops sync's two halves disagreeing - files are
+    # written to disk as the sync goes, so a single transaction only ever
+    # rolled the store back and left the disk moved.
+    with _session(autocommit=True) as s:
         try:
             report = memory_service.sync(
                 s.store, s.owner.id, project=resolved,
@@ -1800,6 +1821,9 @@ def memory_status(
         return
     typer.echo(f"{resolved}: {st.collection} -> {st.directory}")
     typer.echo(f"  {st.entries} entries, {st.files} files, {st.stale} stale")
+    # What last happened, beside what is true now. Both are wanted: the
+    # counts above describe the directory, this describes the run.
+    typer.echo(memory_service.render_run(st.run))
     if st.conflicts:
         typer.echo(
             f"  {st.conflicts} conflict sidecar(s) on disk from a past "

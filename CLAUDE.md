@@ -514,6 +514,39 @@ entry first.
   destroying the copy the user needs, so `status` is what keeps an
   unresolved conflict from going unnoticed between syncs.
 
+- Every sync leaves a row in `memory_runs` (migration 018), written by the
+  service so that `remem memory sync`, `--all`, and any future hook-spawned
+  run record identically - the last of those being the caller with no
+  terminal, and the reason the table was built before it exists. One row per
+  **project**: `--all` writes one each, and a single row could not say which
+  one failed. A `--dry-run` writes none, because a row for it would make
+  "last run" describe a state that never existed.
+- `remem memory sync` therefore opens with `autocommit=True`, like `remem
+  reingest run`: the started row must be committed before any file is read,
+  or a crash rolls it back and "crashed" is indistinguishable from "never
+  ran". This also stops sync's two halves disagreeing - files are written to
+  disk as it goes, so a single transaction only ever rolled the store back
+  and left the disk moved. Sync is idempotent and re-runnable, and both
+  gates hold on the next run exactly as they held on this one. `sync()` is
+  split into a recording wrapper and `_sync_body`, which is where the
+  algorithm lives: the wrapper owns the row, and the body is passed the
+  `Report` it mutates so a partial run is still recorded when it raises.
+- `remem memory status` renders the latest run in four distinct spellings
+  (never, clean, with conflicts or failures, did not finish). Those describe
+  what last *happened*; `stale`, `overlap` and `conflicts` describe the
+  directory *now*, and a reader must not have to infer one from the other.
+- `memory.advisories()` raises one line per unhealthy designated project in
+  `remem record status`: an unresolved conflict sidecar, a run that did not
+  finish, failures in the last run, or a designation that has never synced.
+  Unlike `reingest status`, it checks **every** designated project's
+  directory, because `memory_settings` records the working directory
+  (migration 015) - the answer is stored, not guessed. A pre-015 row with no
+  directory is named and told to re-designate, never guessed at, and a
+  recorded directory that no longer exists is reported as missing rather
+  than as clean. The sweep over projects lives in `advisories()` because
+  `memory.status()` answers for one project at a time, unlike
+  `ingest.status()`.
+
 ### Settings
 
 `remem config` reads and writes two files from one command, routed by key

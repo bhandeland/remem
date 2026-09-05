@@ -22,7 +22,14 @@ from pathlib import Path
 from uuid import UUID
 
 from remem import memory_file
-from remem.domain import Entry, Kind, MemoryDesignation, Origin
+from remem.domain import (
+    Entry,
+    Kind,
+    MemoryDesignation,
+    MemoryRun,
+    MemoryTrigger,
+    Origin,
+)
 from remem.services import kb
 from remem.services.write import RuleNeedsSummary, remember, supersede, update
 from remem.store import Store
@@ -557,18 +564,76 @@ def sync(
     project: str,
     directory: Path,
     dry_run: bool = False,
+    trigger: MemoryTrigger = MemoryTrigger.MANUAL,
 ) -> Report:
     """Adopt what Claude wrote, then regenerate the directory from the store.
 
     Adoption comes first on purpose. The directory has a second writer that
     cannot be told to stop, so regenerating without adopting would destroy
     every memory written since the last run.
+
+    This wrapper owns the run row and nothing else; `_sync_body` is the
+    algorithm. Split rather than wrapped in place so that the recording
+    concern is readable on its own, and so the body's 200-odd lines did not
+    have to be reindented into a `try` to acquire it.
     """
     slug = designation(store, owner_id, project)
     if slug is None:
+        # Raised before the row is started, on purpose: nothing ran, so
+        # nothing should be recorded.
         raise NotDesignated(project)
 
+    # A dry run records nothing at all. It changes neither the disk nor the
+    # store, so a row for it would make "last run" describe a state that
+    # never existed.
+    #
+    # The row is started before any file is read, so a process killed
+    # partway leaves a started-and-unfinished row: "crashed", not "never
+    # ran". That only holds because the caller's session is autocommit.
+    run = None if dry_run else store.start_memory_run(owner_id, project,
+                                                      trigger)
     report = Report()
+    error: BaseException | None = None
+    try:
+        return _sync_body(store, owner_id, project=project,
+                          directory=directory, dry_run=dry_run, slug=slug,
+                          report=report)
+    except BaseException as exc:
+        error = exc
+        raise
+    finally:
+        if run is not None:
+            failures = [{"name": n, "reason": r} for n, r in report.failures]
+            if error is not None:
+                # Recorded as a failure rather than swallowed, and then
+                # re-raised: sync stays fail-loud, and the row still says
+                # what happened. Name '*' because the exception is about the
+                # run, not about one file.
+                failures.append({"name": "*", "reason": str(error)})
+            store.finish_memory_run(
+                run.id, owner_id,
+                adopted=report.adopted, healed=report.healed,
+                edited=report.edited, regenerated=report.regenerated,
+                deleted=report.deleted, unchanged=report.unchanged,
+                renamed=[[old, new] for old, new in report.renamed],
+                conflicts=list(report.conflicts),
+                sidecars=list(report.sidecars),
+                failures=failures,
+            )
+
+
+def _sync_body(
+    store: Store,
+    owner_id: UUID,
+    *,
+    project: str,
+    directory: Path,
+    dry_run: bool,
+    slug: str,
+    report: Report,
+) -> Report:
+    """The sync itself. `report` is passed in and mutated so that `sync`'s
+    `finally` can record a partial run when this raises."""
     marks = load_watermarks(directory)
     index: dict[str, str] = {}
     index_lines: dict[str, str] = {}
@@ -832,6 +897,11 @@ class Status:
     #: so a number you can see is the cheapest guard available.
     overlap: int = 0
     overlap_bytes: int = 0
+    #: The latest run for this project, or None if it has never synced.
+    #: Distinct from the fields around it on purpose: those describe the
+    #: directory NOW, this describes what last happened to it, and a reader
+    #: must not have to infer one from the other.
+    run: MemoryRun | None = None
     #: `<name>.remem-conflict.md` sidecars still on disk from a past sync.
     #: Nothing ever deletes one - deliberately, because auto-deleting a
     #: sidecar risks destroying the copy the user needs - so this is the
@@ -851,6 +921,7 @@ def status(
     out = Status(project=project, collection=slug, directory=directory)
     if slug is None:
         return out
+    out.run = store.latest_memory_run(owner_id, project)
 
     entries = kb.resolve(store, owner_id, slug)
     out.entries = len(entries)
@@ -884,6 +955,99 @@ def status(
         out.overlap = len(shared)
         out.overlap_bytes = sum(len(e.body.encode("utf-8")) for e in shared)
     return out
+
+
+def render_run(run: MemoryRun | None) -> str:
+    """The one-line history, in four distinct spellings.
+
+    Four rather than three because "finished" and "finished with something
+    wrong" are different facts, and a reader scanning for trouble should not
+    have to parse counts to find it. Follows `remem reingest status`.
+    """
+    if run is None:
+        return "  never synced"
+    when = run.started_at.strftime("%Y-%m-%d %H:%M") if run.started_at else "?"
+    if run.finished_at is None:
+        return (f"  last sync {when} did not finish - the process was "
+                f"killed partway")
+    counts = (f"{run.adopted} adopted, {run.edited} edited, "
+              f"{run.regenerated} regenerated, {run.deleted} deleted, "
+              f"{len(run.renamed)} renamed, {run.unchanged} unchanged")
+    trouble = []
+    if run.conflicts:
+        trouble.append(f"{len(run.conflicts)} conflict(s)")
+    if run.failures:
+        trouble.append(f"{len(run.failures)} failure(s)")
+    if trouble:
+        return f"  last sync {when}: {counts} - {', '.join(trouble)}"
+    return f"  last sync {when}: {counts}"
+
+
+#: Where a person goes after reading an advisory line. Carries its scope,
+#: because a pointer leading to a screen that contradicts the line teaches
+#: the user the line lies.
+STATUS_POINTER = "run `remem memory status --project {project}`"
+
+
+def advisories(store: Store, owner_id: UUID) -> list[str]:
+    """One line per designated project whose memory sync needs attention.
+
+    For `remem record status`, the fail-loud half of a fail-soft pipeline,
+    which already carries the doctor and ingest advisories the same way.
+
+    Unlike `ingest.advisories`, this checks every designated project's
+    directory rather than only the current one: `memory_settings` records
+    the working directory a designation was made from (migration 015), so
+    the answer is stored rather than guessed. A row written before 015 has
+    none, and is named in the output rather than skipped silently -
+    re-designating is the fix.
+
+    The sweep lives here rather than below because `memory.status()` answers
+    for one project at a time, unlike `ingest.status()`.
+    """
+    lines: list[str] = []
+    for d in designations(store, owner_id):
+        if d.working_dir is None:
+            lines.append(
+                f"{d.project}: designated before its working directory was "
+                f"recorded, so its memory directory cannot be found - "
+                f"re-designate it from that directory."
+            )
+            continue
+
+        directory = Path(d.working_dir)
+        pointer = STATUS_POINTER.format(project=d.project)
+        run = store.latest_memory_run(owner_id, d.project)
+
+        if run is None:
+            lines.append(
+                f"{d.project}: designated but never synced - {pointer}"
+            )
+            continue
+        if run.finished_at is None:
+            lines.append(
+                f"{d.project}: the last memory sync did not finish - "
+                f"{pointer}"
+            )
+            continue
+
+        trouble = []
+        if not directory.exists():
+            # Distinct from "no conflicts": an absent directory is a
+            # different fact from a clean one, and reporting it as clean is
+            # the confident lie a diagnostic must never tell.
+            trouble.append(f"its memory directory {directory} does not exist")
+        else:
+            sidecars = list(directory.glob(f"*{CONFLICT_SUFFIX}"))
+            if sidecars:
+                trouble.append(
+                    f"{len(sidecars)} unresolved conflict sidecar(s) on disk"
+                )
+        if run.failures:
+            trouble.append(f"{len(run.failures)} failure(s) in the last sync")
+        if trouble:
+            lines.append(f"{d.project}: {'; '.join(trouble)} - {pointer}")
+    return lines
 
 
 def _as_file(
