@@ -16,6 +16,17 @@ class CannotLinkToSelf(Exception):
     """Raised when an entry is linked to itself."""
 
 
+class RuleNeedsSummary(Exception):
+    """A rule was written without the one line the context block renders.
+
+    Rules are the only kind injected into every session, and since the
+    block renders summaries rather than bodies, a rule with no summary
+    arrives as a bare title. Refusing at write time is what keeps the
+    block improving; the 17 rules that predate this requirement render
+    title-only and are backfilled with `remem update --summary`.
+    """
+
+
 class _Clear:
     """Sentinel meaning "set this nullable field to NULL".
 
@@ -45,6 +56,11 @@ def remember(
     session_id: str | None = None,
     origin: Origin = Origin.AGENT,
 ) -> Entry:
+    if kind is Kind.RULE and not (summary or "").strip():
+        # In the service, not the CLI: mcp_server's remember_tool accepts a
+        # `kind` and would write a summary-less rule straight past a
+        # frontend check. One rule enforced here is one every frontend gets.
+        raise RuleNeedsSummary(title)
     entry = Entry(
         id=new_id(),
         kind=kind,

@@ -413,7 +413,8 @@ def test_an_entry_with_no_mem_tag_is_exported(store, owner, tmp_path):
     remember(
         store, owner.id,
         title="Deploys need HTTPS", body="use https\n",
-        kind=Kind.RULE, project="proj", origin=Origin.HUMAN,
+        summary="Deploys need HTTPS, not SSH", kind=Kind.RULE,
+        project="proj", origin=Origin.HUMAN,
     )
 
     report = memory.sync(store, owner.id, project="proj", directory=tmp_path)
@@ -434,7 +435,8 @@ def test_the_minted_name_persists_so_the_next_sync_is_a_no_op(
     remember(
         store, owner.id,
         title="Deploys need HTTPS", body="use https\n",
-        kind=Kind.RULE, project="proj", origin=Origin.HUMAN,
+        summary="Deploys need HTTPS, not SSH", kind=Kind.RULE,
+        project="proj", origin=Origin.HUMAN,
     )
     memory.sync(store, owner.id, project="proj", directory=tmp_path)
     before = {p.name: p.read_bytes() for p in tmp_path.iterdir() if p.is_file()}

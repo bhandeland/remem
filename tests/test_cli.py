@@ -108,7 +108,8 @@ def test_db_status_reports_applied_migrations(env):
 
 
 def test_search_filters_by_kind(env):
-    runner.invoke(app, ["remember", "R", "--body", "shared", "--kind", "rule"])
+    runner.invoke(app, ["remember", "R", "--body", "shared",
+                        "--summary", "R is shared", "--kind", "rule"])
     runner.invoke(app, ["remember", "M", "--body", "shared"])
     s = runner.invoke(app, ["search", "shared", "--kind", "rule", "--json"])
     assert [x["title"] for x in json.loads(s.stdout)] == ["R"]

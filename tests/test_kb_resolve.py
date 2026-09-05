@@ -70,7 +70,8 @@ def test_resolve_excludes_superseded_entries(store, owner):
 def test_resolve_filters_by_kind_in_the_query(store, owner):
     kb.create(store, owner.id, slug="s", title="T",
               query=CollectionQuery(kinds=[Kind.RULE]))
-    remember(store, owner.id, title="A rule", body="b", kind=Kind.RULE)
+    remember(store, owner.id, title="A rule", body="b",
+             summary="A rule that filters by kind", kind=Kind.RULE)
     remember(store, owner.id, title="A memory", body="b", kind=Kind.NOTE)
     assert [x.title for x in kb.resolve(store, owner.id, "s")] == ["A rule"]
 

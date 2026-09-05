@@ -89,7 +89,8 @@ def test_rule_writes_a_rule(env, monkeypatch, tmp_path):
     monkeypatch.chdir(project_dir)
 
     result = runner.invoke(app, ["rule", "Spaced hyphens",
-                                 "--body", "never em dashes"])
+                                 "--body", "never em dashes",
+                                 "--summary", "Use spaced hyphens, never em dashes"])
     assert result.exit_code == 0, result.stdout
     entry = _entry("hyphens")
     assert entry["kind"] == "rule"
@@ -100,6 +101,7 @@ def test_rule_writes_a_rule(env, monkeypatch, tmp_path):
 def test_rule_accepts_tags_and_global(env, monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     runner.invoke(app, ["rule", "Universal", "--body", "applies everywhere",
+                        "--summary", "This rule applies everywhere",
                         "--tag", "style", "--global"])
     entry = _entry("everywhere")
     assert entry["project"] is None

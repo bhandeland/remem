@@ -67,6 +67,7 @@ def test_supersede_creates_a_new_entry_and_marks_the_old(store, owner):
 
 def test_supersede_inherits_project_and_tags(store, owner):
     old = write.remember(store, owner.id, title="T", body="B",
+                         summary="Deploy on Fridays only with a rollback plan",
                          project="remem", tags=["deploys"], kind=Kind.RULE)
     new = write.supersede(store, owner.id, old.id, title="T2", body="B2")
     assert new.project == "remem"

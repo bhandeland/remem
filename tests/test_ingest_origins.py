@@ -57,9 +57,11 @@ def test_include_archived_surfaces_both(store, owner):
 
 def test_neither_origin_reaches_a_context_block(store, owner):
     remember(store, owner.id, title="Ingested rule", body="never in context",
-             kind=Kind.RULE, project="remem", origin=Origin.INGESTED)
+             summary="Never reaches a context block", kind=Kind.RULE,
+             project="remem", origin=Origin.INGESTED)
     remember(store, owner.id, title="Archived rule", body="never in context",
-             kind=Kind.RULE, project="remem", origin=Origin.ARCHIVED)
+             summary="Never reaches a context block", kind=Kind.RULE,
+             project="remem", origin=Origin.ARCHIVED)
     kb.create(store, owner.id, slug="remem", title="remem",
               query=CollectionQuery(project="remem"))
 
