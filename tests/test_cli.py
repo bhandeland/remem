@@ -395,3 +395,12 @@ def test_remember_kind_rule_without_a_summary_names_the_flag(env):
                             "--kind", "rule"])
     assert r.exit_code == 1
     assert "--summary" in r.stderr
+
+
+def test_update_summary_empty_on_a_rule_names_the_flag(env):
+    r = runner.invoke(app, ["rule", "A rule", "--body", "the case",
+                            "--summary", "do the thing"])
+    entry_id = r.stdout.strip()
+    r = runner.invoke(app, ["update", entry_id, "--summary", ""])
+    assert r.exit_code == 1
+    assert "--summary" in r.stderr

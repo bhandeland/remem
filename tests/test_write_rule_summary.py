@@ -91,6 +91,39 @@ def test_update_sets_a_summary_without_creating_a_second_entry(store, owner):
     assert updated.superseded_by is None
 
 
+def test_update_refuses_to_empty_a_rules_summary(store, owner):
+    """update(summary="") passed the `is not None` test and silently wrote
+    an empty string, which `_content` then treats as falsy - dropping the
+    rule back to title-only through a door `remember` does not have."""
+    e = write.remember(store, owner.id, title="A rule", body="the case",
+                       summary="do the thing", kind=Kind.RULE, project="remem")
+    with pytest.raises(write.RuleNeedsSummary):
+        write.update(store, owner.id, e.id, summary="")
+
+
+def test_update_refuses_a_whitespace_summary_too(store, owner):
+    """update(summary="   ") stored the padding, and _content's `if
+    entry.summary:` is truthy for whitespace - rendering a blank line
+    where the rule's instruction belongs."""
+    e = write.remember(store, owner.id, title="A rule", body="the case",
+                       summary="do the thing", kind=Kind.RULE, project="remem")
+    with pytest.raises(write.RuleNeedsSummary):
+        write.update(store, owner.id, e.id, summary="   ")
+
+
+def test_update_strips_the_summary_it_stores(store, owner):
+    e = write.remember(store, owner.id, title="A rule", body="the case",
+                       summary="do the thing", kind=Kind.RULE, project="remem")
+    updated = write.update(store, owner.id, e.id, summary="  padded  ")
+    assert updated.summary == "padded"
+
+
+def test_remember_strips_the_summary_it_stores(store, owner):
+    e = write.remember(store, owner.id, title="A note", body="b",
+                       summary="  padded  ", kind=Kind.NOTE, project="remem")
+    assert e.summary == "padded"
+
+
 def test_update_leaves_the_summary_alone_when_not_given(store, owner):
     """None means unchanged here, as it does for every other field on
     update. There is no --clear-summary: a wrong summary is fixed by

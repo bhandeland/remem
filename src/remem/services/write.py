@@ -74,6 +74,11 @@ def remember(
         # rule can never reach kb.resolve's output, so this is not an
         # escape hatch, it ties the requirement to its own justification.
         raise RuleNeedsSummary(title)
+    if summary is not None:
+        # Stored stripped, not just checked stripped: "  x  " passed the
+        # blank check above and would otherwise render with the padding
+        # intact, since _content interpolates the summary as-is.
+        summary = summary.strip()
     entry = Entry(
         id=new_id(),
         kind=kind,
@@ -119,7 +124,21 @@ def update(
         # No CLEAR for summary. A wrong summary is fixed by writing a
         # better one, and a rule with none renders title-only rather than
         # breaking - so emptying one has no use case worth the sentinel.
-        entry.summary = summary
+        #
+        # Held to the same contract as remember(): a blank-or-whitespace
+        # summary on a rule is refused rather than silently accepted, and
+        # what does get stored is stripped. Without this, `update` was an
+        # unadvertised way to drop a rule back to title-only (summary="")
+        # or to render a blank line where the instruction belongs
+        # (summary="   ", which _content's `if entry.summary:` treats as
+        # present) - both of which `remember` already refuses.
+        if (
+            entry.kind is Kind.RULE
+            and entry.origin in INJECTED_ORIGINS
+            and not summary.strip()
+        ):
+            raise RuleNeedsSummary(entry.title)
+        entry.summary = summary.strip()
     if tags is not None:
         entry.tags = list(tags)
     if project is CLEAR:

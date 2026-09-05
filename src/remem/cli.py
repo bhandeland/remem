@@ -478,6 +478,13 @@ def update(
         except write.EntryNotFound:
             typer.echo(f"No entry {entry_id}", err=True)
             raise typer.Exit(1)
+        except write.RuleNeedsSummary:
+            typer.echo(
+                "A rule needs --summary: it is the line every session sees, "
+                "since the context block renders summaries rather than bodies.",
+                err=True,
+            )
+            raise typer.Exit(1)
         typer.echo(entry.id)
 
 
