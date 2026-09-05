@@ -22,6 +22,7 @@ from remem.config import load
 from remem.domain import CollectionQuery, Entry, Kind, Match, Origin, Query
 from remem.embed import EmbedderUnavailable, load_embedder
 from remem.project import repo_root, resolve_project, toplevel
+from remem.services import dedupe as dedupe_service
 from remem.services import ingest as ingest_service
 from remem.services import kb, write
 from remem.services import memory as memory_service
@@ -61,6 +62,9 @@ app.add_typer(memory_app, name="memory")
 # memory and in every handoff. A sub-app of the same name cannot coexist
 # with it, and breaking the manual command to make room for the automatic
 # one would be the wrong trade.
+dedupe_app = typer.Typer(help="Find entries that say the same thing twice.")
+app.add_typer(dedupe_app, name="dedupe")
+
 reingest_app = typer.Typer(help="Automatic re-ingest of designated paths.")
 app.add_typer(reingest_app, name="reingest")
 
@@ -1939,3 +1943,76 @@ def _reingest_once(env: dict[str, str]) -> None:
         hookio.debug(env, f"re-ingest failed: {path}: {reason}")
     if result.embed_error:
         hookio.debug(env, f"re-ingest embed skipped: {result.embed_error}")
+
+
+@dedupe_app.command("report")
+def dedupe_report(
+    project: Annotated[Optional[str], typer.Option("--project")] = None,
+    kind: Annotated[Optional[list[Kind]], typer.Option("--kind")] = None,
+    tag: Annotated[Optional[list[str]], typer.Option("--tag")] = None,
+    threshold: Annotated[float, typer.Option("--threshold")]
+        = dedupe_service.DEFAULT_THRESHOLD,
+    limit: Annotated[int, typer.Option("--limit")]
+        = dedupe_service.DEFAULT_PAIR_LIMIT,
+    as_json: Annotated[bool, typer.Option("--json")] = False,
+):
+    """Report entries that duplicate each other. Read-only.
+
+    Two tiers, both always run and never blended: identical bodies first,
+    then entries close in meaning, each pair with its similarity. Nothing is
+    merged - every group prints a `remem dedupe resolve` line to run, edit
+    or ignore.
+
+    --limit bounds the near tier only; identical bodies are never truncated.
+    """
+    with _session() as s:
+        report = dedupe_service.report(
+            s.store, s.owner.id,
+            Query(project=project, kinds=list(kind or []),
+                  tags=list(tag or []), limit=limit),
+            model=s.config.embed_model,
+            threshold=threshold,
+            limit=limit,
+        )
+    if as_json:
+        typer.echo(json.dumps({
+            "exact": [[_entry_dict(e) for e in g.entries]
+                      for g in report.exact],
+            "near": [
+                {"similarity": p.similarity,
+                 "entries": [_entry_dict(p.a), _entry_dict(p.b)]}
+                for p in report.near
+            ],
+            "near_total": report.near_total,
+            # Explicit rather than inferred from an empty "near": a machine
+            # reader must be able to tell "none found" from "never ran", for
+            # the same reason the human rendering says so in words.
+            "near_checked": report.embedded > 0,
+            "threshold": report.threshold,
+            "model": report.model,
+            "coverage": {"embedded": report.embedded, "total": report.total},
+        }, indent=2, default=str))
+        return
+    typer.echo(dedupe_service.render(report))
+
+
+@dedupe_app.command("resolve")
+def dedupe_resolve(
+    drop_id: str,
+    keep: Annotated[str, typer.Option("--keep")],
+):
+    """Point one existing entry at another that says the same thing.
+
+    Unlike `supersede`, no new entry is written: both already exist, and the
+    dropped one is marked as superseded by the kept one. Fail-loud - a
+    person asked for this.
+    """
+    with _session() as s:
+        try:
+            dropped, kept = dedupe_service.resolve(
+                s.store, s.owner.id, UUID(drop_id), UUID(keep))
+        except (dedupe_service.CannotResolve, ValueError) as exc:
+            typer.echo(f"Cannot resolve: {exc}")
+            raise typer.Exit(1)
+    typer.echo(f"{dropped.id} ({dropped.title})")
+    typer.echo(f"  superseded by {kept.id} ({kept.title})")
