@@ -22,7 +22,14 @@ from pathlib import Path
 from uuid import UUID
 
 from remem import memory_file
-from remem.domain import Entry, Kind, MemoryDesignation, Origin
+from remem.domain import (
+    Entry,
+    Kind,
+    MemoryDesignation,
+    MemoryRun,
+    MemoryTrigger,
+    Origin,
+)
 from remem.services import kb
 from remem.services.write import RuleNeedsSummary, remember, supersede, update
 from remem.store import Store
@@ -557,18 +564,76 @@ def sync(
     project: str,
     directory: Path,
     dry_run: bool = False,
+    trigger: MemoryTrigger = MemoryTrigger.MANUAL,
 ) -> Report:
     """Adopt what Claude wrote, then regenerate the directory from the store.
 
     Adoption comes first on purpose. The directory has a second writer that
     cannot be told to stop, so regenerating without adopting would destroy
     every memory written since the last run.
+
+    This wrapper owns the run row and nothing else; `_sync_body` is the
+    algorithm. Split rather than wrapped in place so that the recording
+    concern is readable on its own, and so the body's 200-odd lines did not
+    have to be reindented into a `try` to acquire it.
     """
     slug = designation(store, owner_id, project)
     if slug is None:
+        # Raised before the row is started, on purpose: nothing ran, so
+        # nothing should be recorded.
         raise NotDesignated(project)
 
+    # A dry run records nothing at all. It changes neither the disk nor the
+    # store, so a row for it would make "last run" describe a state that
+    # never existed.
+    #
+    # The row is started before any file is read, so a process killed
+    # partway leaves a started-and-unfinished row: "crashed", not "never
+    # ran". That only holds because the caller's session is autocommit.
+    run = None if dry_run else store.start_memory_run(owner_id, project,
+                                                      trigger)
     report = Report()
+    error: BaseException | None = None
+    try:
+        return _sync_body(store, owner_id, project=project,
+                          directory=directory, dry_run=dry_run, slug=slug,
+                          report=report)
+    except BaseException as exc:
+        error = exc
+        raise
+    finally:
+        if run is not None:
+            failures = [{"name": n, "reason": r} for n, r in report.failures]
+            if error is not None:
+                # Recorded as a failure rather than swallowed, and then
+                # re-raised: sync stays fail-loud, and the row still says
+                # what happened. Name '*' because the exception is about the
+                # run, not about one file.
+                failures.append({"name": "*", "reason": str(error)})
+            store.finish_memory_run(
+                run.id, owner_id,
+                adopted=report.adopted, healed=report.healed,
+                edited=report.edited, regenerated=report.regenerated,
+                deleted=report.deleted, unchanged=report.unchanged,
+                renamed=[[old, new] for old, new in report.renamed],
+                conflicts=list(report.conflicts),
+                sidecars=list(report.sidecars),
+                failures=failures,
+            )
+
+
+def _sync_body(
+    store: Store,
+    owner_id: UUID,
+    *,
+    project: str,
+    directory: Path,
+    dry_run: bool,
+    slug: str,
+    report: Report,
+) -> Report:
+    """The sync itself. `report` is passed in and mutated so that `sync`'s
+    `finally` can record a partial run when this raises."""
     marks = load_watermarks(directory)
     index: dict[str, str] = {}
     index_lines: dict[str, str] = {}
