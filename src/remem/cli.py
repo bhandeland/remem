@@ -220,11 +220,19 @@ def remember(
     resolved = _resolve_project(project, is_global)
     text = _body_from_editor() if edit else _read_body(body)
     with _session() as s:
-        entry = write.remember(
-            s.store, s.owner.id, title=title, body=text, kind=kind,
-            summary=summary,
-            project=resolved, tags=list(tag or []), origin=Origin.HUMAN,
-        )
+        try:
+            entry = write.remember(
+                s.store, s.owner.id, title=title, body=text, kind=kind,
+                summary=summary,
+                project=resolved, tags=list(tag or []), origin=Origin.HUMAN,
+            )
+        except write.RuleNeedsSummary:
+            typer.echo(
+                "A rule needs --summary: it is the line every session sees, "
+                "since the context block renders summaries rather than bodies.",
+                err=True,
+            )
+            raise typer.Exit(1)
         typer.echo(entry.id)
 
 

@@ -384,3 +384,14 @@ def test_supersede_a_legacy_rule_with_a_summary_succeeds(env):
                             "--summary", "state the rule in one line"])
     assert r.exit_code == 0
     assert _summary_of(env, r.stdout.strip()) == "state the rule in one line"
+
+
+def test_remember_kind_rule_without_a_summary_names_the_flag(env):
+    """`remem remember --kind rule` used to exit 1 with a bare traceback
+    and nothing on stdout or stderr - `remem rule` (the shorthand) already
+    caught this and named --summary, so the two commands gave the same
+    mistake two different experiences."""
+    r = runner.invoke(app, ["remember", "A rule", "--body", "the case",
+                            "--kind", "rule"])
+    assert r.exit_code == 1
+    assert "--summary" in r.stderr
