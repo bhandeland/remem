@@ -983,6 +983,73 @@ def render_run(run: MemoryRun | None) -> str:
     return f"  last sync {when}: {counts}"
 
 
+#: Where a person goes after reading an advisory line. Carries its scope,
+#: because a pointer leading to a screen that contradicts the line teaches
+#: the user the line lies.
+STATUS_POINTER = "run `remem memory status --project {project}`"
+
+
+def advisories(store: Store, owner_id: UUID) -> list[str]:
+    """One line per designated project whose memory sync needs attention.
+
+    For `remem record status`, the fail-loud half of a fail-soft pipeline,
+    which already carries the doctor and ingest advisories the same way.
+
+    Unlike `ingest.advisories`, this checks every designated project's
+    directory rather than only the current one: `memory_settings` records
+    the working directory a designation was made from (migration 015), so
+    the answer is stored rather than guessed. A row written before 015 has
+    none, and is named in the output rather than skipped silently -
+    re-designating is the fix.
+
+    The sweep lives here rather than below because `memory.status()` answers
+    for one project at a time, unlike `ingest.status()`.
+    """
+    lines: list[str] = []
+    for d in designations(store, owner_id):
+        if d.working_dir is None:
+            lines.append(
+                f"{d.project}: designated before its working directory was "
+                f"recorded, so its memory directory cannot be found - "
+                f"re-designate it from that directory."
+            )
+            continue
+
+        directory = Path(d.working_dir)
+        pointer = STATUS_POINTER.format(project=d.project)
+        run = store.latest_memory_run(owner_id, d.project)
+
+        if run is None:
+            lines.append(
+                f"{d.project}: designated but never synced - {pointer}"
+            )
+            continue
+        if run.finished_at is None:
+            lines.append(
+                f"{d.project}: the last memory sync did not finish - "
+                f"{pointer}"
+            )
+            continue
+
+        trouble = []
+        if not directory.exists():
+            # Distinct from "no conflicts": an absent directory is a
+            # different fact from a clean one, and reporting it as clean is
+            # the confident lie a diagnostic must never tell.
+            trouble.append(f"its memory directory {directory} does not exist")
+        else:
+            sidecars = list(directory.glob(f"*{CONFLICT_SUFFIX}"))
+            if sidecars:
+                trouble.append(
+                    f"{len(sidecars)} unresolved conflict sidecar(s) on disk"
+                )
+        if run.failures:
+            trouble.append(f"{len(run.failures)} failure(s) in the last sync")
+        if trouble:
+            lines.append(f"{d.project}: {'; '.join(trouble)} - {pointer}")
+    return lines
+
+
 def _as_file(
     entry: Entry, name: str, source: memory_file.MemoryFile | None = None
 ) -> memory_file.MemoryFile:

@@ -1373,10 +1373,19 @@ def record_status(
         except Exception:
             ingest_advisories = []
 
+        # Wrapped like the doctor and ingest calls above, and for the same
+        # reason: a memory advisory that cannot be computed must not take
+        # down the events status it decorates.
+        try:
+            memory_advisories = memory_service.advisories(s.store, s.owner.id)
+        except Exception:
+            memory_advisories = []
+
         report = events.status(
             s.store, s.owner.id, idle_seconds=s.config.idle_minutes * 60,
             hook_advisories=advisories,
             ingest_advisories=ingest_advisories,
+            memory_advisories=memory_advisories,
         )
 
     if as_json:

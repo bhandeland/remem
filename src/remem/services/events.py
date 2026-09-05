@@ -152,6 +152,11 @@ class StatusReport:
     #: ingest status that cannot be computed must not take down the
     #: events status.
     ingest_advisories: list[str] = field(default_factory=list)
+    #: Lines from `services/memory.advisories`, passed in for the same
+    #: reason `ingest_advisories` is: this module is about events, and a
+    #: memory sync that never finished is not an event - but `record
+    #: status` is the one screen a person checks, so it carries it.
+    memory_advisories: list[str] = field(default_factory=list)
 
 
 def status(
@@ -160,6 +165,7 @@ def status(
     idle_seconds: int,
     hook_advisories: list[str] | None = None,
     ingest_advisories: list[str] | None = None,
+    memory_advisories: list[str] | None = None,
 ) -> StatusReport:
     """Gather the numbers behind `remem record status`. Read-only.
 
@@ -198,6 +204,7 @@ def status(
         suspected_duplicates=store.duplicate_unkeyed_events(owner_id),
         hook_advisories=list(hook_advisories or []),
         ingest_advisories=list(ingest_advisories or []),
+        memory_advisories=list(memory_advisories or []),
     )
 
 
@@ -258,6 +265,8 @@ def render(report: StatusReport) -> str:
         lines.append(f"! {line}")
     for line in report.ingest_advisories:
         lines.append(f"! {line}")
+    for line in report.memory_advisories:
+        lines.append(f"! {line}")
     return "\n".join(lines)
 
 
@@ -294,6 +303,7 @@ def to_dict(report: StatusReport) -> dict:
         ],
         "hook_advisories": list(report.hook_advisories),
         "ingest_advisories": list(report.ingest_advisories),
+        "memory_advisories": list(report.memory_advisories),
     }
 
 
