@@ -203,3 +203,31 @@ def test_advisories_name_only_the_unhealthy_projects(store, owner, root):
 @pytest.mark.db
 def test_advisories_are_empty_with_nothing_designated(store, owner, root):
     assert ingest.advisories(store, owner.id, current_project=None, root=None) == []
+
+
+@pytest.mark.db
+def test_advisories_ignore_an_undesignated_projects_failed_manual_run(
+    store, owner, root
+):
+    """status()'s fallback surfaces an undesignated current project's run
+    for `reingest status` - right there, since that screen is answering
+    "what happened here". But the spec scopes this advisory to designated
+    projects: `remem ingest` is already fail-loud about its own failures,
+    and an undesignated project's run row never repairs itself, so
+    repeating it here would be a permanently stuck line whose pointer
+    (remem reingest status --project solo) contradicts itself from outside
+    this directory, where the fallback's `project == current_project`
+    guard fails and the screen reads "not designated" with no run shown.
+    """
+    run = store.start_ingest_run(owner.id, "solo", IngestTrigger.MANUAL)
+    store.finish_ingest_run(
+        run.id, owner.id, created=0, changed=0, unchanged=0, swept=0,
+        embedded=0, twins=[], embed_error=None,
+        failures=[{"path": "x", "reason": "boom"}],
+    )
+
+    lines = ingest.advisories(
+        store, owner.id, current_project="solo", root=root
+    )
+
+    assert lines == []

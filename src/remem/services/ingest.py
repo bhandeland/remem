@@ -118,11 +118,17 @@ def relative_to_root(paths: list[Path], top: Path, cwd: Path) -> list[Path]:
         try:
             out.append(located.relative_to(top))
         except ValueError:
+            # Deliberately unconditional on project scope: --project and
+            # --global do not bypass this. The refusal is about where the
+            # file LIVES, not which project it would file under, so neither
+            # flag changes the answer - and the message must not claim
+            # otherwise, which it did until a review caught a user being
+            # told to pass a flag that changes nothing.
             raise BadDesignation(
                 f"{raw!s} is outside the repository at {top}. Inside a "
                 f"repository, ingest identifies documents by their "
                 f"repository-relative path; to ingest a file elsewhere, run "
-                f"from outside any repository or pass --project."
+                f"it from outside any repository."
             ) from None
     return out
 
@@ -797,6 +803,18 @@ def advisories(
     lines: list[str] = []
     for s in status(store, owner_id, None, current_project=current_project,
                     root=root):
+        # status()'s fallback surfaces an undesignated current project's
+        # manual run too - right for the status screen, which is answering
+        # "what happened here", but the spec scopes this advisory to
+        # designated projects. `remem ingest` is already fail-loud about its
+        # own failures, and an undesignated project's run row never repairs
+        # itself, so repeating it here would be a permanently stuck line
+        # whose pointer (remem reingest status --project X) contradicts
+        # itself from outside this directory - "not designated", no run
+        # shown. The fallback's rows are the only ones with an empty
+        # designations list, which is what makes them identifiable here.
+        if not s.designations:
+            continue
         pointer = STATUS_POINTER.format(project=s.project)
         run = s.last_run
         if run is not None and run.finished_at is None:

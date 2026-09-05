@@ -65,8 +65,14 @@ def test_absolute_inside_the_repository_is_rewritten(repo):
 
 
 def test_a_path_outside_the_repository_is_refused(repo, tmp_path):
-    with pytest.raises(ingest.BadDesignation, match="outside the repository"):
+    with pytest.raises(
+        ingest.BadDesignation, match="outside the repository"
+    ) as excinfo:
         ingest.relative_to_root([tmp_path / "elsewhere.md"], repo, cwd=repo)
+    # The refusal is unconditional on project scope - --project does not
+    # bypass it - so the message must not tell the user to pass a flag
+    # that changes nothing.
+    assert "--project" not in str(excinfo.value)
 
 
 def test_a_dot_dot_that_stays_inside_is_fine(repo):
