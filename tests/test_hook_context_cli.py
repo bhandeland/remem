@@ -57,7 +57,7 @@ def _seed_kb(dsn, *, project="myrepo"):
         kb.create(store, owner.id, slug=project, title=project,
                   query=CollectionQuery(project=project))
         remember(store, owner.id, title="Lint rule", body="always run ruff",
-                 kind=Kind.RULE, project=project)
+                 summary="Run ruff linter", kind=Kind.RULE, project=project)
         c.commit()
 
 
@@ -168,7 +168,7 @@ def test_context_prints_the_knowledge_base_for_the_session(env, repo):
 
     assert result.exit_code == 0
     assert "Lint rule" in result.stdout
-    assert "always run ruff" in result.stdout
+    assert "Run ruff linter" in result.stdout
 
 
 def test_context_reads_a_named_agent_and_matches_the_default(env, repo):

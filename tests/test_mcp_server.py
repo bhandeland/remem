@@ -65,11 +65,12 @@ def test_kb_list_and_context(env):
 
     assert any(c["slug"] == "core" for c in kb_list_tool())
 
-    entry = remember_tool(title="A rule", body="always lint", kind="rule")
+    entry = remember_tool(title="A rule", body="always lint", summary="Run lint",
+                          kind="rule")
     kb_pin_tool(slug="core", entry_id=entry["id"])
 
     block = kb_context_tool(slug="core")
-    assert "always lint" in block
+    assert "Run lint" in block
     assert "## Rules" in block
 
 

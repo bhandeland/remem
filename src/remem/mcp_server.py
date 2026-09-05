@@ -57,6 +57,7 @@ def remember_tool(
     kind: str = "note",
     project: str | None = None,
     tags: list[str] | None = None,
+    summary: str | None = None,
 ) -> dict:
     """Store something worth knowing later.
 
@@ -78,8 +79,8 @@ def remember_tool(
         return {"error": _invalid_kind_message(kind)}
     with open_session() as s:
         entry = write.remember(
-            s.store, s.owner.id, title=title, body=body, kind=parsed_kind,
-            project=project or _default_project(),
+            s.store, s.owner.id, title=title, body=body, summary=summary,
+            kind=parsed_kind, project=project or _default_project(),
             tags=list(tags or []), agent=AGENT_NAME,
             session_id=_session_id(), origin=Origin.AGENT,
         )

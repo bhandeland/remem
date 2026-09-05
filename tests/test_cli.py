@@ -83,7 +83,7 @@ def test_supersede_replaces_and_hides_the_old_entry(env):
 
 def test_kb_new_list_pin_and_show(env):
     runner.invoke(app, ["remember", "A rule", "--body", "always lint",
-                        "--kind", "rule"])
+                        "--summary", "Run lint", "--kind", "rule"])
     s = runner.invoke(app, ["search", "lint", "--json"])
     entry_id = json.loads(s.stdout)[0]["id"]
 
@@ -93,7 +93,7 @@ def test_kb_new_list_pin_and_show(env):
 
     assert runner.invoke(app, ["kb", "pin", "core", entry_id]).exit_code == 0
     shown = runner.invoke(app, ["kb", "show", "core"])
-    assert "always lint" in shown.stdout
+    assert "Run lint" in shown.stdout
     assert "## Rules" in shown.stdout
 
 

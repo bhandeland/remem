@@ -58,21 +58,34 @@ def test_no_notice_when_everything_fits():
 
 
 def test_rules_are_never_truncated_even_over_budget():
-    """Rules survive whole while everything else is dropped for space."""
-    rules = [entry(f"Rule {i}", "y" * 300, kind=Kind.RULE) for i in range(4)]
+    """Rules survive whole while everything else is dropped for space.
+
+    Unchanged invariant, restated for short forms: what must survive whole
+    is now each rule's summary, not its body.
+    """
+    rules = [entry(f"Rule {i}", "body that is not rendered", kind=Kind.RULE,
+                   summary="s" * 300) for i in range(4)]
     others = [entry(f"Doc {i}", "z" * 800) for i in range(10)]
 
     out = render(collection(), rules + others, max_chars=2000)
 
     for i in range(4):
         assert f"Rule {i}" in out
-    assert out.count("y" * 300) == 4     # every rule body, in full
+    assert out.count("s" * 300) == 4     # every rule summary, in full
     assert "z" * 800 not in out          # the budget really did bite
     assert "10 more entries not shown" in out
 
 
 def test_rules_alone_exceeding_the_budget_raises():
-    rules = [entry(f"Rule {i}", "y" * 500, kind=Kind.RULE) for i in range(10)]
+    """The backstop, which short forms make rare rather than remove.
+
+    Rules are cheap now, so the over-budget case needs building rather
+    than arriving by accident: ten long summaries against a tiny budget.
+    An agent handed a partial rule set proceeds believing it has the
+    conventions, which is worse than having none - so this raises.
+    """
+    rules = [entry(f"Rule {i}", "body", kind=Kind.RULE, summary="y" * 500)
+             for i in range(10)]
     with pytest.raises(RulesExceedBudget):
         render(collection(), rules, max_chars=500)
 
