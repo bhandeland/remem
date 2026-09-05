@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from contextlib import AbstractContextManager
 from datetime import datetime, timezone
 from uuid import UUID
 
@@ -1352,6 +1353,12 @@ class PostgresStore:
                 (name, str(owner_id)),
             )
             return bool(cur.fetchone()["pg_try_advisory_lock"])
+
+    def transaction(self) -> AbstractContextManager[None]:
+        # psycopg's own transaction() already does exactly what the
+        # Protocol promises: a real transaction under autocommit, a
+        # savepoint inside one already open. No wrapping needed.
+        return self._conn.transaction()
 
     def extract_job_for_session(
         self, owner_id: UUID, session: SessionRef

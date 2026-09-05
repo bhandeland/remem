@@ -3,6 +3,7 @@ would implement this same protocol."""
 
 from __future__ import annotations
 
+from contextlib import AbstractContextManager
 from datetime import datetime
 from typing import Protocol
 from uuid import UUID
@@ -193,3 +194,20 @@ class Store(Protocol):
         self, owner_id: UUID, limit: int = 5
     ) -> list[ExtractJob]: ...
     def try_advisory_lock(self, name: str, owner_id: UUID) -> bool: ...
+
+    def transaction(self) -> AbstractContextManager[None]:
+        """Group statements that must commit or roll back together.
+
+        Under an autocommit connection this opens a real transaction; inside
+        an already-open transaction (the common case in tests, which run
+        inside one rolled-back transaction per test) it is a savepoint -
+        psycopg's `Connection.transaction()` nests either way. It exists
+        because `write.supersede` is two statements - insert the
+        replacement, then retire the old row - and `reingest run` runs
+        autocommit so its run row survives a crash. Without this, a process
+        killed between those two statements leaves two live entries sharing
+        the same `(src:, sec:)` pair, and no later run can sweep the loser:
+        it is not in `ingest_file`'s `existing` dict (keyed on slug, one
+        winner per slug) so it is never superseded and never swept.
+        """
+        ...

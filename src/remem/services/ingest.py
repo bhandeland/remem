@@ -361,10 +361,20 @@ def ingest_paths(
     report = Report()
     for path in _discover(paths, root):
         try:
-            report.merge(
-                ingest_file(store, owner_id, path, project=project,
-                            root=root, archive=archive, dry_run=dry_run)
-            )
+            # ingest_file's changed branch is two statements - remember()
+            # inserts the replacement, set_superseded() retires the old row
+            # - and `refresh` runs its caller under autocommit so the run
+            # row it started survives a crash. Without this wrap, a process
+            # killed between those two statements leaves both rows live
+            # under the same (src:, sec:) pair, which no later run can sweep
+            # (see Store.transaction's docstring). Inside the existing try
+            # so a failure mid-file still lands in report.failures rather
+            # than aborting the whole path list.
+            with store.transaction():
+                report.merge(
+                    ingest_file(store, owner_id, path, project=project,
+                                root=root, archive=archive, dry_run=dry_run)
+                )
         except (OSError, UnicodeDecodeError, TooManyChunks) as exc:
             report.failures.append((path, str(exc)))
     return report
