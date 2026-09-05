@@ -436,6 +436,7 @@ def update(
     entry_id: str,
     title: Annotated[Optional[str], typer.Option("--title")] = None,
     body: Annotated[Optional[str], typer.Option("--body")] = None,
+    summary: Annotated[Optional[str], typer.Option("--summary")] = None,
     project: Annotated[Optional[str], typer.Option("--project")] = None,
     clear_project: Annotated[bool, typer.Option("--clear-project")] = False,
     tag: Annotated[Optional[list[str]], typer.Option("--tag")] = None,
@@ -445,6 +446,9 @@ def update(
 
     Only the fields you pass change. --clear-project and --clear-tags empty a
     field, which passing nothing cannot express.
+
+    --summary is how a rule written before summaries were required gets
+    the line the context block renders, without superseding it.
     """
     parsed = _entry_id(entry_id)
     text = _read_body(body) if body is not None else None
@@ -461,7 +465,7 @@ def update(
     with _session() as s:
         try:
             entry = write.update(s.store, s.owner.id, parsed,
-                                 title=title, body=text,
+                                 title=title, body=text, summary=summary,
                                  project=new_project, tags=new_tags)
         except write.EntryNotFound:
             typer.echo(f"No entry {entry_id}", err=True)

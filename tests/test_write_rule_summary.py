@@ -53,3 +53,32 @@ def test_notes_and_docs_do_not_need_a_summary(store, owner):
         e = write.remember(store, owner.id, title=f"A {kind}", body="body",
                            kind=kind, project="remem")
         assert e.summary is None
+
+
+def test_update_sets_a_summary_without_creating_a_second_entry(store, owner):
+    """Backfill is an in-place edit, not a correction.
+
+    supersede would retire the entry, mint a replacement, and churn the
+    memory file whose frontmatter description this field feeds - all for
+    adding a line that was always meant to be there.
+    """
+    e = write.remember(store, owner.id, title="A rule", body="the case",
+                       summary="first", kind=Kind.RULE, project="remem")
+
+    updated = write.update(store, owner.id, e.id, summary="better line")
+
+    assert updated.id == e.id
+    assert updated.summary == "better line"
+    assert updated.superseded_by is None
+
+
+def test_update_leaves_the_summary_alone_when_not_given(store, owner):
+    """None means unchanged here, as it does for every other field on
+    update. There is no --clear-summary: a wrong summary is fixed by
+    writing a better one."""
+    e = write.remember(store, owner.id, title="A rule", body="the case",
+                       summary="keep me", kind=Kind.RULE, project="remem")
+
+    updated = write.update(store, owner.id, e.id, title="A renamed rule")
+
+    assert updated.summary == "keep me"

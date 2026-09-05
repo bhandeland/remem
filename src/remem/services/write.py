@@ -92,6 +92,7 @@ def update(
     *,
     title: str | None = None,
     body: str | None = None,
+    summary: str | None = None,
     tags: list[str] | None = None,
     project: str | None | _Clear = None,
 ) -> Entry:
@@ -101,6 +102,11 @@ def update(
         entry.title = title
     if body is not None:
         entry.body = body
+    if summary is not None:
+        # No CLEAR for summary. A wrong summary is fixed by writing a
+        # better one, and a rule with none renders title-only rather than
+        # breaking - so emptying one has no use case worth the sentinel.
+        entry.summary = summary
     if tags is not None:
         entry.tags = list(tags)
     if project is CLEAR:
