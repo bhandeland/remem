@@ -94,6 +94,27 @@ def test_render_nothing_designated():
     assert "This project" in ingest.render_status([], None)
 
 
+def test_render_an_undesignated_projects_manual_run_has_no_check_line():
+    """The `status()` fallback for a project that was manually ingested but
+    never designated: `designations=[]`, `checked_against=None`. Nothing
+    was designated, so neither "all present" nor "not checked" may appear -
+    both describe a check that never ran, and would read as a clean pass
+    over an empty one."""
+    out = ingest.render_status(
+        [_status(
+            designations=[],
+            last_run=_run(trigger=IngestTrigger.MANUAL),
+            checked_against=None,
+        )],
+        "remem",
+    )
+    assert ("remem is not designated for automatic re-ingest. Designate it "
+            "with `remem reingest designate <paths>`.") in out
+    assert "last run: manual" in out
+    assert "all designated paths present" not in out
+    assert "paths not checked" not in out
+
+
 def test_status_to_dict_carries_the_run_and_the_check():
     [d] = ingest.status_to_dict(
         [_status(last_run=_run(created=1), checked_against=Path("/repo"), missing=["x"])]

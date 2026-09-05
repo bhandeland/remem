@@ -631,11 +631,16 @@ def status(
     ):
         last_run = store.latest_ingest_run(owner_id, current_project)
         if last_run is not None:
+            # checked_against stays None even though `root` is known: there
+            # is nothing designated, so there is nothing to check paths
+            # against. `render_status` reads an empty `designations` list as
+            # the signal to skip the check line entirely - "all designated
+            # paths present" would otherwise describe a check that never ran.
             found.append(ProjectIngestStatus(
                 project=current_project,
                 designations=[],
                 last_run=last_run,
-                checked_against=root,
+                checked_against=None,
                 missing=[],
             ))
     return found
@@ -691,6 +696,19 @@ def render_status(found: list[ProjectIngestStatus], project: str | None) -> str:
         )
     lines: list[str] = []
     for s in found:
+        if not s.designations:
+            # The `status()` fallback for a manually-ingested, undesignated
+            # project: there is no designation line to print, and - since
+            # nothing was designated - no disk check to report either way.
+            # Printing "all present" or "not checked" here would describe a
+            # check that never happened; the not-designated sentence is the
+            # true statement, and the run line after it still says what did.
+            lines.append(
+                f"{s.project} is not designated for automatic re-ingest. "
+                f"Designate it with `remem reingest designate <paths>`."
+            )
+            lines.extend(_run_lines(s.last_run))
+            continue
         for d in s.designations:
             half = "archive" if d.archive else "default"
             lines.append(f"{s.project} ({half}): {', '.join(d.paths)}")

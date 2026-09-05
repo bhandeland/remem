@@ -180,3 +180,16 @@ def test_status_json(env, repo):
     assert entry["project"] == "repo"
     assert entry["last_run"]["trigger"] == "auto"
     assert entry["check"]["missing"] == []
+
+
+def test_status_json_for_an_undesignated_project_with_a_manual_run(env, repo):
+    """The `status()` fallback: nothing is designated, so `designations` is
+    empty and `checked_against` is None - there is no disk check to report."""
+    runner.invoke(app, ["ingest", "docs/specs/alpha.md"])
+
+    result = runner.invoke(app, ["reingest", "status", "--json"])
+
+    [entry] = json.loads(result.stdout)
+    assert entry["designations"] == []
+    assert entry["last_run"]["trigger"] == "manual"
+    assert entry["check"]["checked_against"] is None

@@ -122,6 +122,9 @@ def test_ingest_records_a_manual_run_row(env, repo):
 
     result = runner.invoke(app, ["reingest", "status"])
     assert "last run: manual" in result.stdout
+    # Nothing is designated, so nothing was checked - "all present" would
+    # describe a disk check that never ran.
+    assert "all designated paths present" not in result.stdout
 
 
 def test_ingest_prints_a_twin_and_still_exits_zero(env, repo):
