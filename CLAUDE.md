@@ -225,6 +225,11 @@ same field feeds.
 Deriving the short form from the body was measured and rejected: a rule's
 first paragraph is the incident, not the instruction.
 
+Backfilling a summary with `remem update --summary` does not regenerate the
+entry's Claude Code memory file, because the sync watermark hashes the body
+alone - the new description appears on disk the next time that entry's body
+changes.
+
 `services/write.remember` raises `RuleNeedsSummary` for a rule without one.
 That check is in the service and not in `cli.py` because `mcp_server`'s
 `remember_tool` takes a `kind` and would otherwise write a summary-less rule

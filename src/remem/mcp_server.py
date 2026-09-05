@@ -73,8 +73,8 @@ def remember_tool(
     "rule" (a convention that must be followed - these are always injected
     into future sessions).
 
-    summary: REQUIRED for kind "rule", ignored-if-absent for everything
-    else. One line stating the rule itself, because the context block
+    summary: REQUIRED for kind "rule", optional for everything else. One
+    line stating the rule itself, because the context block
     injected into every session renders this and not the body. Put the
     case for the rule - the incident, the reasoning - in body, where it
     stays one recall away.
