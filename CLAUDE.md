@@ -235,6 +235,17 @@ That check is in the service and not in `cli.py` because `mcp_server`'s
 `remember_tool` takes a `kind` and would otherwise write a summary-less rule
 straight past a frontend check.
 
+The check is gated on `origin in INJECTED_ORIGINS`, not on `Kind.RULE` alone,
+because `kb.resolve` filters blocks to those same origins - an `EXTRACTED` rule
+can never render in one, and requiring a summary on it would break extraction
+for no gain. One deliberate exception survives that reasoning: `kb.resolve`
+applies `INJECTED_ORIGINS` only to the **query** half, and `store.pinned_entries`
+has no origin filter by design (pinning is the documented way to promote a
+machine-written entry), so `remem kb pin` on an `EXTRACTED` rule does put a
+summary-less rule into a block, rendering as a bare title. Parked rather than
+fixed: it is the same floor the renderer already guarantees, it takes a human
+pin, and `remem update --summary` fixes it for any origin.
+
 The never-truncate invariant is unchanged: `RulesExceedBudget` still raises
 rather than shipping a partial rule set, because an agent given part of the
 conventions proceeds believing it has all of them. Short forms make that
