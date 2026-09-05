@@ -424,8 +424,26 @@ entry first.
   export is only ever what the sync adopted off disk, which is silently the
   "directory owns it, remem ingests" design the spec rejected. The
   frontmatter `name:` is the user's field, carried through a regenerate
-  rather than rewritten; a file renamed on disk therefore mints a new entry
-  and the old name is regenerated.
+  rather than rewritten.
+- A file **renamed** on disk is followed rather than duplicated, by a second
+  pre-pass (`_follow_renames`). Identity being the stem, `classify` can only
+  see a rename as two independent names - an `ADOPT_NEW` for the new stem and
+  a `REGENERATE` for the old - which minted a second entry holding the same
+  body and wrote the deleted file back out. Both gates behave correctly
+  throughout, which is why the duplication went unnoticed: the failure is
+  duplication, not data loss. The proof of a rename is **byte equality with
+  the watermark**, which records what remem itself last wrote under the old
+  name, so it is provable rather than guessed; nothing looser is permitted,
+  because matching on titles or near-identical bodies would re-tag entries on
+  a coincidence. Ambiguity in **either** direction (two identical files for
+  one missing name, or two watermarks matching one arriving file) is refused
+  and reported, never guessed, exactly as `_adopt_names` refuses two entries
+  sharing a name. An unparseable file is excluded as a rename source - it is
+  absent from `files` but very much present on disk. The floor, stated rather
+  than papered over: a rename **and** an edit in the same interval still
+  duplicates, because that is precisely the case the proof cannot cover. The
+  re-tag uses `update`, not `supersede` - the knowledge did not change, only
+  the name it is filed under.
 - A collection that resolves at `kb.RESOLVE_LIMIT` refuses to sync. Past the
   cap an entry remem cannot see is indistinguishable from one that left the
   collection, and the delete gate would pass.

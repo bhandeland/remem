@@ -653,3 +653,149 @@ def test_one_project_failing_does_not_stop_the_others(
 
     assert out["a"].report is None and out["a"].skipped is not None
     assert out["b"].report is not None and out["b"].report.adopted == 1
+
+
+def test_a_renamed_file_moves_its_entry_instead_of_duplicating_it(
+    store, owner, tmp_path
+):
+    # The failure this guards: a rename classified as two independent names -
+    # ADOPT_NEW for the new stem, REGENERATE for the old - mints a second
+    # entry from the same body and writes the deleted file back out.
+    _designated(store, owner)
+    _write_file(tmp_path, "old-name", "a hook", "the body\n")
+    memory.sync(store, owner.id, project="proj", directory=tmp_path)
+    before = kb.resolve(store, owner.id, "proj-memory")
+    assert len(before) == 1
+
+    (tmp_path / "old-name.md").rename(tmp_path / "new-name.md")
+    report = memory.sync(store, owner.id, project="proj", directory=tmp_path)
+
+    after = kb.resolve(store, owner.id, "proj-memory")
+    assert [e.id for e in after] == [before[0].id], "the entry was duplicated"
+    assert memory._name_of(after[0]) == "new-name"
+    assert report.renamed == [("old-name", "new-name")]
+    assert report.adopted == 0
+    assert report.regenerated == 0
+    assert not (tmp_path / "old-name.md").exists(), "the deleted file came back"
+    assert (tmp_path / "new-name.md").exists()
+
+
+def test_a_renamed_file_leaves_a_watermark_under_its_new_name(
+    store, owner, tmp_path
+):
+    # Without moving the watermark the next sync sees a file with no mark,
+    # which is ADOPT_EDIT or CONFLICT depending on the body - so the rename
+    # would cost the very gate that makes "which side moved" answerable.
+    _designated(store, owner)
+    _write_file(tmp_path, "old-name", "a hook", "the body\n")
+    memory.sync(store, owner.id, project="proj", directory=tmp_path)
+    (tmp_path / "old-name.md").rename(tmp_path / "new-name.md")
+    memory.sync(store, owner.id, project="proj", directory=tmp_path)
+
+    marks = memory.load_watermarks(tmp_path)
+    assert "old-name" not in marks
+    assert "new-name" in marks
+
+    report = memory.sync(store, owner.id, project="proj", directory=tmp_path)
+    assert report.unchanged == 1
+    assert report.renamed == []
+
+
+def test_two_identical_files_matching_one_rename_are_refused_not_guessed(
+    store, owner, tmp_path
+):
+    # Two candidates for the same missing name is genuinely ambiguous. Pick
+    # one and the entry follows a coin flip; refuse and the ordinary cases
+    # still run, which is how _adopt_names handles two entries sharing a name.
+    _designated(store, owner)
+    _write_file(tmp_path, "old-name", "a hook", "the body\n")
+    memory.sync(store, owner.id, project="proj", directory=tmp_path)
+
+    (tmp_path / "old-name.md").rename(tmp_path / "one.md")
+    (tmp_path / "two.md").write_text((tmp_path / "one.md").read_text())
+    report = memory.sync(store, owner.id, project="proj", directory=tmp_path)
+
+    assert report.renamed == []
+    assert [name for name, _ in report.failures] == ["old-name"]
+    assert "one" in report.failures[0][1] and "two" in report.failures[0][1]
+
+
+def test_a_dry_run_reports_a_rename_without_writing_it(store, owner, tmp_path):
+    _designated(store, owner)
+    _write_file(tmp_path, "old-name", "a hook", "the body\n")
+    memory.sync(store, owner.id, project="proj", directory=tmp_path)
+    (tmp_path / "old-name.md").rename(tmp_path / "new-name.md")
+
+    report = memory.sync(
+        store, owner.id, project="proj", directory=tmp_path, dry_run=True
+    )
+    assert report.renamed == [("old-name", "new-name")]
+    entries = kb.resolve(store, owner.id, "proj-memory")
+    assert memory._name_of(entries[0]) == "old-name", "the tag was rewritten"
+    assert memory.load_watermarks(tmp_path).keys() == {"old-name"}
+
+
+def test_a_rename_with_an_edit_in_the_same_interval_is_not_followed(
+    store, owner, tmp_path
+):
+    # The honest floor, asserted so it is a decision rather than a surprise:
+    # the proof of a rename is that the new file is byte-identical to what
+    # remem last wrote under the old name. Edit it too and that proof is gone,
+    # so this still duplicates.
+    _designated(store, owner)
+    _write_file(tmp_path, "old-name", "a hook", "the body\n")
+    memory.sync(store, owner.id, project="proj", directory=tmp_path)
+
+    (tmp_path / "old-name.md").rename(tmp_path / "new-name.md")
+    _write_file(tmp_path, "new-name", "a hook", "a different body\n")
+    report = memory.sync(store, owner.id, project="proj", directory=tmp_path)
+
+    assert report.renamed == []
+    assert report.adopted == 1
+    assert len(kb.resolve(store, owner.id, "proj-memory")) == 2
+
+
+def test_two_entries_matching_one_new_file_are_refused_not_guessed(
+    store, owner, tmp_path
+):
+    # The mirror of the two-files case: two watermarks holding the same body,
+    # one arriving file. Whichever entry were picked, the other would still
+    # regenerate its file, so the "rename" would fix nothing and mis-tag one.
+    _designated(store, owner)
+    _write_file(tmp_path, "first", "a hook", "the body\n")
+    _write_file(tmp_path, "second", "a hook", "the body\n")
+    memory.sync(store, owner.id, project="proj", directory=tmp_path)
+    assert len(kb.resolve(store, owner.id, "proj-memory")) == 2
+
+    (tmp_path / "first.md").unlink()
+    (tmp_path / "second.md").rename(tmp_path / "merged.md")
+    report = memory.sync(store, owner.id, project="proj", directory=tmp_path)
+
+    assert report.renamed == []
+    assert sorted(name for name, _ in report.failures) == ["first", "second"]
+
+
+def test_an_unparseable_file_is_never_read_as_a_rename_away_from_itself(
+    store, owner, tmp_path
+):
+    # An unreadable file is absent from `files` but present on disk. Treated
+    # as a missing name it would look renamed to any new file that happens to
+    # match its watermark, re-tagging the entry away from a file sitting
+    # right there - and the unreadable file would then never be recovered.
+    _designated(store, owner)
+    _write_file(tmp_path, "old-name", "a hook", "the body\n")
+    memory.sync(store, owner.id, project="proj", directory=tmp_path)
+    original = kb.resolve(store, owner.id, "proj-memory")[0].id
+
+    (tmp_path / "new-name.md").write_text((tmp_path / "old-name.md").read_text())
+    (tmp_path / "old-name.md").write_text("---\nnot: [valid\n")
+    report = memory.sync(store, owner.id, project="proj", directory=tmp_path)
+
+    assert report.renamed == []
+    assert [name for name, _ in report.failures] == ["old-name"]
+    # The copy is adopted on its own merits - that is ADOPT_NEW and not this
+    # guard's business. What must not happen is the original entry following
+    # a rename away from the file still sitting on disk under its own name.
+    names = {e.id: memory._name_of(e) for e in kb.resolve(store, owner.id, "proj-memory")}
+    assert names[original] == "old-name"
+    assert (tmp_path / "old-name.md").read_text() == "---\nnot: [valid\n"

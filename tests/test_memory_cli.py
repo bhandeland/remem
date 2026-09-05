@@ -277,3 +277,17 @@ def test_sync_all_syncs_a_designation_that_has_a_directory(
     assert result.exit_code == 0, result.output
     assert "1 adopted" in result.output
     assert PROJECT in result.output
+
+
+def test_sync_names_each_rename_it_followed(env, memory_dir_with_one_stray):
+    # A rename re-tags an entry, which is a write to the store the user did
+    # not ask for by name. Counting it inside `unchanged` would make the one
+    # line the user reads describe a run in which nothing moved.
+    directory = memory_dir_with_one_stray
+    assert runner.invoke(app, ["memory", "sync"], env=env).exit_code == 0
+    (directory / "a-fact.md").rename(directory / "renamed-fact.md")
+
+    result = runner.invoke(app, ["memory", "sync"], env=env)
+    assert result.exit_code == 0
+    assert "1 renamed" in result.stdout
+    assert "a-fact -> renamed-fact" in result.stdout

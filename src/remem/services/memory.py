@@ -199,10 +199,15 @@ def save_watermarks(directory: Path, marks: dict[str, Watermark]) -> None:
 
 #: Identity. One file, one entry, one tag - following handoff's `topic:` and
 #: ingest's `src:`/`sec:`. The name is the **filename stem**, not the
-#: frontmatter `name:`, so a file renamed on disk mints a new entry and the
-#: old name is regenerated from its entry. Following a rename would need an
-#: identity that survives one, and the frontmatter field is not it: it is the
-#: user's to edit, and two files are free to carry the same one.
+#: frontmatter `name:`, which is the user's to edit and which two files are
+#: free to carry the same value of.
+#:
+#: A rename therefore moves identity, and on its own that made `classify` see
+#: two names rather than one movement: a new entry minted for the new stem and
+#: the deleted file regenerated from the old. `_follow_renames` is what closes
+#: that, before the cases run - not by finding an identity that survives a
+#: rename, but by proving one after the fact from the watermark, which records
+#: the exact body remem last wrote under the old name.
 MEM_TAG_PREFIX = "mem:"
 
 #: Written beside a memory when both sides moved, so the store's version is
@@ -229,6 +234,11 @@ class Report:
     #: unconditionally would name a file that is not there.
     sidecars: list[str] = field(default_factory=list)
     failures: list[tuple[str, str]] = field(default_factory=list)
+    #: `(old name, new name)` per file renamed on disk and followed by
+    #: re-tagging its entry. Counted separately from `adopted` and
+    #: `regenerated` because it is neither: nothing entered the store and
+    #: nothing was written back out, one name moved.
+    renamed: list[tuple[str, str]] = field(default_factory=list)
 
 
 def _name_of(entry: Entry) -> str | None:
@@ -339,6 +349,126 @@ def _adopt_names(
         taken.add(name)
         named[name] = entry
     return named
+
+
+def _follow_renames(
+    store: Store,
+    owner_id: UUID,
+    *,
+    entries: dict[str, Entry],
+    files: dict[str, memory_file.MemoryFile],
+    marks: dict[str, Watermark],
+    unreadable: set[str],
+    report: Report,
+    dry_run: bool,
+) -> None:
+    """Move a name that was renamed on disk, before the six cases run.
+
+    Identity is the filename stem, so a rename is two names to `classify`,
+    not one movement: the new stem is an ADOPT_NEW and the old is a
+    REGENERATE. That mints a second entry holding the same knowledge and
+    writes the file the user deleted straight back out. Both gates behave
+    correctly throughout - nothing is deleted, nothing is overwritten - which
+    is exactly why the duplication survived so long unnoticed.
+
+    A rename is provable rather than guessed. The watermark records the body
+    remem itself last wrote under the old name, so a new file whose body
+    hashes to that same value *is* the old file, moved. Nothing looser is
+    allowed here: matching on titles or on near-identical bodies would start
+    re-tagging entries on a coincidence, which is a worse failure than the
+    duplicate it set out to fix.
+
+    Running as a pre-pass keeps `classify` untouched - six cases, pure, and
+    tested without a database on CI. By the time the loop runs, a followed
+    rename is an ordinary UNCHANGED under the new name.
+
+    The floor, stated rather than papered over: a rename *and* an edit in the
+    same interval is not detectable this way, because the proof is byte
+    equality with the watermark. That still duplicates, and it is much rarer
+    than a plain rename.
+    """
+    # An unreadable file is present but unparseable, so its name is absent
+    # from `files` while its file is emphatically not gone. Reading it as the
+    # source of a rename would re-tag an entry away from a file that is
+    # sitting right there.
+    missing = sorted(
+        name for name in entries
+        if name not in files and name in marks and name not in unreadable
+    )
+    arrivals = [
+        name for name in files if name not in entries and name not in marks
+    ]
+    if not missing or not arrivals:
+        return
+
+    by_sha: dict[str, list[str]] = {}
+    for name in arrivals:
+        by_sha.setdefault(memory_file.body_sha(files[name].body), []).append(name)
+
+    # Both directions of ambiguity are resolved before anything is written,
+    # because acting on the unambiguous pairs first would let the order names
+    # happen to sort in decide which of an ambiguous pair got claimed.
+    claims = {
+        old: sorted(by_sha[marks[old].body_sha])
+        for old in missing
+        if marks[old].body_sha in by_sha
+    }
+    claimed_by: dict[str, list[str]] = {}
+    for old, candidates in claims.items():
+        for new in candidates:
+            claimed_by.setdefault(new, []).append(old)
+
+    for old, candidates in claims.items():
+        if len(candidates) > 1:
+            # Two files with the same body, one missing name. Picking either
+            # makes the entry follow a coin flip.
+            report.failures.append((
+                old,
+                f"looks renamed but {' and '.join(candidates)} are identical "
+                f"copies of it - rename cannot be followed, so nothing was "
+                f"re-tagged; delete one or re-sync once they differ",
+            ))
+            continue
+        new = candidates[0]
+        rivals = claimed_by[new]
+        if len(rivals) > 1:
+            # The mirror image: two entries whose watermarks hold the same
+            # body, one new file. Same refusal, reported against each.
+            report.failures.append((
+                old,
+                f"looks renamed to {new}, but {' and '.join(sorted(rivals))} "
+                f"both match it - rename cannot be followed, so nothing was "
+                f"re-tagged",
+            ))
+            continue
+
+        entry = entries[old]
+        if not dry_run:
+            try:
+                entry = update(
+                    store, owner_id, entry.id,
+                    # update(), not supersede(), for the reason _adopt_names
+                    # gives: the knowledge did not change, only the name it
+                    # is filed under, and a replacement entry would rewrite
+                    # this entry's history for bookkeeping.
+                    tags=[
+                        *(t for t in entry.tags if t != f"{MEM_TAG_PREFIX}{old}"),
+                        f"{MEM_TAG_PREFIX}{new}",
+                    ],
+                )
+            except Exception as exc:  # noqa: BLE001 - reported, not swallowed
+                report.failures.append(
+                    (old, f"could not follow rename to {new}: {exc}")
+                )
+                continue
+        # Moved in memory even under --dry-run, so the preview the user reads
+        # is the run they would get: leaving the old name in place would
+        # report the rename and an ADOPT_NEW and a REGENERATE for the same
+        # one file. Only the store write and the watermark file are gated.
+        entries[new] = entry
+        del entries[old]
+        marks[new] = marks.pop(old)
+        report.renamed.append((old, new))
 
 
 @dataclass(slots=True)
@@ -483,6 +613,12 @@ def sync(
     entries = _adopt_names(
         store, owner_id, resolved,
         taken=set(files) | unreadable, report=report, dry_run=dry_run,
+    )
+    # Before the cases, not inside them: a rename is one movement that
+    # `classify` can only see as two independent names.
+    _follow_renames(
+        store, owner_id, entries=entries, files=files, marks=marks,
+        unreadable=unreadable, report=report, dry_run=dry_run,
     )
 
     # --- classify and apply ---------------------------------------------

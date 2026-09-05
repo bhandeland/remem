@@ -1675,8 +1675,11 @@ def _memory_sync_all(dry_run: bool) -> None:
         typer.echo(
             f"{o.project:<{width}}  {r.adopted} adopted, {r.edited} edited, "
             f"{r.regenerated} regenerated, {r.healed} healed, "
-            f"{r.deleted} deleted, {r.unchanged} unchanged"
+            f"{r.deleted} deleted, {len(r.renamed)} renamed, "
+            f"{r.unchanged} unchanged"
         )
+        for old, new in r.renamed:
+            typer.echo(f"{o.project:<{width}}  renamed: {old} -> {new}")
         for name in r.conflicts:
             problems += 1
             typer.echo(
@@ -1740,8 +1743,14 @@ def memory_sync(
     typer.echo(
         f"{prefix}{report.adopted} adopted, {report.edited} edited, "
         f"{report.regenerated} regenerated, {report.healed} healed, "
-        f"{report.deleted} deleted, {report.unchanged} unchanged."
+        f"{report.deleted} deleted, {len(report.renamed)} renamed, "
+        f"{report.unchanged} unchanged."
     )
+    for old, new in report.renamed:
+        # Named rather than only counted. A rename re-tags an entry, which is
+        # a write the user did not ask for by name, and the pair is also how
+        # they would spot remem following a rename they did not intend.
+        typer.echo(f"{prefix}renamed: {old} -> {new}")
     for name in report.conflicts:
         # Only a conflict that actually wrote a sidecar names one. A dry run
         # writes none, and neither does a file edited for an entry that left
