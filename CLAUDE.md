@@ -355,6 +355,33 @@ trigger all three harnesses share. Fixed once, not per install path.
   `refresh` records it in `embed_error` and keeps the entries it wrote.
   `remem embed` still exits 1 there, on purpose.
 
+Every ingest leaves a row in `ingest_runs` (migration 017), written by the
+service for both the spawned refresh (`trigger='auto'`) and `remem ingest`
+(`trigger='manual'`): counts, per-path failures, twins, the embed error.
+The refresh starts its row **before reading any file** and `reingest run`
+opens its session with `autocommit=True` so that a process which dies
+mid-run leaves a started, unfinished row - "crashed", not "never ran". A
+Python exception is recorded as a failure with path `*` and re-raised.
+`remem reingest status` renders the latest row in four distinct spellings
+(never, clean, with failures, did not finish) and checks designated paths on
+disk **only for the project the current directory resolves to** - the
+designation stores no working directory, so any other project reads "paths
+not checked" rather than letting silence pass for "all present". A project
+with no designation at all still shows its latest run - a plain `remem
+ingest` writes a row too - as the not-designated sentence plus the run line
+and no disk-check line, since nothing was designated to check.
+`remem record status` carries one advisory line per unhealthy project.
+
+Inside a repository, `remem ingest` identifies a chunk by its path relative
+to the working tree's top level (`project.toplevel`, not `repo_root`, which
+would resolve a worktree to the main checkout), so a subdirectory run or an
+absolute path produces the same `src:` tag the refresh does. A path outside
+the repository is refused. When a file comes in entirely new and a live
+anchor with the same filename exists under another `src:` path,
+`Report.twins` names it: printed to stderr with exit 0 by the CLI, recorded
+in the run row by the refresh. Nothing supersedes a twin automatically - a
+moved file and a document ingested twice look identical from here.
+
 ### Claude Code memory
 
 `remem memory sync` owns `~/.claude/projects/<cwd-slug>/memory/` - Claude
