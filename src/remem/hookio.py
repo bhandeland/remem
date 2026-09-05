@@ -48,11 +48,42 @@ def spawn_process(env: Mapping[str, str]) -> bool:
     spawns `claude -p`, whose own hooks would otherwise spawn another
     extractor, which would read the events that run recorded, without bound.
     """
+    return _spawn(["remem", "events", "process"], env)
+
+
+def spawn_ingest(env: Mapping[str, str]) -> bool:
+    """Start a detached `remem reingest run` and return immediately.
+
+    Re-ingest was manual for the life of the feature, and the evidence that
+    manual means it drifts is that two days of doc writing left 32 chunks
+    unindexed. This spawns from the same two places `spawn_process` does -
+    Claude Code's SessionStart and `remem hook context` - which is the one
+    trigger all three harnesses share.
+
+    A project with no ingest designation does nothing, so this is a no-op
+    for everyone who has not opted in. Separate from `spawn_process`
+    because the two jobs share nothing but their trigger: extraction also
+    runs from cron, and neither should be able to delay the other.
+    """
+    return _spawn(["remem", "reingest", "run"], env)
+
+
+def _spawn(cmd: list[str], env: Mapping[str, str]) -> bool:
+    """Launch a detached background command, or report that it could not be.
+
+    Detached and output-discarded on every path: the session must never
+    wait for this work and must never see its output.
+
+    The CHILD_ENV_VAR guard is what keeps these from recursing. The
+    extractor spawns `claude -p`, whose own hooks would otherwise spawn
+    another extractor, which would read the events that run recorded,
+    without bound - and the same applies to any other work spawned here.
+    """
     if env.get(CHILD_ENV_VAR):
         return False
     try:
         subprocess.Popen(
-            ["remem", "events", "process"],
+            cmd,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             stdin=subprocess.DEVNULL,

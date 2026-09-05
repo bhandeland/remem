@@ -13,12 +13,15 @@ question, less directly.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from uuid import UUID
 
-from remem.domain import Entry, Kind, Origin, Query
+from remem.domain import Entry, IngestDesignation, Kind, Origin, Query
+from remem.embed import Embedder
 from remem.markdown import Chunk, split
+from remem.services.embed import backfill_if_pending
 from remem.services.write import remember, supersede
 from remem.store import Store
 
@@ -30,6 +33,60 @@ MAX_CHUNKS_PER_FILE = 200
 
 class TooManyChunks(Exception):
     """A document produced more chunks than one sweep can safely list."""
+
+
+class BadDesignation(Exception):
+    """A designation names paths that cannot be stored as given."""
+
+
+def designate(
+    store: Store,
+    owner_id: UUID,
+    project: str,
+    paths: list[str] | None,
+    *,
+    archive: bool = False,
+) -> None:
+    """Record which paths this project re-ingests, or clear them.
+
+    Paths are refused unless they are repo-relative and stay inside the
+    repository. The spawned refresh resolves them against the git root with
+    nobody watching, so an absolute path would point at whatever the machine
+    that stored it happened to have, and a `..` escape would silently ingest
+    from outside the repository. Both are caught here, at the one moment
+    there is a human to tell.
+
+    `None` clears; an empty list does not. Clearing is a deliberate act and
+    deserves its own spelling - an empty list reaching this far is a caller
+    that built its argument wrong, and storing it would designate a project
+    to ingest nothing, which reads identically to not being designated at all.
+    """
+    if paths is not None:
+        if not paths:
+            raise BadDesignation(
+                "No paths given. To clear a designation, pass None."
+            )
+        for raw in paths:
+            path = PurePosixPath(Path(raw).as_posix())
+            if path.is_absolute():
+                raise BadDesignation(
+                    f"{raw!r} is absolute. Designated paths are stored "
+                    f"repo-relative and resolved against the git root."
+                )
+            if ".." in path.parts:
+                raise BadDesignation(
+                    f"{raw!r} escapes the repository. Designated paths must "
+                    f"stay inside it."
+                )
+        paths = [PurePosixPath(Path(p).as_posix()).as_posix() for p in paths]
+    store.set_ingest_paths(owner_id, project, paths, archive=archive)
+
+
+def designations(
+    store: Store, owner_id: UUID, project: str | None = None
+) -> list[IngestDesignation]:
+    """Every re-ingest designation, for one project or for all of them."""
+    return store.ingest_designations(owner_id, project)
 
 
 @dataclass(slots=True)
@@ -101,12 +158,23 @@ def ingest_file(
     path: Path,
     *,
     project: str | None,
+    root: Path | None = None,
     archive: bool = False,
     dry_run: bool = False,
 ) -> Report:
-    """Ingest one file."""
+    """Ingest one file.
+
+    `root` separates the two jobs `path` was doing at once: where the file
+    is READ and what IDENTIFIES it. With a root, the file is read at
+    `root / path` while `src:` still records `path` - so an automatic run
+    resolving against the git root produces the same identity a person got
+    typing a repo-relative path, and sees their corpus as unchanged rather
+    than duplicating it. Without one, both are the path as given, which is
+    what the manual command has always done.
+    """
     path = Path(path)
-    chunks = split(path.read_text(), doc_title=path.stem)
+    source = root / path if root is not None else path
+    chunks = split(source.read_text(), doc_title=path.stem)
     if len(chunks) > MAX_CHUNKS_PER_FILE:
         raise TooManyChunks(
             f"{path} produced {len(chunks)} chunks, over the limit of "
@@ -184,6 +252,7 @@ def ingest_paths(
     paths: list[Path],
     *,
     project: str | None,
+    root: Path | None = None,
     archive: bool = False,
     dry_run: bool = False,
 ) -> Report:
@@ -195,23 +264,107 @@ def ingest_paths(
     failure. The CLI exits non-zero when `failures` is non-empty.
     """
     report = Report()
-    for path in _discover(paths):
+    for path in _discover(paths, root):
         try:
             report.merge(
                 ingest_file(store, owner_id, path, project=project,
-                            archive=archive, dry_run=dry_run)
+                            root=root, archive=archive, dry_run=dry_run)
             )
         except (OSError, UnicodeDecodeError, TooManyChunks) as exc:
             report.failures.append((path, str(exc)))
     return report
 
 
-def _discover(paths: list[Path]) -> list[Path]:
+def _discover(paths: list[Path], root: Path | None = None) -> list[Path]:
     """Files as given, directories globbed for **/*.md, sorted for a stable
     report. Sorted matters: a dry run the user reads and then re-runs for
-    real must list its files in the same order both times."""
+    real must list its files in the same order both times.
+
+    Every path returned is in the same frame as the paths passed in: with a
+    root, globbing happens at `root / path` and the results are made
+    relative to it again, so what comes back is still repo-relative and can
+    be used as identity directly."""
     found: list[Path] = []
     for path in paths:
         path = Path(path)
-        found.extend(sorted(path.rglob("*.md")) if path.is_dir() else [path])
+        located = root / path if root is not None else path
+        if not located.is_dir():
+            found.append(path)
+            continue
+        hits = sorted(located.rglob("*.md"))
+        found.extend(
+            [h.relative_to(root) for h in hits] if root is not None else hits
+        )
     return found
+
+
+@dataclass(slots=True)
+class RefreshResult:
+    """What one automatic re-ingest did, and what it could not do.
+
+    `embed_error` is a string rather than an exception because the only
+    caller that reads it is a fail-soft hook writing to stderr behind
+    REMEM_HOOK_DEBUG. Keeping the count and the error separate is what lets
+    "embedded nothing because there was nothing to embed" be told apart
+    from "embedded nothing because there is no embedder".
+    """
+
+    report: Report = field(default_factory=Report)
+    embedded: int = 0
+    embed_error: str | None = None
+
+
+def refresh(
+    store: Store,
+    owner_id: UUID,
+    project: str,
+    root: Path,
+    *,
+    embed_model: str,
+    load_embedder: Callable[[], Embedder],
+) -> RefreshResult:
+    """Re-ingest this project's designated paths, then embed what is missing.
+
+    The policy behind the detached job a session start spawns. An
+    undesignated project does nothing at all - that silence is the opt-in,
+    and it is also the common case, so it must cost nothing: no file is
+    read and no embedder is built.
+
+    Paths are resolved against `root` (the git root) rather than the process
+    working directory. The spawned job inherits whatever directory the
+    harness happened to be in, which is not something a designation made
+    weeks earlier can know.
+
+    Nothing here raises. Every caller is automatic, and a knowledge tool
+    must never be why a session start goes wrong - a path that vanished
+    lands in `report.failures` and an absent embedder in `embed_error`,
+    both for a debug channel to print and neither for anyone to trip over.
+    """
+    result = RefreshResult()
+    designated = store.ingest_designations(owner_id, project)
+    if not designated:
+        return result
+
+    for designation in designated:
+        result.report.merge(
+            ingest_paths(
+                store, owner_id,
+                [Path(p) for p in designation.paths],
+                project=project,
+                root=root,
+                archive=designation.archive,
+            )
+        )
+
+    try:
+        embedded = backfill_if_pending(
+            store, owner_id, embed_model, load_embedder
+        )
+    except Exception as exc:
+        # Losing the semantic tier is worth strictly less than the entries
+        # just written, and `remem embed` remains the loud way to find out
+        # that the embedder is broken.
+        result.embed_error = str(exc)
+    else:
+        result.embedded = embedded.embedded if embedded else 0
+    return result

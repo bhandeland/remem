@@ -252,6 +252,50 @@ origin silently vanishes from search.
 marker and run on CI. Whether a chunk changed is answered by comparing
 bodies, not by a stored hash.
 
+Re-ingest also runs **automatically**, because manual meant it drifted:
+two days of doc writing once left 32 chunks unindexed. `remem reingest
+designate <paths> [--archive]` records which paths a project re-ingests
+(migration 016), and `hookio.spawn_ingest` starts a detached `remem
+reingest run` from the same two places `spawn_process` starts extraction -
+Claude Code's `SessionStart` and `remem hook context` - which is the one
+trigger all three harnesses share. Fixed once, not per install path.
+
+- These are **not** subcommands of `ingest`. `remem ingest <path>` is a
+  bare command taking positional paths, so a sub-app of that name cannot
+  coexist with it, and breaking the documented manual command to make room
+  for the automatic one is the wrong trade. `ingest` and `embed` keep their
+  fail-loud contracts - a person asked for those.
+- The designation holds a value rather than a boolean, like
+  `memory designate`, with `archive` **in the primary key**: the refresh is
+  genuinely two invocations with different origins, so a project has at
+  most two rows and they clear independently. No row means the spawned run
+  does nothing, and that silence is the entire opt-in.
+- Paths are stored **repo-relative** and resolved against the git root at
+  run time. Unlike `memory_settings` this needs no recorded working
+  directory - ingest already resolves its project from the git common dir,
+  so a worktree and its main checkout share both project and relative
+  paths. `designate` refuses an absolute path or a `..` escape, loudly,
+  because that is the one moment there is a human to tell.
+- `reingest run` is fail-soft in the strongest form this repo has: it exits
+  0 on every path, prints nothing to stdout, and explains itself only to
+  stderr behind `REMEM_HOOK_DEBUG`. It is the one place in `cli.py` that
+  catches `BaseException` - `_session` turns an unreachable database into
+  `typer.Exit(1)`, a `SystemExit` that would otherwise sail past
+  `except Exception` and out of a hook-spawned command as a non-zero exit.
+- `services.embed.backfill_if_pending` exists so the common case costs
+  nothing. `backfill` takes an Embedder already built, which is right when
+  a user asked for it; here the backlog is empty almost every time, and
+  constructing a `LocalEmbedder` imports fastembed, builds an ONNX session
+  and can download ~130MB. The model **name** is enough to ask whether
+  there is work, which is what makes the check possible before the cost -
+  the same policy `services.search.shared_embedder` applies inside the
+  semantic tier. It returns `None` for "nothing to do", distinct from an
+  `EmbedResult` with `embedded=0`, and lets `load` raise so the caller
+  decides whether an absent embedder is fatal.
+- An unavailable embedder loses the semantic tier and nothing else, so
+  `refresh` records it in `embed_error` and keeps the entries it wrote.
+  `remem embed` still exits 1 there, on purpose.
+
 ### Claude Code memory
 
 `remem memory sync` owns `~/.claude/projects/<cwd-slug>/memory/` - Claude

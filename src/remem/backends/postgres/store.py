@@ -19,6 +19,7 @@ from remem.domain import (
     ExtractJob,
     HarnessStats,
     Hit,
+    IngestDesignation,
     JobStatus,
     Kind,
     Match,
@@ -723,6 +724,50 @@ class PostgresStore:
             )
             row = cur.fetchone()
         return row["collection_slug"] if row else None
+
+    def set_ingest_paths(
+        self, owner_id: UUID, project: str, paths: list[str] | None,
+        archive: bool = False,
+    ) -> None:
+        with self._cur() as cur:
+            if paths is None:
+                cur.execute(
+                    "delete from ingest_settings "
+                    "where owner_id = %s and project = %s and archive = %s",
+                    (owner_id, project, archive),
+                )
+                return
+            cur.execute(
+                """
+                insert into ingest_settings
+                    (owner_id, project, archive, paths)
+                values (%s, %s, %s, %s)
+                on conflict (owner_id, project, archive)
+                  do update set paths = excluded.paths,
+                                updated_at = clock_timestamp()
+                """,
+                (owner_id, project, archive, list(paths)),
+            )
+
+    def ingest_designations(
+        self, owner_id: UUID, project: str | None = None
+    ) -> list[IngestDesignation]:
+        with self._cur() as cur:
+            cur.execute(
+                "select project, archive, paths from ingest_settings "
+                "where owner_id = %s and (%s::text is null or project = %s) "
+                "order by project, archive",
+                (owner_id, project, project),
+            )
+            rows = cur.fetchall()
+        return [
+            IngestDesignation(
+                project=r["project"],
+                paths=tuple(r["paths"]),
+                archive=r["archive"],
+            )
+            for r in rows
+        ]
 
     def pending_legacy_capture_jobs(self, owner_id: UUID) -> int:
         """How many rows the retired capture spool still holds as pending.

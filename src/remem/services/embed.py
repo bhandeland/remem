@@ -3,6 +3,7 @@ when a batch fails."""
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -81,3 +82,37 @@ def backfill(
             remaining -= len(batch)
 
     return EmbedResult(embedded=embedded, failed=failed, model=embedder.name)
+
+
+def backfill_if_pending(
+    store: Store,
+    owner_id: UUID,
+    model: str,
+    load: Callable[[], Embedder],
+    batch_size: int = DEFAULT_BATCH_SIZE,
+    max_entries: int | None = None,
+) -> EmbedResult | None:
+    """Backfill, but only build the embedder if there is anything to embed.
+
+    `backfill` takes an Embedder already constructed, which is right for
+    `remem embed`: a user asked for it, so paying for it is the point.
+    Automatic callers are the opposite - they run on every session start,
+    and constructing a LocalEmbedder imports fastembed, builds an ONNX
+    session and can download ~130MB, all for a backlog that is empty almost
+    every time. The model NAME is enough to ask whether work is waiting,
+    which is what makes the check possible before the cost.
+
+    This is the same policy `services.search.shared_embedder` applies inside
+    the semantic tier, for the same reason, applied in a second place.
+
+    Returns None when there was nothing to do - distinct from an
+    EmbedResult with `embedded=0`, which would mean the model was built and
+    then found nothing. `load` raising is propagated: whether an unavailable
+    embedder is fatal is the caller's policy (loud for `remem embed`,
+    swallowed for the spawned refresh), and collapsing it into None here
+    would make those two indistinguishable.
+    """
+    if not store.entries_missing_vectors(owner_id, model, 1):
+        return None
+    return backfill(store, owner_id, load(), batch_size=batch_size,
+                    max_entries=max_entries)

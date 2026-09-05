@@ -154,6 +154,26 @@ class MemoryDesignation:
     working_dir: str | None = None
 
 
+@dataclass(slots=True, frozen=True)
+class IngestDesignation:
+    """A project's re-ingest set: which paths, and whether they are archive.
+
+    `archive` is part of the identity rather than a field alongside the
+    paths, because a project's specs and its plans are two separate
+    invocations with different origins - the table holds at most two rows
+    per project, one for each.
+
+    Paths are repo-relative and resolved against the git root at refresh
+    time. Storing them absolute would tie a designation to the machine that
+    made it; ingest already resolves its project from the git common dir,
+    so the root is always derivable where it is needed.
+    """
+
+    project: str
+    paths: tuple[str, ...]
+    archive: bool = False
+
+
 @dataclass(slots=True)
 class Collection:
     id: UUID

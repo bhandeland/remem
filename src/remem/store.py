@@ -15,6 +15,7 @@ from remem.domain import (
     DuplicateGroup,
     HarnessStats,
     Hit,
+    IngestDesignation,
     JobStatus,
     MemoryDesignation,
     Principal,
@@ -97,6 +98,21 @@ class Store(Protocol):
     #: recorded working directory too, which is the only thing that makes
     #: syncing a project other than the current one possible at all.
     def memory_designations(self, owner_id: UUID) -> list[MemoryDesignation]: ...
+
+    # ingest designations
+    #: `paths=None` clears the (project, archive) designation. Passing a
+    #: list replaces it wholesale - a designation is the whole set, never
+    #: something appended to.
+    def set_ingest_paths(
+        self, owner_id: UUID, project: str, paths: list[str] | None,
+        archive: bool = False,
+    ) -> None: ...
+    #: Every designation for one project, or for every project when
+    #: `project` is None - the latter is what a future `refresh --all`
+    #: would read, and what `remem ingest status` lists today.
+    def ingest_designations(
+        self, owner_id: UUID, project: str | None = None
+    ) -> list[IngestDesignation]: ...
 
     # events
     def put_event(self, event: Event) -> Event: ...

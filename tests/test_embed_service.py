@@ -10,6 +10,8 @@ import pytest
 from remem.backends.postgres.migrate import migrate
 from remem.backends.postgres.store import PostgresStore
 from remem.domain import Entry, Kind, new_id
+from remem.embed import EmbedderUnavailable
+from remem.services import embed
 from remem.services.embed import backfill
 
 pytestmark = pytest.mark.db
@@ -157,3 +159,60 @@ def test_a_second_embed_run_does_nothing_while_the_lock_is_held(
         assert embedder.batches == []
     finally:
         holder.close()
+
+
+# --- constructing the embedder is itself expensive ---------------------
+# `backfill` takes an Embedder already built, which is right for `remem
+# embed` - a user asked for it. The spawned refresh runs on every session
+# start, where building a LocalEmbedder means importing fastembed, building
+# an ONNX session and possibly a ~130MB download, for a backlog that is
+# usually empty. Same policy `services.search.shared_embedder` already
+# applies inside the semantic tier: find out whether there is work first.
+def test_backfill_if_pending_does_not_build_an_embedder_for_an_empty_backlog(
+    store,
+):
+    owner = store.ensure_principal("lazy-empty")
+    built = []
+
+    def load():
+        built.append(1)
+        return FakeEmbedder()
+
+    result = embed.backfill_if_pending(store, owner.id, "fake-2", load)
+
+    assert built == []
+    assert result is None
+
+
+def test_backfill_if_pending_builds_the_embedder_when_work_is_waiting(store):
+    owner = store.ensure_principal("lazy-work")
+    _entries(store, owner.id, 3)
+    built = []
+
+    def load():
+        built.append(1)
+        return FakeEmbedder()
+
+    result = embed.backfill_if_pending(store, owner.id, "fake-2", load)
+
+    assert built == [1]
+    assert result.embedded == 3
+
+
+def test_backfill_if_pending_reports_an_unavailable_embedder_as_a_failure(
+    store,
+):
+    """Fail-soft is the caller's job, not this function's.
+
+    The spawned refresh swallows it; `remem embed` stays loud. Neither can
+    decide that if this silently returned None for both "nothing to do" and
+    "no embedder", since those want opposite responses.
+    """
+    owner = store.ensure_principal("lazy-broken")
+    _entries(store, owner.id, 1)
+
+    def load():
+        raise EmbedderUnavailable("fastembed is not installed")
+
+    with pytest.raises(EmbedderUnavailable):
+        embed.backfill_if_pending(store, owner.id, "fake-2", load)

@@ -21,7 +21,7 @@ from remem.backends.postgres.migrate import applied_versions, migrate, pending_v
 from remem.config import load
 from remem.domain import CollectionQuery, Entry, Kind, Match, Origin, Query
 from remem.embed import EmbedderUnavailable, load_embedder
-from remem.project import resolve_project
+from remem.project import repo_root, resolve_project
 from remem.services import ingest as ingest_service
 from remem.services import kb, write
 from remem.services import memory as memory_service
@@ -55,6 +55,14 @@ app.add_typer(config_app, name="config")
 
 memory_app = typer.Typer(help="Claude Code's memory directory, from remem.")
 app.add_typer(memory_app, name="memory")
+
+# Deliberately NOT subcommands of `ingest`: that is a bare command taking
+# positional paths, and `remem ingest docs/specs` is documented, in muscle
+# memory and in every handoff. A sub-app of the same name cannot coexist
+# with it, and breaking the manual command to make room for the automatic
+# one would be the wrong trade.
+reingest_app = typer.Typer(help="Automatic re-ingest of designated paths.")
+app.add_typer(reingest_app, name="reingest")
 
 
 def _default_project() -> str | None:
@@ -1024,6 +1032,10 @@ def hook_context(
         # `remem record status` shows the reason, which beats a probe here
         # that guesses wrong about where the extractor lives.
         hookio.spawn_process(env)
+        # And the re-ingest, for the same reason and from the same two
+        # places: a designated project's docs go stale otherwise, and
+        # nothing but a session start reliably happens.
+        hookio.spawn_ingest(env)
 
     raise typer.Exit(0)
 
@@ -1721,3 +1733,122 @@ def memory_status(
 
 if __name__ == "__main__":
     app()
+
+
+@reingest_app.command("designate")
+def reingest_designate(
+    paths: Annotated[Optional[list[str]], typer.Argument(
+        help="Repo-relative paths. Omit with --clear.")] = None,
+    archive: Annotated[bool, typer.Option("--archive")] = False,
+    clear: Annotated[bool, typer.Option("--clear")] = False,
+    project: Annotated[Optional[str], typer.Option("--project")] = None,
+):
+    """Record which paths this project re-ingests automatically.
+
+    Opt-in, per project, and it holds a value rather than a boolean - the
+    question is "which paths", not "on or off". A project with no
+    designation re-ingests nothing, which is what keeps this from running
+    for anyone who did not ask.
+
+    --archive designates the archive half separately, because the refresh
+    is genuinely two invocations with different origins. The two are stored
+    and cleared independently.
+    """
+    resolved = _resolve_project(project, False)
+    if resolved is None:
+        typer.echo("No project to designate. Run this inside a repository "
+                   "or pass --project.", err=True)
+        raise typer.Exit(1)
+    if clear and paths:
+        typer.echo("Pass either paths or --clear, not both", err=True)
+        raise typer.Exit(1)
+    with _session() as s:
+        try:
+            ingest_service.designate(
+                s.store, s.owner.id, resolved,
+                None if clear else list(paths or []), archive=archive,
+            )
+        except ingest_service.BadDesignation as exc:
+            # Fail-loud: a person typed this, and the whole point of
+            # validating here is that there is someone to tell.
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(1)
+    half = "archive" if archive else "default"
+    if clear:
+        typer.echo(f"Cleared the {half} re-ingest designation for {resolved}.")
+        return
+    typer.echo(
+        f"{resolved} ({half}) re-ingests: {', '.join(paths or [])}"
+    )
+
+
+@reingest_app.command("status")
+def reingest_status(
+    project: Annotated[Optional[str], typer.Option("--project")] = None,
+):
+    """Show what this project re-ingests automatically, if anything."""
+    resolved = _resolve_project(project, False)
+    with _session() as s:
+        found = ingest_service.designations(s.store, s.owner.id, resolved)
+    if not found:
+        typer.echo(
+            f"{resolved or 'This project'} is not designated for automatic "
+            f"re-ingest. Designate it with `remem reingest designate "
+            f"<paths>`."
+        )
+        return
+    for d in found:
+        half = "archive" if d.archive else "default"
+        typer.echo(f"{d.project} ({half}): {', '.join(d.paths)}")
+
+
+@reingest_app.command("run")
+def reingest_run():
+    """Re-ingest this project's designated paths. Spawned, not typed.
+
+    Fail-soft in the strongest sense this repo has: it is started detached
+    by a session start, so it exits 0 on every path, prints nothing to
+    stdout, and explains itself only to stderr behind REMEM_HOOK_DEBUG.
+    An undesignated project does nothing, which is the common case.
+
+    The manual commands keep their own contracts: `remem ingest` and
+    `remem embed` are still loud, because someone asked for those.
+    """
+    from remem import hookio
+
+    env = dict(os.environ)
+    try:
+        _reingest_once(env)
+    except BaseException as exc:
+        # BaseException, not Exception, and this is the one place in the CLI
+        # that needs it: `_session` turns an unreachable database into
+        # `typer.Exit(1)`, which is a SystemExit and would sail straight
+        # past `except Exception` into a non-zero exit from a hook-spawned
+        # command. Everything below this line is best-effort by contract.
+        hookio.debug(env, f"{type(exc).__name__}: {exc}")
+    raise typer.Exit(0)
+
+
+def _reingest_once(env: dict[str, str]) -> None:
+    """The work `reingest run` wraps in silence. Free to raise."""
+    from remem import hookio
+
+    resolved = resolve_project()
+    if resolved is None:
+        hookio.debug(env, "no project to re-ingest")
+        return
+    with _session() as s:
+        result = ingest_service.refresh(
+            s.store, s.owner.id, resolved, repo_root(),
+            embed_model=load().embed_model,
+            load_embedder=lambda: load_embedder(load().embed_model),
+        )
+    hookio.debug(
+        env,
+        f"re-ingest: {result.report.created} new, "
+        f"{result.report.changed} changed, {result.embedded} embedded",
+    )
+    for path, reason in result.report.failures:
+        hookio.debug(env, f"re-ingest failed: {path}: {reason}")
+    if result.embed_error:
+        hookio.debug(env, f"re-ingest embed skipped: {result.embed_error}")
