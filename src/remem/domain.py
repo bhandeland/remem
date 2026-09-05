@@ -222,6 +222,40 @@ class IngestRun:
     embed_error: str | None = None
 
 
+class MemoryTrigger(StrEnum):
+    """Who started a memory sync: a person, or the spawned hook."""
+
+    AUTO = "auto"
+    MANUAL = "manual"
+
+
+@dataclass(slots=True)
+class MemoryRun:
+    """One `remem memory sync` invocation's record - see 018_memory_runs.sql.
+
+    `finished_at` is None for a row whose process died before finishing.
+    The four lists are plain dicts and lists, the shape they are stored in,
+    because the only readers are a status renderer and `--json`.
+    """
+
+    id: UUID
+    owner_id: UUID
+    project: str
+    trigger: MemoryTrigger
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    adopted: int = 0
+    healed: int = 0
+    edited: int = 0
+    regenerated: int = 0
+    deleted: int = 0
+    unchanged: int = 0
+    renamed: list[list[str]] = field(default_factory=list)
+    conflicts: list[str] = field(default_factory=list)
+    sidecars: list[str] = field(default_factory=list)
+    failures: list[dict] = field(default_factory=list)
+
+
 @dataclass(slots=True)
 class Collection:
     id: UUID
