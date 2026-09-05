@@ -9,7 +9,7 @@ import pytest
 
 from remem.backends.postgres.migrate import migrate
 from remem.backends.postgres.store import PostgresStore
-from remem.domain import Kind
+from remem.domain import Kind, Origin
 from remem.services import write
 
 pytestmark = pytest.mark.db
@@ -44,6 +44,25 @@ def test_a_rule_with_a_summary_is_written(store, owner):
     e = write.remember(store, owner.id, title="A rule", body="the case",
                        summary="do the thing", kind=Kind.RULE, project="remem")
     assert e.summary == "do the thing"
+
+
+def test_a_human_rule_without_a_summary_is_still_refused(store, owner):
+    """Origin.HUMAN and Origin.AGENT are INJECTED_ORIGINS - the default
+    test above (`write.remember` defaults to AGENT) covers the other one."""
+    with pytest.raises(write.RuleNeedsSummary):
+        write.remember(store, owner.id, title="A rule", body="the case",
+                       kind=Kind.RULE, project="remem", origin=Origin.HUMAN)
+
+
+def test_an_extracted_rule_writes_without_a_summary(store, owner):
+    """kb.resolve filters to INJECTED_ORIGINS (human, agent), so an
+    EXTRACTED rule can never reach a context block - requiring a summary
+    on one would be enforcement with no purpose, and it used to fail
+    extraction's write of every rule the model proposed."""
+    e = write.remember(store, owner.id, title="An extracted rule",
+                       body="the case", kind=Kind.RULE, project="remem",
+                       origin=Origin.EXTRACTED)
+    assert e.summary is None
 
 
 def test_notes_and_docs_do_not_need_a_summary(store, owner):

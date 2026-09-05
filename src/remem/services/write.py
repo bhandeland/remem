@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from remem.domain import Entry, Kind, Origin, new_id
+from remem.domain import INJECTED_ORIGINS, Entry, Kind, Origin, new_id
 from remem.store import Store
 
 
@@ -24,6 +24,12 @@ class RuleNeedsSummary(Exception):
     arrives as a bare title. Refusing at write time is what keeps the
     block improving; the 17 rules that predate this requirement render
     title-only and are backfilled with `remem update --summary`.
+
+    Only raised for `origin in INJECTED_ORIGINS` - the origins `kb.resolve`
+    actually renders into a context block. An EXTRACTED rule can never
+    reach one (`kb.resolve` filters to INJECTED_ORIGINS), so requiring a
+    summary on one is enforcement with no purpose, and it used to fail
+    extraction's write of every rule the model proposed.
     """
 
 
@@ -56,10 +62,17 @@ def remember(
     session_id: str | None = None,
     origin: Origin = Origin.AGENT,
 ) -> Entry:
-    if kind is Kind.RULE and not (summary or "").strip():
+    if (
+        kind is Kind.RULE
+        and origin in INJECTED_ORIGINS
+        and not (summary or "").strip()
+    ):
         # In the service, not the CLI: mcp_server's remember_tool accepts a
         # `kind` and would write a summary-less rule straight past a
         # frontend check. One rule enforced here is one every frontend gets.
+        # Gated on INJECTED_ORIGINS, not just `kind is RULE`: an EXTRACTED
+        # rule can never reach kb.resolve's output, so this is not an
+        # escape hatch, it ties the requirement to its own justification.
         raise RuleNeedsSummary(title)
     entry = Entry(
         id=new_id(),

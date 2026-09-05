@@ -97,6 +97,37 @@ def an_entry(title="pgvector needs no index yet", body="Under 10k rows a "
 # --- the round trip ---------------------------------------------------------
 
 
+def test_an_extracted_rule_is_written_without_a_summary(store, owner):
+    """ExtractedEntry has no summary field and the extraction prompt asks
+    the model for kind: "rule" - so _write must be able to write a
+    Kind.RULE entry with no summary. It can, because origin=EXTRACTED is
+    outside INJECTED_ORIGINS: a rule kb.resolve will never render does not
+    need the one line that render exists to fill. Before that gate keyed
+    on origin, this raised RuleNeedsSummary and failed the whole job -
+    losing the note written earlier in the same batch along with it."""
+    record.enable(store, owner.id, "remem")
+    events = three_events(store, owner)
+    rule = ExtractedEntry(title="Always lint before committing",
+                          body="the case for it", kind=Kind.RULE, tags=[])
+    extractor = FakeExtractor([an_entry(), rule])
+
+    report = extraction.process(store, owner.id, extractor,
+                                idle_seconds=IDLE, limit=10)
+
+    assert (report.claimed, report.succeeded, report.failed) == (1, 1, 0)
+    assert report.entries_written == 2
+    written = {
+        h.entry.title: h.entry
+        for h in store.search(
+            Query(project="remem", origins=[Origin.EXTRACTED], limit=10), owner.id
+        )
+    }
+    assert set(written) == {"pgvector needs no index yet",
+                            "Always lint before committing"}
+    assert written["Always lint before committing"].kind is Kind.RULE
+    assert written["Always lint before committing"].summary is None
+
+
 def test_processing_a_quiet_session_writes_entries_and_provenance(store, owner):
     record.enable(store, owner.id, "remem")
     events = three_events(store, owner)

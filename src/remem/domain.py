@@ -35,6 +35,17 @@ class Origin(StrEnum):
     ARCHIVED = "archived"
 
 
+#: Origins `kb.resolve` renders into the session context block - the only
+#: two an agent or a human writes directly. Kept as one tuple rather than
+#: duplicated in `kb.resolve` and `services/write.remember` because those
+#: two checks are one rule ("can this rule ever reach a context block?")
+#: seen from two sides, and a rule enforced against the wrong set (e.g. an
+#: EXTRACTED rule, which kb.resolve already filters out) is enforcement
+#: with no purpose - it fails a live pipeline for a rule that can never
+#: render.
+INJECTED_ORIGINS = (Origin.HUMAN, Origin.AGENT)
+
+
 class Match(StrEnum):
     """How a hit matched, and therefore how much to trust it.
 

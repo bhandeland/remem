@@ -4,7 +4,15 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from remem.domain import Collection, CollectionQuery, Entry, Kind, Origin, Query, new_id
+from remem.domain import (
+    Collection,
+    CollectionQuery,
+    Entry,
+    INJECTED_ORIGINS,
+    Kind,
+    Query,
+    new_id,
+)
 from remem.services.write import EntryNotFound
 from remem.store import Store
 
@@ -123,7 +131,7 @@ def resolve(store: Store, owner_id: UUID, slug: str) -> list[Entry]:
                 tags=list(collection.query.tags),
                 # Machine-written entries stay out of the block that loads into
                 # every session. Pinning is the deliberate way to promote one.
-                origins=[Origin.HUMAN, Origin.AGENT],
+                origins=list(INJECTED_ORIGINS),
                 limit=RESOLVE_LIMIT,
             ),
             owner_id,
