@@ -20,6 +20,8 @@ from remem.domain import (
     HarnessStats,
     Hit,
     IngestDesignation,
+    IngestRun,
+    IngestTrigger,
     JobStatus,
     Kind,
     Match,
@@ -159,6 +161,38 @@ def _row_to_extract_job(row: dict) -> ExtractJob:
         entries_written=row["entries_written"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
+    )
+
+
+INGEST_RUN_FIELDS = [
+    "id", "owner_id", "project", "trigger", "archive", "started_at",
+    "finished_at", "created", "changed", "unchanged", "swept", "embedded",
+    "failures", "twins", "embed_error",
+]
+
+
+def ingest_run_columns(alias: str = "") -> str:
+    prefix = f"{alias}." if alias else ""
+    return ", ".join(f"{prefix}{f}" for f in INGEST_RUN_FIELDS)
+
+
+def _row_to_ingest_run(row: dict) -> IngestRun:
+    return IngestRun(
+        id=row["id"],
+        owner_id=row["owner_id"],
+        project=row["project"],
+        trigger=IngestTrigger(row["trigger"]),
+        archive=row["archive"],
+        started_at=row["started_at"],
+        finished_at=row["finished_at"],
+        created=row["created"],
+        changed=row["changed"],
+        unchanged=row["unchanged"],
+        swept=row["swept"],
+        embedded=row["embedded"],
+        failures=list(row["failures"]),
+        twins=list(row["twins"]),
+        embed_error=row["embed_error"],
     )
 
 
@@ -768,6 +802,63 @@ class PostgresStore:
             )
             for r in rows
         ]
+
+    # ---------------- ingest runs ----------------
+
+    def start_ingest_run(
+        self, owner_id: UUID, project: str, trigger: IngestTrigger,
+        archive: bool = False,
+    ) -> IngestRun:
+        run_id = new_id()
+        with self._cur() as cur:
+            cur.execute(
+                f"""
+                insert into ingest_runs (id, owner_id, project, trigger, archive)
+                values (%s, %s, %s, %s, %s)
+                returning {ingest_run_columns()}
+                """,
+                (run_id, owner_id, project, str(trigger), archive),
+            )
+            return _row_to_ingest_run(cur.fetchone())
+
+    def finish_ingest_run(
+        self, run_id: UUID, owner_id: UUID, *,
+        created: int, changed: int, unchanged: int, swept: int, embedded: int,
+        failures: list[dict], twins: list[dict], embed_error: str | None,
+    ) -> None:
+        with self._cur() as cur:
+            cur.execute(
+                """
+                update ingest_runs
+                   set finished_at = clock_timestamp(),
+                       created = %s, changed = %s, unchanged = %s,
+                       swept = %s, embedded = %s,
+                       failures = %s::jsonb, twins = %s::jsonb,
+                       embed_error = %s
+                 where id = %s and owner_id = %s
+                """,
+                (created, changed, unchanged, swept, embedded,
+                 json.dumps(failures), json.dumps(twins), embed_error,
+                 run_id, owner_id),
+            )
+            if cur.rowcount == 0:
+                raise NotOwner(f"ingest run {run_id} is not owned by {owner_id}")
+
+    def latest_ingest_run(
+        self, owner_id: UUID, project: str
+    ) -> IngestRun | None:
+        with self._cur() as cur:
+            cur.execute(
+                f"""
+                select {ingest_run_columns()} from ingest_runs
+                 where owner_id = %s and project = %s
+                 order by started_at desc
+                 limit 1
+                """,
+                (owner_id, project),
+            )
+            row = cur.fetchone()
+        return _row_to_ingest_run(row) if row else None
 
     def pending_legacy_capture_jobs(self, owner_id: UUID) -> int:
         """How many rows the retired capture spool still holds as pending.

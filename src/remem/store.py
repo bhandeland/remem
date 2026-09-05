@@ -16,6 +16,8 @@ from remem.domain import (
     HarnessStats,
     Hit,
     IngestDesignation,
+    IngestRun,
+    IngestTrigger,
     JobStatus,
     MemoryDesignation,
     Principal,
@@ -113,6 +115,25 @@ class Store(Protocol):
     def ingest_designations(
         self, owner_id: UUID, project: str | None = None
     ) -> list[IngestDesignation]: ...
+
+    # ingest runs
+    #: Opens a row and returns it. Called before any file is read, so that a
+    #: process which dies mid-run leaves a started, unfinished row behind.
+    def start_ingest_run(
+        self, owner_id: UUID, project: str, trigger: IngestTrigger,
+        archive: bool = False,
+    ) -> IngestRun: ...
+    #: Records the outcome. Raises NotOwner for a row that is not the
+    #: caller's - ownership is enforced here, not by callers.
+    def finish_ingest_run(
+        self, run_id: UUID, owner_id: UUID, *,
+        created: int, changed: int, unchanged: int, swept: int, embedded: int,
+        failures: list[dict], twins: list[dict], embed_error: str | None,
+    ) -> None: ...
+    #: The newest-started row for one project, finished or not.
+    def latest_ingest_run(
+        self, owner_id: UUID, project: str
+    ) -> IngestRun | None: ...
 
     # events
     def put_event(self, event: Event) -> Event: ...
