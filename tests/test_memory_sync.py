@@ -5,7 +5,7 @@ import pytest
 from remem import memory_file
 from remem.backends.postgres.migrate import migrate
 from remem.backends.postgres.store import PostgresStore
-from remem.domain import CollectionQuery
+from remem.domain import CollectionQuery, Entry, new_id
 from remem.services import kb, memory
 from remem.domain import Kind, Origin
 from remem.services.write import remember, supersede
@@ -119,6 +119,81 @@ def test_case_4_an_edited_entry_regenerates_the_file(store, owner, tmp_path):
     report = memory.sync(store, owner.id, project="proj", directory=tmp_path)
     assert report.regenerated == 1
     assert "from remem" in (tmp_path / "a-fact.md").read_text()
+
+
+def test_syncing_an_edited_summary_less_rule_does_not_raise(
+    store, owner, tmp_path
+):
+    """A Kind.RULE entry that never had a summary - written directly, the
+    way the 17 pre-existing rules on this machine got that way, since
+    write.remember no longer produces one for a human- or agent-origin
+    rule - has no old summary for supersede to carry, so editing its file
+    genuinely cannot sync without one. What must not happen is what did
+    before this fix: the exception escaping `memory.sync` entirely,
+    corrupting every other name's watermark in the same run (final review
+    finding 3). It is reported like a malformed file instead, and no
+    watermark is written for this name, so the edit is retried - not
+    dropped - on the next sync, once `remem update --summary` gives the
+    entry something to carry."""
+    slug = _designated(store, owner)
+    entry = store.put_entry(Entry(
+        id=new_id(), kind=Kind.RULE, title="Old rule", body="the old case",
+        owner_id=owner.id, project="proj", origin=Origin.HUMAN,
+    ))
+
+    memory.sync(store, owner.id, project="proj", directory=tmp_path)
+    resolved = {e.title: e for e in kb.resolve(store, owner.id, slug)}
+    name = next(
+        t for t in resolved[entry.title].tags if t.startswith("mem:")
+    )[len("mem:"):]
+    _write_file(tmp_path, name, "", "the edited case\n", type_="project")
+
+    report = memory.sync(store, owner.id, project="proj", directory=tmp_path)
+
+    assert report.edited == 0
+    assert report.conflicts == []
+    assert [n for n, _ in report.failures] == [name]
+    # Nothing was superseded: the store still holds the original entry,
+    # untouched, rather than a half-applied edit.
+    entries = kb.resolve(store, owner.id, slug)
+    [rule] = [e for e in entries if f"mem:{name}" in e.tags]
+    assert rule.body == "the old case"
+    assert rule.summary is None
+
+
+def test_syncing_a_rule_with_its_description_line_deleted_carries_the_old_summary(
+    store, owner, tmp_path
+):
+    """The one-line fix `summary=mf.description or None`: a rule that DOES
+    have a summary must not lose it just because the file's edit also
+    dropped the `description:` line - memory_file.parse reads a missing
+    line back as `""`, not `None`, and passing `""` straight through would
+    either overwrite the real summary with nothing or (finding 3) raise
+    RuleNeedsSummary mid-sync, since `""` fails the same blank check `None`
+    would carry past."""
+    slug = _designated(store, owner)
+    entry = remember(store, owner.id, title="A real rule", body="the case",
+                     summary="do the thing", kind=Kind.RULE, project="proj",
+                     origin=Origin.HUMAN)
+
+    memory.sync(store, owner.id, project="proj", directory=tmp_path)
+    resolved = {e.title: e for e in kb.resolve(store, owner.id, slug)}
+    name = next(
+        t for t in resolved[entry.title].tags if t.startswith("mem:")
+    )[len("mem:"):]
+    # The edit drops the description line entirely, same as a user deleting
+    # it by hand - and changes the body too, since classify() only compares
+    # bodies and a description-only edit would not even reach ADOPT_EDIT.
+    _write_file(tmp_path, name, "", "the edited case\n", type_="project")
+
+    report = memory.sync(store, owner.id, project="proj", directory=tmp_path)
+
+    assert report.edited == 1
+    assert report.failures == []
+    entries = kb.resolve(store, owner.id, slug)
+    [rule] = [e for e in entries if f"mem:{name}" in e.tags]
+    assert rule.body == "the edited case\n"
+    assert rule.summary == "do the thing"
 
 
 def test_regenerating_preserves_metadata_remem_does_not_own(
@@ -413,7 +488,8 @@ def test_an_entry_with_no_mem_tag_is_exported(store, owner, tmp_path):
     remember(
         store, owner.id,
         title="Deploys need HTTPS", body="use https\n",
-        kind=Kind.RULE, project="proj", origin=Origin.HUMAN,
+        summary="Deploys need HTTPS, not SSH", kind=Kind.RULE,
+        project="proj", origin=Origin.HUMAN,
     )
 
     report = memory.sync(store, owner.id, project="proj", directory=tmp_path)
@@ -434,7 +510,8 @@ def test_the_minted_name_persists_so_the_next_sync_is_a_no_op(
     remember(
         store, owner.id,
         title="Deploys need HTTPS", body="use https\n",
-        kind=Kind.RULE, project="proj", origin=Origin.HUMAN,
+        summary="Deploys need HTTPS, not SSH", kind=Kind.RULE,
+        project="proj", origin=Origin.HUMAN,
     )
     memory.sync(store, owner.id, project="proj", directory=tmp_path)
     before = {p.name: p.read_bytes() for p in tmp_path.iterdir() if p.is_file()}

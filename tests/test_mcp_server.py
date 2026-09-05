@@ -52,6 +52,52 @@ def test_supersede_hides_the_old_entry_from_recall(env):
     assert [h["title"] for h in recall_tool(query="deploy")] == ["Tuesdays"]
 
 
+def _legacy_rule(dsn, title):
+    """A rule with no summary - the state the 17 pre-existing rules on this
+    machine are in, and which write.remember (what remember_tool calls)
+    can no longer produce. Written directly through the store, the same
+    way tests/test_cli.py's helper of the same name does."""
+    import psycopg
+
+    from remem.backends.postgres.store import PostgresStore
+    from remem.domain import Entry, Kind, Origin, new_id
+    with psycopg.connect(dsn) as c:
+        store = PostgresStore(c)
+        owner = store.ensure_principal("brandon")
+        entry = store.put_entry(Entry(
+            id=new_id(), kind=Kind.RULE, title=title, body="the case",
+            owner_id=owner.id, origin=Origin.HUMAN,
+        ))
+        c.commit()
+    return str(entry.id)
+
+
+def test_supersede_a_legacy_rule_without_a_summary_reports_an_error(env):
+    from remem.mcp_server import supersede_tool
+    entry_id = _legacy_rule(env, "A legacy rule")
+    result = supersede_tool(entry_id=entry_id, title="Corrected",
+                            body="the corrected case")
+    assert "error" in result
+    assert "summary" in result["error"]
+
+
+def test_supersede_a_legacy_rule_with_a_summary_succeeds(env):
+    from remem.mcp_server import supersede_tool
+    entry_id = _legacy_rule(env, "Another legacy rule")
+    result = supersede_tool(entry_id=entry_id, title="Corrected",
+                            body="the corrected case",
+                            summary="state the rule in one line")
+    assert "id" in result
+    # supersede_tool's return dict carries no summary - read it back
+    # straight from the store, the same way test_cli.py's _summary_of does.
+    import psycopg
+    with psycopg.connect(env) as c:
+        row = c.execute(
+            "select summary from entries where id = %s", (result["id"],)
+        ).fetchone()
+    assert row[0] == "state the rule in one line"
+
+
 def test_kb_list_and_context(env):
     from remem.mcp_server import (
         kb_context_tool, kb_list_tool, kb_pin_tool, remember_tool,
@@ -65,11 +111,12 @@ def test_kb_list_and_context(env):
 
     assert any(c["slug"] == "core" for c in kb_list_tool())
 
-    entry = remember_tool(title="A rule", body="always lint", kind="rule")
+    entry = remember_tool(title="A rule", body="always lint", summary="Run lint",
+                          kind="rule")
     kb_pin_tool(slug="core", entry_id=entry["id"])
 
     block = kb_context_tool(slug="core")
-    assert "always lint" in block
+    assert "Run lint" in block
     assert "## Rules" in block
 
 

@@ -11,9 +11,9 @@ def collection(**kw):
                       title=kw.pop("title", "My KB"), owner_id=OWNER, **kw)
 
 
-def entry(title, body, kind=Kind.NOTE, tags=None):
+def entry(title, body, kind=Kind.NOTE, tags=None, summary=None):
     return Entry(id=new_id(), kind=kind, title=title, body=body,
-                 owner_id=OWNER, tags=tags or [])
+                 owner_id=OWNER, tags=tags or [], summary=summary)
 
 
 def test_renders_the_collection_title_and_description():
@@ -58,21 +58,34 @@ def test_no_notice_when_everything_fits():
 
 
 def test_rules_are_never_truncated_even_over_budget():
-    """Rules survive whole while everything else is dropped for space."""
-    rules = [entry(f"Rule {i}", "y" * 300, kind=Kind.RULE) for i in range(4)]
+    """Rules survive whole while everything else is dropped for space.
+
+    Unchanged invariant, restated for short forms: what must survive whole
+    is now each rule's summary, not its body.
+    """
+    rules = [entry(f"Rule {i}", "body that is not rendered", kind=Kind.RULE,
+                   summary="s" * 300) for i in range(4)]
     others = [entry(f"Doc {i}", "z" * 800) for i in range(10)]
 
     out = render(collection(), rules + others, max_chars=2000)
 
     for i in range(4):
         assert f"Rule {i}" in out
-    assert out.count("y" * 300) == 4     # every rule body, in full
+    assert out.count("s" * 300) == 4     # every rule summary, in full
     assert "z" * 800 not in out          # the budget really did bite
     assert "10 more entries not shown" in out
 
 
 def test_rules_alone_exceeding_the_budget_raises():
-    rules = [entry(f"Rule {i}", "y" * 500, kind=Kind.RULE) for i in range(10)]
+    """The backstop, which short forms make rare rather than remove.
+
+    Rules are cheap now, so the over-budget case needs building rather
+    than arriving by accident: ten long summaries against a tiny budget.
+    An agent handed a partial rule set proceeds believing it has the
+    conventions, which is worse than having none - so this raises.
+    """
+    rules = [entry(f"Rule {i}", "body", kind=Kind.RULE, summary="y" * 500)
+             for i in range(10)]
     with pytest.raises(RulesExceedBudget):
         render(collection(), rules, max_chars=500)
 
@@ -93,6 +106,55 @@ def test_total_output_never_exceeds_the_budget():
     for budget in (400, 600, 800, 1500):
         out = render(collection(slug="my-kb"), entries, max_chars=budget)
         assert len(out) <= budget, (budget, len(out))
+
+
+def test_a_rule_renders_its_summary_and_not_its_body():
+    """The block carries the rule; the entry keeps the case for it.
+
+    Rule bodies in this project are essays - the incident, the reasoning,
+    the lesson - and shipping all of them is what kept blowing the budget.
+    """
+    e = entry("Mark tests by behaviour", "y" * 2000, kind=Kind.RULE,
+              summary="If a test can open a socket, its marker says so.")
+
+    out = render(collection(), [e], max_chars=5000)
+
+    assert "Mark tests by behaviour" in out
+    assert "If a test can open a socket, its marker says so." in out
+    assert "y" * 2000 not in out
+
+
+def test_a_rule_without_a_summary_renders_title_only():
+    """The graceful floor: 17 rules predate the summary requirement and
+    must keep rendering rather than vanishing or dragging their bodies in."""
+    e = entry("Run ingest from the repository root", "z" * 900, kind=Kind.RULE)
+
+    out = render(collection(), [e], max_chars=5000)
+
+    assert "Run ingest from the repository root" in out
+    assert "z" * 900 not in out
+
+
+def test_a_rule_keeps_its_id_line_with_and_without_a_summary():
+    """The id is how an agent fetches the full rule. Without it the block
+    is a dead end rather than an index into the knowledge base."""
+    with_summary = entry("A", "body", kind=Kind.RULE, summary="short form")
+    without = entry("B", "body", kind=Kind.RULE)
+
+    out = render(collection(), [with_summary, without], max_chars=5000)
+
+    assert str(with_summary.id) in out
+    assert str(without.id) in out
+
+
+def test_a_note_still_renders_its_body():
+    """Only rules change. Notes and docs are not injected into every
+    session, so nothing about their cost changed."""
+    e = entry("A note", "the whole body stays")
+
+    out = render(collection(), [e], max_chars=5000)
+
+    assert "the whole body stays" in out
 
 
 def test_notice_still_appears_when_it_forces_dropping_another_entry():

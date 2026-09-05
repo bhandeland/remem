@@ -83,7 +83,7 @@ def test_supersede_replaces_and_hides_the_old_entry(env):
 
 def test_kb_new_list_pin_and_show(env):
     runner.invoke(app, ["remember", "A rule", "--body", "always lint",
-                        "--kind", "rule"])
+                        "--summary", "Run lint", "--kind", "rule"])
     s = runner.invoke(app, ["search", "lint", "--json"])
     entry_id = json.loads(s.stdout)[0]["id"]
 
@@ -93,7 +93,7 @@ def test_kb_new_list_pin_and_show(env):
 
     assert runner.invoke(app, ["kb", "pin", "core", entry_id]).exit_code == 0
     shown = runner.invoke(app, ["kb", "show", "core"])
-    assert "always lint" in shown.stdout
+    assert "Run lint" in shown.stdout
     assert "## Rules" in shown.stdout
 
 
@@ -108,7 +108,8 @@ def test_db_status_reports_applied_migrations(env):
 
 
 def test_search_filters_by_kind(env):
-    runner.invoke(app, ["remember", "R", "--body", "shared", "--kind", "rule"])
+    runner.invoke(app, ["remember", "R", "--body", "shared",
+                        "--summary", "R is shared", "--kind", "rule"])
     runner.invoke(app, ["remember", "M", "--body", "shared"])
     s = runner.invoke(app, ["search", "shared", "--kind", "rule", "--json"])
     assert [x["title"] for x in json.loads(s.stdout)] == ["R"]
@@ -345,3 +346,61 @@ def test_get_prints_no_summary_line_when_there_is_none(env):
     entry_id = json.loads(s.stdout)[0]["id"]
     g = runner.invoke(app, ["get", entry_id])
     assert g.stdout == "# Bare\n\njust a body\n"
+
+
+def _legacy_rule(dsn, title):
+    """A rule with no summary, written the way the 17 pre-existing rules on
+    this machine were: before RuleNeedsSummary existed, or by any path that
+    bypasses write.remember. Going through the CLI can't produce this state
+    any more, so this reaches the store directly, the same way _summary_of
+    reaches it to read one back."""
+    import psycopg
+
+    from remem.backends.postgres.store import PostgresStore
+    from remem.domain import Entry, Kind, Origin, new_id
+    with psycopg.connect(dsn) as c:
+        store = PostgresStore(c)
+        owner = store.ensure_principal("brandon")
+        entry = store.put_entry(Entry(
+            id=new_id(), kind=Kind.RULE, title=title, body="the case",
+            owner_id=owner.id, origin=Origin.HUMAN,
+        ))
+        c.commit()
+    return str(entry.id)
+
+
+def test_supersede_a_legacy_rule_without_a_summary_names_the_flag(env):
+    entry_id = _legacy_rule(env, "A legacy rule")
+    r = runner.invoke(app, ["supersede", entry_id, "--title", "Corrected",
+                            "--body", "the corrected case"])
+    assert r.exit_code == 1
+    assert "--summary" in r.stderr
+
+
+def test_supersede_a_legacy_rule_with_a_summary_succeeds(env):
+    entry_id = _legacy_rule(env, "Another legacy rule")
+    r = runner.invoke(app, ["supersede", entry_id, "--title", "Corrected",
+                            "--body", "the corrected case",
+                            "--summary", "state the rule in one line"])
+    assert r.exit_code == 0
+    assert _summary_of(env, r.stdout.strip()) == "state the rule in one line"
+
+
+def test_remember_kind_rule_without_a_summary_names_the_flag(env):
+    """`remem remember --kind rule` used to exit 1 with a bare traceback
+    and nothing on stdout or stderr - `remem rule` (the shorthand) already
+    caught this and named --summary, so the two commands gave the same
+    mistake two different experiences."""
+    r = runner.invoke(app, ["remember", "A rule", "--body", "the case",
+                            "--kind", "rule"])
+    assert r.exit_code == 1
+    assert "--summary" in r.stderr
+
+
+def test_update_summary_empty_on_a_rule_names_the_flag(env):
+    r = runner.invoke(app, ["rule", "A rule", "--body", "the case",
+                            "--summary", "do the thing"])
+    entry_id = r.stdout.strip()
+    r = runner.invoke(app, ["update", entry_id, "--summary", ""])
+    assert r.exit_code == 1
+    assert "--summary" in r.stderr

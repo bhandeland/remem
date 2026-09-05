@@ -62,7 +62,8 @@ def test_injects_the_project_knowledge_base(live_dsn, tmp_path, monkeypatch):
         kb.create(s.store, s.owner.id, slug="myproj", title="myproj",
                   query=CollectionQuery(project="myproj"))
         remember(s.store, s.owner.id, title="Lint rule",
-                 body="always run ruff", kind=Kind.RULE, project="myproj")
+                 body="always run ruff", summary="Run ruff linter",
+                 kind=Kind.RULE, project="myproj")
         s.conn.commit()
 
     out = session_start(
@@ -70,7 +71,7 @@ def test_injects_the_project_knowledge_base(live_dsn, tmp_path, monkeypatch):
         env={"REMEM_DSN": live_dsn, "REMEM_USER_ID": "brandon",
              "REMEM_CONFIG": str(tmp_path / "none.toml")},
     )
-    assert "always run ruff" in out
+    assert "Run ruff linter" in out
 
 
 @pytest.mark.db

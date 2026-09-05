@@ -111,7 +111,8 @@ def test_fuzzy_excludes_superseded_entries(store, owner):
 
 def test_fuzzy_respects_other_filters(store, owner):
     remember(store, owner.id, title="Postgres connection pooling",
-             body="x", project="alpha", kind=Kind.RULE)
+             body="x", summary="Pool postgres connections through pgbouncer",
+             project="alpha", kind=Kind.RULE)
     assert find(store, owner.id,
                 Query(text="postgres conection pooling", project="beta")) == []
     hits = find(store, owner.id,

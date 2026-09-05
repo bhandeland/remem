@@ -220,11 +220,19 @@ def remember(
     resolved = _resolve_project(project, is_global)
     text = _body_from_editor() if edit else _read_body(body)
     with _session() as s:
-        entry = write.remember(
-            s.store, s.owner.id, title=title, body=text, kind=kind,
-            summary=summary,
-            project=resolved, tags=list(tag or []), origin=Origin.HUMAN,
-        )
+        try:
+            entry = write.remember(
+                s.store, s.owner.id, title=title, body=text, kind=kind,
+                summary=summary,
+                project=resolved, tags=list(tag or []), origin=Origin.HUMAN,
+            )
+        except write.RuleNeedsSummary:
+            typer.echo(
+                "A rule needs --summary: it is the line every session sees, "
+                "since the context block renders summaries rather than bodies.",
+                err=True,
+            )
+            raise typer.Exit(1)
         typer.echo(entry.id)
 
 
@@ -247,11 +255,19 @@ def rule(
     resolved = _resolve_project(project, is_global)
     text = _body_from_editor() if edit else _read_body(body)
     with _session() as s:
-        entry = write.remember(
-            s.store, s.owner.id, title=title, body=text, kind=Kind.RULE,
-            summary=summary,
-            project=resolved, tags=list(tag or []), origin=Origin.HUMAN,
-        )
+        try:
+            entry = write.remember(
+                s.store, s.owner.id, title=title, body=text, kind=Kind.RULE,
+                summary=summary,
+                project=resolved, tags=list(tag or []), origin=Origin.HUMAN,
+            )
+        except write.RuleNeedsSummary:
+            typer.echo(
+                "A rule needs --summary: it is the line every session sees, "
+                "since the context block renders summaries rather than bodies.",
+                err=True,
+            )
+            raise typer.Exit(1)
         typer.echo(entry.id)
 
 
@@ -428,6 +444,7 @@ def update(
     entry_id: str,
     title: Annotated[Optional[str], typer.Option("--title")] = None,
     body: Annotated[Optional[str], typer.Option("--body")] = None,
+    summary: Annotated[Optional[str], typer.Option("--summary")] = None,
     project: Annotated[Optional[str], typer.Option("--project")] = None,
     clear_project: Annotated[bool, typer.Option("--clear-project")] = False,
     tag: Annotated[Optional[list[str]], typer.Option("--tag")] = None,
@@ -437,6 +454,9 @@ def update(
 
     Only the fields you pass change. --clear-project and --clear-tags empty a
     field, which passing nothing cannot express.
+
+    --summary is how a rule written before summaries were required gets
+    the line the context block renders, without superseding it.
     """
     parsed = _entry_id(entry_id)
     text = _read_body(body) if body is not None else None
@@ -453,10 +473,17 @@ def update(
     with _session() as s:
         try:
             entry = write.update(s.store, s.owner.id, parsed,
-                                 title=title, body=text,
+                                 title=title, body=text, summary=summary,
                                  project=new_project, tags=new_tags)
         except write.EntryNotFound:
             typer.echo(f"No entry {entry_id}", err=True)
+            raise typer.Exit(1)
+        except write.RuleNeedsSummary:
+            typer.echo(
+                "A rule needs --summary: it is the line every session sees, "
+                "since the context block renders summaries rather than bodies.",
+                err=True,
+            )
             raise typer.Exit(1)
         typer.echo(entry.id)
 
@@ -483,6 +510,14 @@ def supersede(
                                     title=title, body=text, summary=summary)
         except write.EntryNotFound:
             typer.echo(f"No entry {entry_id}", err=True)
+            raise typer.Exit(1)
+        except write.RuleNeedsSummary:
+            typer.echo(
+                "This rule has no summary to carry onto the replacement - "
+                "pass --summary: it is the line every session sees, since "
+                "the context block renders summaries rather than bodies.",
+                err=True,
+            )
             raise typer.Exit(1)
         typer.echo(entry.id)
 

@@ -35,6 +35,17 @@ class Origin(StrEnum):
     ARCHIVED = "archived"
 
 
+#: Origins `kb.resolve` renders into the session context block - the only
+#: two an agent or a human writes directly. Kept as one tuple rather than
+#: duplicated in `kb.resolve` and `services/write.remember` because those
+#: two checks are one rule ("can this rule ever reach a context block?")
+#: seen from two sides, and a rule enforced against the wrong set (e.g. an
+#: EXTRACTED rule, which kb.resolve already filters out) is enforcement
+#: with no purpose - it fails a live pipeline for a rule that can never
+#: render.
+INJECTED_ORIGINS = (Origin.HUMAN, Origin.AGENT)
+
+
 class Match(StrEnum):
     """How a hit matched, and therefore how much to trust it.
 
@@ -88,8 +99,12 @@ class Entry:
     body: str
     owner_id: UUID
     project: str | None = None
-    #: The one-line description a Claude Code memory file carries in its
-    #: frontmatter. Nullable because every other origin has no such thing.
+    #: One line stating what this entry is. Two readers: the `description`
+    #: field of a Claude Code memory file's frontmatter, which is where it
+    #: shipped, and - since 2026-09-04 - the context block, which renders
+    #: it INSTEAD OF the body for a rule. Required on rules for that
+    #: reason (see services/write.RuleNeedsSummary); nullable everywhere
+    #: else, and a rule that predates the requirement renders title-only.
     summary: str | None = None
     scope: Scope = Scope.PERSONAL
     tags: list[str] = field(default_factory=list)

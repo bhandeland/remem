@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from remem.domain import Entry, Kind, Origin, new_id
+from remem.domain import INJECTED_ORIGINS, Entry, Kind, Origin, new_id
 from remem.store import Store
 
 
@@ -14,6 +14,23 @@ class EntryNotFound(Exception):
 
 class CannotLinkToSelf(Exception):
     """Raised when an entry is linked to itself."""
+
+
+class RuleNeedsSummary(Exception):
+    """A rule was written without the one line the context block renders.
+
+    Rules are the only kind injected into every session, and since the
+    block renders summaries rather than bodies, a rule with no summary
+    arrives as a bare title. Refusing at write time is what keeps the
+    block improving; the 17 rules that predate this requirement render
+    title-only and are backfilled with `remem update --summary`.
+
+    Only raised for `origin in INJECTED_ORIGINS` - the origins `kb.resolve`
+    actually renders into a context block. An EXTRACTED rule can never
+    reach one (`kb.resolve` filters to INJECTED_ORIGINS), so requiring a
+    summary on one is enforcement with no purpose, and it used to fail
+    extraction's write of every rule the model proposed.
+    """
 
 
 class _Clear:
@@ -45,6 +62,23 @@ def remember(
     session_id: str | None = None,
     origin: Origin = Origin.AGENT,
 ) -> Entry:
+    if (
+        kind is Kind.RULE
+        and origin in INJECTED_ORIGINS
+        and not (summary or "").strip()
+    ):
+        # In the service, not the CLI: mcp_server's remember_tool accepts a
+        # `kind` and would write a summary-less rule straight past a
+        # frontend check. One rule enforced here is one every frontend gets.
+        # Gated on INJECTED_ORIGINS, not just `kind is RULE`: an EXTRACTED
+        # rule can never reach kb.resolve's output, so this is not an
+        # escape hatch, it ties the requirement to its own justification.
+        raise RuleNeedsSummary(title)
+    if summary is not None:
+        # Stored stripped, not just checked stripped: "  x  " passed the
+        # blank check above and would otherwise render with the padding
+        # intact, since _content interpolates the summary as-is.
+        summary = summary.strip()
     entry = Entry(
         id=new_id(),
         kind=kind,
@@ -76,6 +110,7 @@ def update(
     *,
     title: str | None = None,
     body: str | None = None,
+    summary: str | None = None,
     tags: list[str] | None = None,
     project: str | None | _Clear = None,
 ) -> Entry:
@@ -85,6 +120,25 @@ def update(
         entry.title = title
     if body is not None:
         entry.body = body
+    if summary is not None:
+        # No CLEAR for summary. A wrong summary is fixed by writing a
+        # better one, and a rule with none renders title-only rather than
+        # breaking - so emptying one has no use case worth the sentinel.
+        #
+        # Held to the same contract as remember(): a blank-or-whitespace
+        # summary on a rule is refused rather than silently accepted, and
+        # what does get stored is stripped. Without this, `update` was an
+        # unadvertised way to drop a rule back to title-only (summary="")
+        # or to render a blank line where the instruction belongs
+        # (summary="   ", which _content's `if entry.summary:` treats as
+        # present) - both of which `remember` already refuses.
+        if (
+            entry.kind is Kind.RULE
+            and entry.origin in INJECTED_ORIGINS
+            and not summary.strip()
+        ):
+            raise RuleNeedsSummary(entry.title)
+        entry.summary = summary.strip()
     if tags is not None:
         entry.tags = list(tags)
     if project is CLEAR:
