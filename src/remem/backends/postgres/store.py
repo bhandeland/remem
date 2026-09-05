@@ -14,6 +14,7 @@ from remem.domain import (
     Collection,
     CollectionQuery,
     DuplicateGroup,
+    DuplicateSet,
     Entry,
     Event,
     EventKind,
@@ -583,6 +584,57 @@ class PostgresStore:
                 snippet=r["snippet"], match=Match.SEMANTIC)
             for r in rows
         ]
+
+    def exact_duplicate_groups(
+        self, query: Query, owner_id: UUID
+    ) -> list[DuplicateSet]:
+        """Live entries sharing a body, grouped.
+
+        The checksum is over the body ALONE and trimmed. Body alone because
+        two entries holding one fact under different titles are duplicates,
+        and the extractor's title is never the one a human would have
+        chosen. This is deliberately the opposite of `ingest`, which
+        compares title and body - that comparison asks whether a chunk needs
+        re-indexing, and there the title is half the embedding text.
+
+        `btrim` because a hand-written memory file and a remem-generated one
+        can differ by a trailing newline, and that is not a different fact.
+        The character set is spelled out: one-argument `btrim` strips spaces
+        ONLY, so the newline case - the one this exists for - would have
+        sailed straight past it.
+
+        Nothing looser: normalising interior whitespace would start merging
+        entries whose formatting genuinely differs, which is the near tier's
+        job, with a score attached.
+
+        A window function rather than a `group by` subquery so that
+        `_entry_filters` is applied exactly once - a second copy under a
+        second alias is how a filter silently drifts out of one path.
+
+        No `limit`. The groups are a finite, cheap fact about the store, and
+        a truncated list of identical bodies would hide the easiest half of
+        this report's own answer.
+        """
+        where, params = _entry_filters(query, owner_id)
+        sql = f"""
+            select * from (
+                select {entry_columns("e")},
+                       md5(btrim(e.body, E' \\t\\n\\r')) as body_key,
+                       count(*) over (partition by md5(btrim(e.body, E' \\t\\n\\r'))) as n
+                from entries e
+                where {" and ".join(where)}
+            ) s
+            where s.n > 1
+            order by s.body_key, s.created_at asc
+        """
+        with self._cur() as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
+
+        groups: dict[str, list[Entry]] = {}
+        for r in rows:
+            groups.setdefault(r["body_key"], []).append(_row_to_entry(r))
+        return [DuplicateSet(entries=members) for members in groups.values()]
 
     # ---------------- collections ----------------
 

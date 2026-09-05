@@ -14,6 +14,7 @@ from remem.domain import (
     Event,
     ExtractJob,
     DuplicateGroup,
+    DuplicateSet,
     HarnessStats,
     Hit,
     IngestDesignation,
@@ -51,6 +52,10 @@ class Store(Protocol):
     ) -> list[Hit]: ...
 
     # vectors
+    def exact_duplicate_groups(
+        self, query: Query, owner_id: UUID
+    ) -> list[DuplicateSet]: ...
+
     def put_vector(
         self, entry_id: UUID, model: str, dim: int,
         vector: list[float], owner_id: UUID,
