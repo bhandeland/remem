@@ -237,8 +237,23 @@ which would create a replacement the orphan does not have.
 Splitting is on headings and only on headings. A size-based sub-splitter
 would cut through fenced code, which is most of what a plan contains. The
 only fence logic in `markdown.py` is a boolean for heading detection, so a
-`#` comment inside a code block is not mistaken for a section. Chunk titles
-come from the **filename stem**, not the `h1`.
+`#` comment inside a code block is not mistaken for a section.
+
+Chunk titles come from the document's opening **`h1`**, falling back to the
+filename stem when a file has none - "Ingest design § Decisions" rather than
+"2026-09-01-doc-ingest-design § Decisions". Only an h1 that opens the file
+counts; one further down is an ordinary section, since taking the title from it
+would rename the document halfway through. The stem still IDENTIFIES the
+document - a headingless file's `sec:` slug is its stem - so `split` takes
+`doc_name` and separates naming from identity the same way `ingest_file`'s
+`root` separates where a file is read from what identifies it. Retitling a
+document therefore never duplicates its chunks.
+
+Because the title is half the embedding text and the highest-weighted field in
+the tsvector, "changed" compares **title and body**, not body alone. A renamed
+document supersedes every one of its chunks on the next ingest; comparing
+bodies alone would leave the old titles standing until each section's prose
+happened to change.
 
 Two origins, because `search.DEFAULT_ORIGINS` is an allowlist and an
 exclude filter was deliberately declined: `INGESTED` (specs, notes,

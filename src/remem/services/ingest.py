@@ -174,7 +174,7 @@ def ingest_file(
     """
     path = Path(path)
     source = root / path if root is not None else path
-    chunks = split(source.read_text(), doc_title=path.stem)
+    chunks = split(source.read_text(), doc_name=path.stem)
     if len(chunks) > MAX_CHUNKS_PER_FILE:
         raise TooManyChunks(
             f"{path} produced {len(chunks)} chunks, over the limit of "
@@ -201,7 +201,7 @@ def ingest_file(
                 )
                 if chunk.anchor:
                     anchor_id = written.id
-        elif current.body == chunk.body:
+        elif current.body == chunk.body and current.title == chunk.title:
             # Skip entirely rather than rewrite an identical row: an update
             # would churn updated_at and make `remem embed` look like it has
             # work to redo when the stored vector is still correct.
@@ -209,6 +209,13 @@ def ingest_file(
             if chunk.anchor:
                 anchor_id = current.id
         else:
+            # The title counts as much as the body here. It is half the
+            # embedding text (services/embed.embed_text) and the highest
+            # weighted field in the tsvector, so a chunk whose title moved
+            # really is found differently and the stored vector really is
+            # stale. It also has to: identity is (src, sec) and comparing
+            # bodies alone would leave a renamed document's old titles
+            # standing until each section's prose happened to change.
             report.changed += 1
             if not dry_run:
                 replacement = supersede(

@@ -27,8 +27,8 @@ def env(live_dsn, monkeypatch, tmp_path):
 
 @pytest.fixture
 def docs(tmp_path):
-    # The chunk title comes from the FILENAME STEM, not the h1, so this file
-    # produces "alpha-doc" and "alpha-doc § One".
+    # The chunk title comes from the h1, not the filename stem, so this file
+    # produces "Alpha doc" and "Alpha doc § One".
     (tmp_path / "alpha-doc.md").write_text("# Alpha doc\n\nlead\n\n## One\n\nbody one\n")
     return tmp_path
 
@@ -61,7 +61,7 @@ def test_archived_chunks_are_hidden_until_asked_for(env, docs):
     assert "No matches." in hidden.stdout
 
     shown = runner.invoke(app, ["search", "body one", "--project", "remem", "--archived"])
-    assert "alpha-doc § One" in shown.stdout
+    assert "Alpha doc § One" in shown.stdout
 
 
 def test_a_failure_is_named_and_exits_non_zero(env, docs):

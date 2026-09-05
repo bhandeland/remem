@@ -43,7 +43,7 @@ def test_ingest_writes_an_anchor_and_one_entry_per_heading(store, owner, doc):
 
     assert report.created == 3
     entries = [h.entry for h in _live(store, owner, doc)]
-    assert {e.title for e in entries} == {"design", "design § Alpha", "design § Beta"}
+    assert {e.title for e in entries} == {"Design", "Design § Alpha", "Design § Beta"}
     assert all(e.kind is Kind.DOC for e in entries)
     assert all(e.origin is Origin.INGESTED for e in entries)
     assert all(e.project == "remem" for e in entries)
@@ -53,10 +53,10 @@ def test_every_chunk_carries_its_src_and_sec_tags(store, owner, doc):
     ingest.ingest_file(store, owner.id, doc, project="remem")
 
     entries = {h.entry.title: h.entry for h in _live(store, owner, doc)}
-    alpha = entries["design § Alpha"]
+    alpha = entries["Design § Alpha"]
     assert ingest.src_tag(doc) in alpha.tags
     assert ingest.sec_tag("alpha") in alpha.tags
-    anchor = entries["design"]
+    anchor = entries["Design"]
     assert ingest.src_tag(doc) in anchor.tags
     assert not [t for t in anchor.tags if t.startswith("sec:")]
 
@@ -86,7 +86,7 @@ def test_an_edited_section_supersedes_only_itself(store, owner, doc):
 
     assert (report.created, report.changed, report.unchanged) == (0, 1, 2)
     bodies = {h.entry.title: h.entry.body for h in _live(store, owner, doc)}
-    assert "body a, revised" in bodies["design § Alpha"]
+    assert "body a, revised" in bodies["Design § Alpha"]
     # The superseded original is kept, not destroyed.
     all_versions = store.search(
         Query(tags=[ingest.sec_tag("alpha")], include_superseded=True,
@@ -119,3 +119,28 @@ def test_too_many_chunks_raises_rather_than_truncating(store, owner, tmp_path, m
 
     with pytest.raises(ingest.TooManyChunks):
         ingest.ingest_file(store, owner.id, path, project="remem")
+
+
+def test_a_retitled_document_supersedes_every_chunk_that_carries_the_title(store, owner, doc):
+    # The title is part of the embedding text and of the weighted tsvector,
+    # so a chunk whose title moved is genuinely found differently and has to
+    # supersede. Bodies alone would leave the old titles standing forever:
+    # identity is (src, sec), which the h1 does not touch.
+    ingest.ingest_file(store, owner.id, doc, project="remem")
+    doc.write_text(DOC.replace("# Design", "# Ingest design"))
+
+    report = ingest.ingest_file(store, owner.id, doc, project="remem")
+
+    assert (report.created, report.changed, report.unchanged) == (0, 3, 0)
+    titles = {h.entry.title for h in _live(store, owner, doc)}
+    assert titles == {"Ingest design", "Ingest design § Alpha", "Ingest design § Beta"}
+
+
+def test_a_section_title_is_taken_from_the_h1_not_the_filename(store, owner, tmp_path):
+    path = tmp_path / "2026-09-01-doc-ingest-design.md"
+    path.write_text(DOC)
+
+    ingest.ingest_file(store, owner.id, path, project="remem")
+
+    titles = {h.entry.title for h in _live(store, owner, path)}
+    assert titles == {"Design", "Design § Alpha", "Design § Beta"}

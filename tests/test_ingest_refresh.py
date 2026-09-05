@@ -87,7 +87,7 @@ def test_refresh_ingests_the_designated_paths(store, owner, root):
                             embed_model="fake-2", load_embedder=FakeEmbedder)
 
     assert result.report.created == 2
-    assert "one" in _titles(store, owner.id, Origin.INGESTED)
+    assert "One" in _titles(store, owner.id, Origin.INGESTED)
 
 
 def test_refresh_honours_the_archive_designation(store, owner, root):
@@ -97,8 +97,8 @@ def test_refresh_honours_the_archive_designation(store, owner, root):
     ingest.refresh(store, owner.id, "proj", root,
                    embed_model="fake-2", load_embedder=FakeEmbedder)
 
-    assert "two" in _titles(store, owner.id, Origin.ARCHIVED)
-    assert "two" not in _titles(store, owner.id, Origin.INGESTED)
+    assert "Two" in _titles(store, owner.id, Origin.ARCHIVED)
+    assert "Two" not in _titles(store, owner.id, Origin.INGESTED)
 
 
 def test_refresh_resolves_paths_against_the_given_root(store, owner, root):

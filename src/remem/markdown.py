@@ -68,7 +68,7 @@ def _capped(body: str) -> str:
     return encoded[:budget].decode(errors="ignore") + _TRUNCATED
 
 
-def split(text: str, *, doc_title: str) -> list[Chunk]:
+def split(text: str, *, doc_name: str) -> list[Chunk]:
     """Anchor chunk first, then one chunk per h1-h3 heading, in order.
 
     The anchor is the document itself: its lead matter, everything before the
@@ -76,8 +76,20 @@ def split(text: str, *, doc_title: str) -> list[Chunk]:
     sweep in services/ingest.py supersedes vanished chunks BY the anchor,
     because set_superseded needs a replacement id and a deleted heading has
     none.
+
+    `doc_name` is what the caller calls the document - the filename stem -
+    and it does two jobs that must not be confused, the same distinction
+    `root` draws in services/ingest.ingest_file. It IDENTIFIES the document
+    (a headingless file's slug is its name, and slugs are half of the
+    (src, sec) identity), and it NAMES it only when the file has no opening
+    h1. A file that has one is titled by its h1, because "Ingest design §
+    Decisions" is what a person reading search output needs and
+    "2026-09-01-doc-ingest-design § Decisions" is what they were getting.
+    Identity never moves with the title, so retitling a document does not
+    duplicate its chunks.
     """
     lines = text.splitlines()
+    doc_title = doc_name
     fenced = False
     lead: list[str] = []
     sections: list[tuple[str, list[str]]] = []
@@ -93,7 +105,10 @@ def split(text: str, *, doc_title: str) -> list[Chunk]:
         level, title = len(heading.group(1)), heading.group(2)
         if level == 1 and not sections and current is None:
             # The document's own h1 titles the anchor rather than opening a
-            # section; doc_title is what the caller wants it called.
+            # section. Only an h1 that opens the file counts: one appearing
+            # after a section has begun is an ordinary heading, and taking
+            # the title from it would rename the document halfway down.
+            doc_title = title
             continue
         current = [line]
         sections.append((title, current))
@@ -106,7 +121,7 @@ def split(text: str, *, doc_title: str) -> list[Chunk]:
         # A file with no headings is still worth one searchable chunk. Its
         # slug is the document, so re-ingest matches it like any other.
         return chunks + [
-            Chunk(slug=slugify(doc_title), title=doc_title,
+            Chunk(slug=slugify(doc_name), title=doc_title,
                   body=_capped("\n".join(lead).strip()))
         ]
 

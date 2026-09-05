@@ -48,7 +48,7 @@ def test_a_renamed_heading_leaves_no_live_orphan(store, owner, doc):
     assert report.created == 1
     assert report.swept == 1
     assert _titles(store, owner, doc) == {
-        "design", "design § Alpha, revisited", "design § Beta",
+        "Design", "Design § Alpha, revisited", "Design § Beta",
     }
 
 
@@ -58,7 +58,7 @@ def test_a_swept_orphan_is_superseded_by_the_anchor(store, owner, doc):
         h.entry for h in store.search(
             Query(tags=[ingest.src_tag(doc)], origins=[Origin.INGESTED], limit=10),
             owner.id)
-        if h.entry.title == "design"
+        if h.entry.title == "Design"
     )
     doc.write_text(DOC.replace("## Alpha\n\nbody a\n\n", ""))
 
@@ -82,7 +82,7 @@ def test_the_sweep_does_not_reach_other_files(store, owner, tmp_path, doc):
     doc.write_text("# Design\n\nlead matter\n")
     ingest.ingest_file(store, owner.id, doc, project="remem")
 
-    assert _titles(store, owner, other) == {"other", "other § Gamma"}
+    assert _titles(store, owner, other) == {"Other", "Other § Gamma"}
 
 
 def test_dry_run_sweeps_nothing(store, owner, doc):
@@ -92,7 +92,7 @@ def test_dry_run_sweeps_nothing(store, owner, doc):
     report = ingest.ingest_file(store, owner.id, doc, project="remem", dry_run=True)
 
     assert report.swept == 1
-    assert "design § Alpha" in _titles(store, owner, doc)
+    assert "Design § Alpha" in _titles(store, owner, doc)
 
 
 def test_ingest_paths_globs_a_directory(store, owner, tmp_path):
