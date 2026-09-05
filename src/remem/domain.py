@@ -357,6 +357,58 @@ class DuplicateGroup:
 
 
 @dataclass(slots=True)
+class DuplicateSet:
+    """Live entries sharing one body, as `remem dedupe report` groups them.
+
+    Not `DuplicateGroup`: that name is taken by duplicate raw *events* in
+    `remem record status`, and the two are unrelated questions.
+
+    Membership is transitive here, unlike `NearPair`, because identical
+    checksums are an equivalence relation. That is the whole reason the
+    exact tier can report groups and the near tier cannot.
+    """
+
+    entries: list[Entry]
+
+
+@dataclass(slots=True)
+class NearPair:
+    """Two entries close enough in vector space to be worth a human look.
+
+    A pair, never a group. Similarity is not transitive: A near B and B near
+    C says nothing about A and C, so chaining pairs into groups would
+    produce memberships nobody could defend.
+    """
+
+    a: Entry
+    b: Entry
+    similarity: float
+
+
+@dataclass(slots=True)
+class DedupeReport:
+    """Everything `remem dedupe report` renders, fetched in one pass.
+
+    `near_total` is the count above the threshold BEFORE truncation, so the
+    renderer can say "showing 20 of 431" rather than quietly cutting the
+    list. A report that names no boundary is the diagnostic that eventually
+    lies confidently.
+
+    `embedded` and `total` are the near tier's coverage. They are always
+    rendered, because vectors are written only by `remem embed` and an empty
+    near section with no coverage line reads like a clean bill of health.
+    """
+
+    exact: list[DuplicateSet]
+    near: list[NearPair]
+    near_total: int
+    threshold: float
+    model: str
+    embedded: int
+    total: int
+
+
+@dataclass(slots=True)
 class ProvenanceRow:
     """One event behind an entry, as `remem events show` reports it.
 
