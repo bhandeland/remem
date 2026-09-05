@@ -77,14 +77,29 @@ def test_full_coverage_says_none_found_rather_than_not_checked():
     assert "No near-duplicates" in out
 
 
-def test_truncation_is_visible_only_when_it_happened():
+def test_truncation_is_named_as_truncation():
     a, b = _entry("a"), _entry("b")
-    shown = _report(near=[NearPair(a, b, 0.97)], near_total=9,
-                    embedded=5, total=5)
-    assert "showing 1 of 9" in render(shown)
-    whole = _report(near=[NearPair(a, b, 0.97)], near_total=1,
-                    embedded=5, total=5)
-    assert "showing" not in render(whole)
+    out = render(_report(near=[NearPair(a, b, 0.97)], near_total=9,
+                         near_truncated=True, embedded=5, total=5))
+    assert "9 pairs are above the threshold" in out
+    assert "raise --limit" in out
+
+
+def test_a_complete_list_says_nothing_about_limits():
+    a, b = _entry("a"), _entry("b")
+    out = render(_report(near=[NearPair(a, b, 0.97)], near_total=1,
+                         embedded=5, total=5))
+    assert "--limit" not in out
+    assert "identical bodies" not in out
+
+
+def test_suppressed_pairs_are_not_reported_as_truncation():
+    """The pairs are printed above as exact groups, not cut off."""
+    a, b = _entry("a"), _entry("b")
+    out = render(_report(near=[NearPair(a, b, 0.97)], near_total=7,
+                         near_suppressed=5, embedded=5, total=5))
+    assert "5 further pairs are listed above as identical bodies" in out
+    assert "raise --limit" not in out
 
 
 def test_every_group_prints_a_runnable_resolve_line():

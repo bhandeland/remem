@@ -1984,6 +1984,8 @@ def dedupe_report(
                 for p in report.near
             ],
             "near_total": report.near_total,
+            "near_suppressed": report.near_suppressed,
+            "near_truncated": report.near_truncated,
             # Explicit rather than inferred from an empty "near": a machine
             # reader must be able to tell "none found" from "never ran", for
             # the same reason the human rendering says so in words.

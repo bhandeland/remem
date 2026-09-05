@@ -397,6 +397,12 @@ class DedupeReport:
     `embedded` and `total` are the near tier's coverage. They are always
     rendered, because vectors are written only by `remem embed` and an empty
     near section with no coverage line reads like a clean bill of health.
+
+    `near_suppressed` and `near_truncated` are kept apart on purpose. Both
+    shrink the rendered list, and collapsing them into one "showing N of M"
+    told the reader their output had been cut short when in fact the missing
+    pairs were printed above as identical bodies. Two different facts about
+    why a list is short need two different sentences.
     """
 
     exact: list[DuplicateSet]
@@ -406,6 +412,10 @@ class DedupeReport:
     model: str
     embedded: int
     total: int
+    #: Pairs dropped because both members share an exact group.
+    near_suppressed: int = 0
+    #: Whether the store had more pairs above the threshold than it returned.
+    near_truncated: bool = False
 
 
 @dataclass(slots=True)

@@ -84,6 +84,57 @@ embedder per model name, and is called **from inside the semantic tier**: constr
 search the exact tier answers must never pay for any of it. Frontends pass `embed_model`,
 never an embedder.
 
+### Deduplication
+
+`remem dedupe report` names entries that say the same thing twice. Two
+tiers, and unlike search they **both always run and are never blended**: a
+report asks what duplication exists, so suppressing one tier because the
+other found something would hide most of the answer. A pair already reported
+as an identical body is not reported again with a score.
+
+Exact duplicates are **groups** (identical checksums are transitive); near
+duplicates are **pairs, never chained** - similarity is not transitive, and a
+union-find over the pairs would produce mega-groups nobody could defend.
+
+The checksum is `md5(btrim(body, E' \t\n\r'))`: the body **alone**, because
+two entries holding one fact under different titles are duplicates and the
+extractor's title is never a human's. That is deliberately the opposite of
+`ingest`, which compares title and body - it asks whether a chunk needs
+re-indexing, and there the title is half the embedding text. The trim
+character set is spelled out because one-argument `btrim` strips spaces only,
+and the trailing-newline case is the one it exists for. There is no stored
+hash and no migration.
+
+The near tier has its **own** threshold (0.95), not
+`config.semantic_threshold`, which is a search-recall floor: sharing the knob
+would mean tuning recall silently retunes what counts as a duplicate. It
+never constructs an embedder - a report must not download ~130MB or fail on a
+missing optional extra - so coverage is partial by default and
+*embedded / total* is **always** printed. Zero embedded renders as "not
+checked", never as an empty section, the same rule `remem doctor` follows;
+`--json` says so as `near_checked`. `report` exits 0 even when it finds
+duplicates: an exit code that is non-zero on every run is one people learn to
+ignore. `--limit` bounds the near tier only. Suppression and truncation are
+reported as **separate sentences**: a single "showing N of M" covering both
+told a reader whose list had merely been deduplicated that their output was
+cut short, which is the first thing running this command against a real
+store caught.
+
+Nothing is ever merged automatically. `remem dedupe resolve <drop> --keep
+<keep>` is the one write, fail-loud, and it exists because `supersede` cannot
+express this: `supersede` requires a title and mints a **new** entry for
+knowledge that stopped being true, while here both entries exist and one
+should point at the other. That primitive is `store.set_superseded`, which
+the ingest orphan sweep already calls directly for the same reason. It
+refuses five ways: the same id twice, an unknown `drop`, an unknown `keep`,
+an already-superseded `drop`, and a `keep` that is itself superseded.
+Cross-owner is refused inside the store as `NotOwner`.
+
+Resolving an entry that carries a `mem:<name>` tag drops it from its
+collection, so the next `remem memory sync` will want to delete that file.
+That is correct, and the sync's checksum gate still protects a copy edited by
+hand.
+
 ### Migrations
 
 Numbered `.sql` files in `backends/postgres/migrations/`, applied in filename order and

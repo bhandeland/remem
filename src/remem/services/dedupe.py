@@ -107,14 +107,18 @@ def report(
     return DedupeReport(
         exact=exact,
         near=kept,
-        # near_total is the store's count, before suppression and before
-        # truncation. Recomputing it after suppression would need the whole
-        # untruncated set, which is exactly what the limit avoids fetching.
+        # The store's count above the threshold, before suppression and
+        # before truncation. Recomputing it after suppression would need the
+        # whole untruncated set, which is exactly what the limit avoids
+        # fetching - so the renderer is told how many were suppressed and
+        # whether anything was truncated, and says the two separately.
         near_total=near_total,
         threshold=threshold,
         model=model,
         embedded=embedded,
         total=total,
+        near_suppressed=len(pairs) - len(kept),
+        near_truncated=near_total > len(pairs),
     )
 
 
@@ -159,10 +163,17 @@ def render(report: DedupeReport) -> str:
             f"{report.model}.\n  Run `remem embed` to enable this tier."
         )
     elif report.near:
-        shown = (f" (showing {len(report.near)} of {report.near_total})"
-                 if report.near_total > len(report.near) else "")
         out.append(f"Near-duplicates: {len(report.near)} pairs at "
-                   f">= {report.threshold}{shown}")
+                   f">= {report.threshold}")
+        # Suppressed and truncated are separate sentences. A single
+        # "showing N of M" covering both tells a reader whose list was
+        # merely deduplicated that their output was cut short.
+        if report.near_suppressed:
+            out.append(f"  {report.near_suppressed} further pairs are listed "
+                       f"above as identical bodies.")
+        if report.near_truncated:
+            out.append(f"  {report.near_total} pairs are above the "
+                       f"threshold - raise --limit to see more.")
         for pair in report.near:
             out.append("")
             out.append(f"  {pair.similarity:.3f}")
