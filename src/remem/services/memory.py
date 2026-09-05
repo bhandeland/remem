@@ -24,7 +24,7 @@ from uuid import UUID
 from remem import memory_file
 from remem.domain import Entry, Kind, MemoryDesignation, Origin
 from remem.services import kb
-from remem.services.write import remember, supersede, update
+from remem.services.write import RuleNeedsSummary, remember, supersede, update
 from remem.store import Store
 
 
@@ -560,20 +560,51 @@ def sync(
                 # edit, so this is a conflict: report it, touch nothing.
                 report.conflicts.append(name)
                 continue
-            report.edited += 1
-            if not dry_run:
+            if dry_run:
+                report.edited += 1
+                continue
+            try:
                 new = supersede(
                     store, owner_id, entry.id,
                     title=mf.title or entry.title,
                     body=mf.body,
-                    summary=mf.description,
+                    # `mf.description` is "" for a missing or blank
+                    # `description:` line (memory_file.parse's contract),
+                    # not None - and supersede's "carry the old summary"
+                    # default is keyed on None. Passing "" straight through
+                    # would overwrite a rule's real summary with nothing,
+                    # or - for a rule edited with its description line
+                    # removed - raise RuleNeedsSummary mid-sync for no
+                    # reason, since the old summary was right there to
+                    # carry.
+                    summary=mf.description or None,
                 )
-                live[name] = new
-                marks[name] = Watermark(
-                    entry_id=str(new.id),
-                    body_sha=memory_file.body_sha(mf.body),
-                    exported_at=now,
-                )
+            except RuleNeedsSummary:
+                # A rule that predates the summary requirement has nothing
+                # to carry - `or None` above still resolves to None, and
+                # this is the one case it cannot paper over: memory.sync
+                # has no --summary flag to ask the user with. Reported like
+                # a malformed file rather than raising (not counted as
+                # `edited` - nothing was): an unattended sync (this runs
+                # from a SessionStart hook) must not crash for every other
+                # entry in the same run, and no watermark is written for
+                # this name, so the next sync retries the same supersede
+                # rather than silently dropping the edit. `remem update
+                # --summary` on the entry directly resolves it for good.
+                report.failures.append((
+                    name,
+                    "needs a summary before this edit can sync - "
+                    "run `remem update <id> --summary '...'` on the "
+                    "entry, then sync again",
+                ))
+                continue
+            report.edited += 1
+            live[name] = new
+            marks[name] = Watermark(
+                entry_id=str(new.id),
+                body_sha=memory_file.body_sha(mf.body),
+                exported_at=now,
+            )
             continue
 
         if case is Case.HEAL:
