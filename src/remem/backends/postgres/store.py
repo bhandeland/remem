@@ -14,6 +14,7 @@ from remem.domain import (
     Collection,
     CollectionQuery,
     DuplicateGroup,
+    DuplicateSet,
     Entry,
     Event,
     EventKind,
@@ -27,6 +28,7 @@ from remem.domain import (
     Kind,
     Match,
     MemoryDesignation,
+    NearPair,
     Origin,
     Principal,
     PrincipalKind,
@@ -48,6 +50,21 @@ def entry_columns(alias: str = "") -> str:
     """Column list, optionally table-qualified for joins."""
     prefix = f"{alias}." if alias else ""
     return ", ".join(f"{prefix}{f}" for f in ENTRY_FIELDS)
+
+
+def _aliased_entry_columns(alias: str, prefix: str) -> str:
+    """Entry columns renamed, for a query joining `entries` to itself.
+
+    Two copies of the same table produce two `id` keys in one result row,
+    and the second silently wins. Prefixing makes both readable.
+    """
+    return ", ".join(f"{alias}.{f} as {prefix}{f}" for f in ENTRY_FIELDS)
+
+
+def _row_to_entry_prefixed(row: dict, prefix: str) -> Entry:
+    return _row_to_entry(
+        {k[len(prefix):]: v for k, v in row.items() if k.startswith(prefix)}
+    )
 
 
 def _entry_filters(query: Query, owner_id: UUID) -> tuple[list[str], dict]:
@@ -583,6 +600,149 @@ class PostgresStore:
                 snippet=r["snippet"], match=Match.SEMANTIC)
             for r in rows
         ]
+
+    def exact_duplicate_groups(
+        self, query: Query, owner_id: UUID
+    ) -> list[DuplicateSet]:
+        """Live entries sharing a body, grouped.
+
+        The checksum is over the body ALONE and trimmed. Body alone because
+        two entries holding one fact under different titles are duplicates,
+        and the extractor's title is never the one a human would have
+        chosen. This is deliberately the opposite of `ingest`, which
+        compares title and body - that comparison asks whether a chunk needs
+        re-indexing, and there the title is half the embedding text.
+
+        `btrim` because a hand-written memory file and a remem-generated one
+        can differ by a trailing newline, and that is not a different fact.
+        The character set is spelled out: one-argument `btrim` strips spaces
+        ONLY, so the newline case - the one this exists for - would have
+        sailed straight past it.
+
+        Nothing looser: normalising interior whitespace would start merging
+        entries whose formatting genuinely differs, which is the near tier's
+        job, with a score attached.
+
+        A window function rather than a `group by` subquery so that
+        `_entry_filters` is applied exactly once - a second copy under a
+        second alias is how a filter silently drifts out of one path.
+
+        No `limit`. The groups are a finite, cheap fact about the store, and
+        a truncated list of identical bodies would hide the easiest half of
+        this report's own answer.
+        """
+        where, params = _entry_filters(query, owner_id)
+        sql = f"""
+            select * from (
+                select {entry_columns("e")},
+                       md5(btrim(e.body, E' \\t\\n\\r')) as body_key,
+                       count(*) over (partition by md5(btrim(e.body, E' \\t\\n\\r'))) as n
+                from entries e
+                where {" and ".join(where)}
+            ) s
+            where s.n > 1
+            order by s.body_key, s.created_at asc
+        """
+        with self._cur() as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
+
+        groups: dict[str, list[Entry]] = {}
+        for r in rows:
+            groups.setdefault(r["body_key"], []).append(_row_to_entry(r))
+        return [DuplicateSet(entries=members) for members in groups.values()]
+
+    def near_duplicate_pairs(
+        self, query: Query, owner_id: UUID, model: str,
+        threshold: float, limit: int,
+    ) -> tuple[list[NearPair], int]:
+        """Entry pairs above a cosine-similarity floor, and how many there are.
+
+        `b.id > a.id` so each pair is computed and reported once rather than
+        twice in both orders.
+
+        The join is inner on both sides, so an entry with no vector for this
+        model is invisible here - the same correct degradation
+        `semantic_search` documents. `vector_coverage` is what tells the
+        caller how much of the population that silently excluded.
+
+        The count is taken over the whole matching set, not the returned
+        page, because a report that truncates without saying so is the
+        diagnostic that eventually lies confidently.
+
+        Exact, no index, like `semantic_search` - see 006_vectors.sql.
+        """
+        where, params = _entry_filters(query, owner_id)
+        # _entry_filters writes its clauses against the alias `e`. This query
+        # has two entry aliases, so the same predicate is applied to both -
+        # rebuilt by substitution rather than by a second hand-written copy,
+        # which is how a filter drifts out of one side unnoticed.
+        a_where = [c.replace("e.", "a.") for c in where]
+        b_where = [c.replace("e.", "b.") for c in where]
+        params["model"] = model
+        params["threshold"] = threshold
+        params["pair_limit"] = limit
+
+        similarity = "1 - (va.vector <=> vb.vector)"
+        joins = f"""
+            from entries a
+            join entry_vectors va on va.entry_id = a.id
+                                 and va.model = %(model)s
+            join entries b on b.id > a.id
+            join entry_vectors vb on vb.entry_id = b.id
+                                 and vb.model = %(model)s
+            where {" and ".join(a_where + b_where)}
+              and {similarity} >= %(threshold)s
+        """
+        with self._cur() as cur:
+            cur.execute(f"select count(*) as n {joins}", params)
+            total = int(cur.fetchone()["n"])
+            if total == 0:
+                return [], 0
+            cur.execute(
+                f"""
+                select {_aliased_entry_columns("a", "a_")},
+                       {_aliased_entry_columns("b", "b_")},
+                       {similarity} as similarity
+                {joins}
+                order by similarity desc, a.id, b.id
+                limit %(pair_limit)s
+                """,
+                params,
+            )
+            rows = cur.fetchall()
+        return [
+            NearPair(
+                a=_row_to_entry_prefixed(r, "a_"),
+                b=_row_to_entry_prefixed(r, "b_"),
+                similarity=float(r["similarity"]),
+            )
+            for r in rows
+        ], total
+
+    def vector_coverage(
+        self, query: Query, owner_id: UUID, model: str
+    ) -> tuple[int, int]:
+        """How many of the population carry a vector for this model.
+
+        A separate query rather than a count inside the pair join: an entry
+        with no vector is not in that join at all, so the join can never
+        report the entries it is missing.
+        """
+        where, params = _entry_filters(query, owner_id)
+        with self._cur() as cur:
+            cur.execute(
+                f"""
+                select count(v.entry_id) as embedded, count(*) as total
+                from entries e
+                left join entry_vectors v
+                       on v.entry_id = e.id and v.model = %(model)s
+                where {" and ".join(where)}
+                """,
+                {**params, "model": model},
+            )
+            row = cur.fetchone()
+        return int(row["embedded"]), int(row["total"])
 
     # ---------------- collections ----------------
 
