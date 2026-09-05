@@ -22,6 +22,7 @@ from remem.domain import (
     IngestTrigger,
     JobStatus,
     MemoryDesignation,
+    NearPair,
     Principal,
     Query,
     SessionRef,
@@ -55,6 +56,15 @@ class Store(Protocol):
     def exact_duplicate_groups(
         self, query: Query, owner_id: UUID
     ) -> list[DuplicateSet]: ...
+
+    def near_duplicate_pairs(
+        self, query: Query, owner_id: UUID, model: str,
+        threshold: float, limit: int,
+    ) -> tuple[list[NearPair], int]: ...
+
+    def vector_coverage(
+        self, query: Query, owner_id: UUID, model: str
+    ) -> tuple[int, int]: ...
 
     def put_vector(
         self, entry_id: UUID, model: str, dim: int,

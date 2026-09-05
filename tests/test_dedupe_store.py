@@ -114,3 +114,115 @@ def test_origins_are_not_filtered_by_default(store):
     sets = store.exact_duplicate_groups(Query(limit=50), owner.id)
 
     assert {e.id for e in sets[0].entries} == {a.id, b.id}
+
+
+def _vec(store, entry, xy, owner_id):
+    store.put_vector(entry.id, MODEL, 2, list(xy), owner_id)
+
+
+def test_near_pairs_are_returned_once_with_their_similarity(store):
+    owner = store.ensure_principal("dedupe-near")
+    a = _entry(store, owner.id, "a", body="one")
+    b = _entry(store, owner.id, "b", body="two")
+    _vec(store, a, (1.0, 0.0), owner.id)
+    _vec(store, b, (1.0, 0.0), owner.id)
+
+    pairs, total = store.near_duplicate_pairs(
+        Query(limit=50), owner.id, MODEL, threshold=0.9, limit=10)
+
+    assert total == 1
+    assert len(pairs) == 1
+    assert {pairs[0].a.id, pairs[0].b.id} == {a.id, b.id}
+    assert pairs[0].similarity == pytest.approx(1.0)
+
+
+def test_a_pair_below_the_threshold_is_absent(store):
+    owner = store.ensure_principal("dedupe-below")
+    a = _entry(store, owner.id, "a", body="one")
+    b = _entry(store, owner.id, "b", body="two")
+    _vec(store, a, (1.0, 0.0), owner.id)
+    _vec(store, b, (0.0, 1.0), owner.id)
+
+    pairs, total = store.near_duplicate_pairs(
+        Query(limit=50), owner.id, MODEL, threshold=0.5, limit=10)
+
+    assert (pairs, total) == ([], 0)
+
+
+def test_an_entry_with_no_vector_is_absent_rather_than_an_error(store):
+    owner = store.ensure_principal("dedupe-novec")
+    a = _entry(store, owner.id, "a", body="one")
+    b = _entry(store, owner.id, "b", body="two")
+    _vec(store, a, (1.0, 0.0), owner.id)
+
+    pairs, total = store.near_duplicate_pairs(
+        Query(limit=50), owner.id, MODEL, threshold=0.1, limit=10)
+
+    assert (pairs, total) == ([], 0)
+    assert b.id is not None  # b simply never joins
+
+
+def test_the_total_counts_past_the_limit(store):
+    """Truncation must be visible - the renderer says 'showing N of M'."""
+    owner = store.ensure_principal("dedupe-limit")
+    for i in range(4):
+        e = _entry(store, owner.id, f"e{i}", body=f"body {i}")
+        _vec(store, e, (1.0, 0.0), owner.id)
+
+    pairs, total = store.near_duplicate_pairs(
+        Query(limit=50), owner.id, MODEL, threshold=0.9, limit=2)
+
+    assert total == 6  # 4 choose 2
+    assert len(pairs) == 2
+
+
+def test_near_pairs_never_cross_owners(store):
+    mine = store.ensure_principal("near-mine")
+    theirs = store.ensure_principal("near-theirs")
+    a = _entry(store, mine.id, "a", body="one")
+    t = _entry(store, theirs.id, "t", body="two")
+    _vec(store, a, (1.0, 0.0), mine.id)
+    _vec(store, t, (1.0, 0.0), theirs.id)
+
+    pairs, total = store.near_duplicate_pairs(
+        Query(limit=50), mine.id, MODEL, threshold=0.1, limit=10)
+
+    assert (pairs, total) == ([], 0)
+
+
+def test_a_superseded_entry_is_not_a_near_duplicate(store):
+    owner = store.ensure_principal("near-superseded")
+    a = _entry(store, owner.id, "a", body="one")
+    b = _entry(store, owner.id, "b", body="two")
+    _vec(store, a, (1.0, 0.0), owner.id)
+    _vec(store, b, (1.0, 0.0), owner.id)
+    store.set_superseded(a.id, b.id, owner.id)
+
+    pairs, total = store.near_duplicate_pairs(
+        Query(limit=50), owner.id, MODEL, threshold=0.9, limit=10)
+
+    assert (pairs, total) == ([], 0)
+
+
+def test_coverage_counts_embedded_against_total(store):
+    owner = store.ensure_principal("dedupe-coverage")
+    a = _entry(store, owner.id, "a", body="one")
+    _entry(store, owner.id, "b", body="two")
+    _vec(store, a, (1.0, 0.0), owner.id)
+
+    assert store.vector_coverage(Query(limit=50), owner.id, MODEL) == (1, 2)
+
+
+def test_coverage_is_zero_when_nothing_is_embedded(store):
+    owner = store.ensure_principal("dedupe-nocoverage")
+    _entry(store, owner.id, "a", body="one")
+
+    assert store.vector_coverage(Query(limit=50), owner.id, MODEL) == (0, 1)
+
+
+def test_coverage_ignores_another_model(store):
+    owner = store.ensure_principal("dedupe-othermodel")
+    a = _entry(store, owner.id, "a", body="one")
+    store.put_vector(a.id, "some-other-model", 2, [1.0, 0.0], owner.id)
+
+    assert store.vector_coverage(Query(limit=50), owner.id, MODEL) == (0, 1)
