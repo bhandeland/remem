@@ -13,6 +13,7 @@ from uuid import UUID
 # tool-registration and `list_tools()` API is unchanged from v1, so nothing
 # else in this module needed to change - only this import.
 from mcp.server.mcpserver import MCPServer
+from mcp.server.transport_security import TransportSecuritySettings
 
 from remem.domain import Kind, Origin, Query
 from remem.project import resolve_project
@@ -299,6 +300,34 @@ def kb_pin_tool(slug: str, entry_id: str) -> dict:
         except kb.EntryNotFound:
             return {"error": f"no entry {entry_id}"}
         return {"pinned": entry_id, "slug": slug}
+
+
+def http_run_kwargs(host: str, port: int) -> dict:
+    """Keyword arguments for serving over streamable-HTTP.
+
+    Separate from `serve_http` so the security-relevant parts can be asserted
+    without binding a socket.
+    """
+    return {
+        "host": host,
+        "port": port,
+        "stateless_http": True,
+        # Host-header validation, which the SDK enables by default to stop DNS
+        # rebinding. It is not access control and is not claimed as any - the
+        # boundary is the network saddle puts the container on. But binding to
+        # a gateway address means that address must be allowlisted or every
+        # request is refused.
+        "transport_security": TransportSecuritySettings(
+            allowed_hosts=[f"{host}:{port}"],
+            allowed_origins=[],
+        ),
+    }
+
+
+def serve_http(host: str, port: int, project: str | None) -> None:
+    """Serve over streamable-HTTP. Blocks until the server stops."""
+    configure(project=project, http=True)
+    mcp.run("streamable-http", **http_run_kwargs(host, port))
 
 
 def main() -> None:
