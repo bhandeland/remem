@@ -98,3 +98,50 @@ def test_main_still_serves_stdio(monkeypatch):
     assert seen["args"] == ()
     assert seen["kwargs"] == {}
     assert mcp_server._http_mode is False
+
+
+def _invoke(monkeypatch, argv):
+    from typer.testing import CliRunner
+
+    from remem.cli import app
+
+    return CliRunner().invoke(app, argv)
+
+
+def test_bare_serve_runs_stdio(monkeypatch):
+    from remem import mcp_server
+
+    called = {}
+    monkeypatch.setattr(mcp_server, "main", lambda: called.setdefault("stdio", True))
+    monkeypatch.setattr(mcp_server, "serve_http", lambda *a: called.setdefault("http", a))
+
+    result = _invoke(monkeypatch, ["serve"])
+    assert result.exit_code == 0
+    assert called == {"stdio": True}
+
+
+def test_serve_http_passes_host_port_and_project(monkeypatch):
+    from remem import mcp_server
+
+    called = {}
+    monkeypatch.setattr(mcp_server, "main", lambda: called.setdefault("stdio", True))
+    monkeypatch.setattr(mcp_server, "serve_http", lambda *a: called.setdefault("http", a))
+
+    result = _invoke(
+        monkeypatch,
+        ["serve", "--http", "--host", "192.168.64.3", "--port", "9100",
+         "--project", "saddle"],
+    )
+    assert result.exit_code == 0
+    assert called == {"http": ("192.168.64.3", 9100, "saddle")}
+
+
+def test_serve_http_defaults_to_loopback_and_9100(monkeypatch):
+    from remem import mcp_server
+
+    called = {}
+    monkeypatch.setattr(mcp_server, "serve_http", lambda *a: called.setdefault("http", a))
+
+    result = _invoke(monkeypatch, ["serve", "--http"])
+    assert result.exit_code == 0
+    assert called == {"http": ("127.0.0.1", 9100, None)}

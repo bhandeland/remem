@@ -23,6 +23,30 @@ Code integration: the MCP server and both hooks are registered as bare `remem`, 
 `remem` that only exists in the project venv produces a config that silently does nothing
 (hooks are fail-soft, the MCP server never starts).
 
+## `remem serve --http`
+
+`remem serve` is stdio by default: the agent starts the process, so the
+process's working directory is the agent's and `_default_project()` resolves
+correctly from it.
+
+`--http` serves the same seven tools over streamable-HTTP, for an agent that
+cannot start a local process - a container, or a remote host. Two things
+change, both in `mcp_server.py`:
+
+- The project is pinned by `--project` instead of derived from the working
+  directory. Without it, every write files under whatever directory the server
+  was launched in, succeeds, and never appears in a knowledge base again.
+- The session id is null. `CLAUDE_SESSION_ID` in the server's environment
+  belongs to whatever launched it, not to the agent calling the tool.
+
+The listener is stateless and allowlists exactly the `host:port` it bound.
+That allowlist is load-bearing: the SDK enables DNS-rebinding protection by
+default, so a non-loopback bind without it refuses every request.
+
+There is no authentication. Do not bind this to an address you do not control
+the network of. saddle's use binds it to a per-session `--internal` network's
+gateway, which has no internet route.
+
 ## Architecture
 
 Strict layering, and the seams are deliberate. Each layer may call downward only:
