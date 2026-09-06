@@ -565,6 +565,34 @@ entry first.
   split into a recording wrapper and `_sync_body`, which is where the
   algorithm lives: the wrapper owns the row, and the body is passed the
   `Report` it mutates so a partial run is still recorded when it raises.
+- Sync also runs **automatically**, for the same reason re-ingest does:
+  the directory has a second writer that cannot be told to stop, so a
+  designated project drifts between manual syncs. `hookio.spawn_memory`
+  starts a detached `remem memory refresh` from the same two places
+  `spawn_process` and `spawn_ingest` start theirs - Claude Code's
+  `SessionStart` and `remem hook context` - which is the one trigger all
+  three harnesses share. It covers the **current project only**, like
+  `remem reingest run`: syncing all eight designated projects from any
+  session start would write into seven directories the user is not
+  looking at.
+- `remem memory refresh` is the spawned half and `remem memory sync` stays
+  the typed one, keeping its loud contract: a person asked for that, and it
+  exits non-zero on a conflict. `refresh` exits 0 on every path, prints
+  nothing to stdout, explains itself only to stderr behind
+  `REMEM_HOOK_DEBUG`, and is the only caller that records
+  `trigger='auto'`. An undesignated project - the common case - does
+  nothing and records nothing. A conflict under `refresh` writes its
+  sidecar and says nothing at the time; `remem memory status` and the
+  `memory.advisories()` line in `remem record status` are what surface it,
+  which is what that layer was built for. Both safety gates are unchanged
+  and hold identically unattended.
+- The `except BaseException` in `refresh` and in `reingest run` is **not**
+  there for the reason first recorded against it. `typer.Exit` is a
+  `RuntimeError`, so the `typer.Exit(1)` `_session` raises for an
+  unreachable database is caught by `except Exception` too - measured. What
+  BaseException adds is a genuine `SystemExit` from any library that calls
+  `sys.exit()`, and `KeyboardInterrupt`. A test asserts that, because the
+  unreachable-database case passes under either handler and proves nothing.
 - `remem memory status` renders the latest run in four distinct spellings
   (never, clean, with conflicts or failures, did not finish). Those describe
   what last *happened*; `stale`, `overlap` and `conflicts` describe the
