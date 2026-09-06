@@ -13,6 +13,7 @@ from uuid import UUID
 # tool-registration and `list_tools()` API is unchanged from v1, so nothing
 # else in this module needed to change - only this import.
 from mcp.server.mcpserver import MCPServer
+from mcp.server.transport_security import TransportSecuritySettings
 
 from remem.domain import Kind, Origin, Query
 from remem.project import resolve_project
@@ -23,6 +24,18 @@ from remem.session import open_session
 mcp = MCPServer("remem")
 
 AGENT_NAME = "claude-code"
+
+# Set once at launch by `configure`. Under stdio both stay at their defaults
+# and every behaviour below is exactly what it was before HTTP existed.
+_pinned_project: str | None = None
+_http_mode = False
+
+
+def configure(*, project: str | None = None, http: bool = False) -> None:
+    """Record how this process was launched. Call before serving."""
+    global _pinned_project, _http_mode
+    _pinned_project = project
+    _http_mode = http
 
 
 def _default_project() -> str | None:
@@ -35,13 +48,25 @@ def _default_project() -> str | None:
 
     Resolved from the git repository rather than the directory name, so a
     subdirectory or a worktree still files under the project it belongs to.
+
+    Over HTTP the server is a host-side process whose working directory has
+    nothing to do with the agent's, so the project is pinned at launch
+    instead. An explicit `project` argument on a tool call still wins; this
+    only supplies the default.
     """
+    if _pinned_project is not None:
+        return _pinned_project
     return resolve_project()
 
 
 def _session_id() -> str | None:
     # MCP tool calls carry no session id; use one only if the environment
     # supplies it. Recording null is better than fabricating a value.
+    #
+    # Over HTTP the environment is the launcher's, not the agent's, so the
+    # variable is not merely absent but wrong. Same argument, stronger case.
+    if _http_mode:
+        return None
     return os.environ.get("CLAUDE_SESSION_ID")
 
 
@@ -275,6 +300,34 @@ def kb_pin_tool(slug: str, entry_id: str) -> dict:
         except kb.EntryNotFound:
             return {"error": f"no entry {entry_id}"}
         return {"pinned": entry_id, "slug": slug}
+
+
+def http_run_kwargs(host: str, port: int) -> dict:
+    """Keyword arguments for serving over streamable-HTTP.
+
+    Separate from `serve_http` so the security-relevant parts can be asserted
+    without binding a socket.
+    """
+    return {
+        "host": host,
+        "port": port,
+        "stateless_http": True,
+        # Host-header validation, which the SDK enables by default to stop DNS
+        # rebinding. It is not access control and is not claimed as any - the
+        # boundary is the network saddle puts the container on. But binding to
+        # a gateway address means that address must be allowlisted or every
+        # request is refused.
+        "transport_security": TransportSecuritySettings(
+            allowed_hosts=[f"{host}:{port}"],
+            allowed_origins=[],
+        ),
+    }
+
+
+def serve_http(host: str, port: int, project: str | None) -> None:
+    """Serve over streamable-HTTP. Blocks until the server stops."""
+    configure(project=project, http=True)
+    mcp.run("streamable-http", **http_run_kwargs(host, port))
 
 
 def main() -> None:

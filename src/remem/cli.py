@@ -689,11 +689,26 @@ def db_status():
 
 
 @app.command()
-def serve():
-    """Run the MCP server on stdio (this is what agents launch)."""
-    from remem.mcp_server import main as serve_main
+def serve(
+    http: Annotated[bool, typer.Option("--http")] = False,
+    host: Annotated[str, typer.Option("--host")] = "127.0.0.1",
+    port: Annotated[int, typer.Option("--port")] = 9100,
+    project: Annotated[str | None, typer.Option("--project")] = None,
+):
+    """Run the MCP server.
 
-    serve_main()
+    Stdio by default, which is what an agent on this machine launches.
+    `--http` serves streamable-HTTP instead, for an agent that cannot start a
+    local process - a container, or a remote host. Over HTTP the working
+    directory is the server's, not the agent's, so pass `--project` or writes
+    file under the wrong project and never surface again.
+    """
+    from remem import mcp_server
+
+    if http:
+        mcp_server.serve_http(host, port, project)
+    else:
+        mcp_server.main()
 
 
 @app.command()
