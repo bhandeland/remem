@@ -18,7 +18,7 @@ from remem.agents.claude_code.adapter import ClaudeCodeAdapter
 from remem.config import load
 from remem.extract.base import CHILD_ENV_VAR
 from remem.hookio import debug as _debug
-from remem.hookio import spawn_ingest, spawn_process
+from remem.hookio import spawn_ingest, spawn_memory, spawn_process
 from remem.services import context, record
 from remem.session import open_session
 
@@ -62,6 +62,7 @@ def main() -> int:
             sys.stdout.write(block)
         spawn_process(env)
         spawn_ingest(env)
+        spawn_memory(env)
     except Exception:
         pass
     return 0

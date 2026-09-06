@@ -51,7 +51,7 @@ def test_injects_the_project_knowledge_base(live_dsn, tmp_path, monkeypatch):
     monkeypatch.setenv("REMEM_DSN", live_dsn)
     monkeypatch.setenv("REMEM_USER_ID", "brandon")
     monkeypatch.setenv("REMEM_CONFIG", str(tmp_path / "none.toml"))
-    # session_start spawns two detached `remem` processes in a `finally` on
+    # session_start spawns three detached `remem` processes in a `finally` on
     # every path. Pointed at this live test database they outlive the test
     # and race conftest's truncate-cascade for table locks - the same
     # deadlock test_hook_context_cli.py's env fixture stubs against.
@@ -59,6 +59,7 @@ def test_injects_the_project_knowledge_base(live_dsn, tmp_path, monkeypatch):
         "remem.agents.claude_code.hook.spawn_process", lambda env: False
     )
     monkeypatch.setattr("remem.agents.claude_code.hook.spawn_ingest", lambda env: False)
+    monkeypatch.setattr("remem.agents.claude_code.hook.spawn_memory", lambda env: False)
 
     project_dir = tmp_path / "myproj"
     project_dir.mkdir()
@@ -109,6 +110,7 @@ def test_returns_empty_when_the_project_has_no_knowledge_base(
         "remem.agents.claude_code.hook.spawn_process", lambda env: False
     )
     monkeypatch.setattr("remem.agents.claude_code.hook.spawn_ingest", lambda env: False)
+    monkeypatch.setattr("remem.agents.claude_code.hook.spawn_memory", lambda env: False)
     env = {
         "REMEM_DSN": live_dsn,
         "REMEM_USER_ID": "brandon",
@@ -178,6 +180,7 @@ def test_debug_names_the_missing_knowledge_base(
         "remem.agents.claude_code.hook.spawn_process", lambda env: False
     )
     monkeypatch.setattr("remem.agents.claude_code.hook.spawn_ingest", lambda env: False)
+    monkeypatch.setattr("remem.agents.claude_code.hook.spawn_memory", lambda env: False)
     env = {
         "REMEM_DSN": live_dsn,
         "REMEM_USER_ID": "brandon",

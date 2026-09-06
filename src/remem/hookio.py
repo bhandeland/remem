@@ -68,6 +68,29 @@ def spawn_ingest(env: Mapping[str, str]) -> bool:
     return _spawn(["remem", "reingest", "run"], env)
 
 
+def spawn_memory(env: Mapping[str, str]) -> bool:
+    """Start a detached `remem memory refresh` and return immediately.
+
+    The third spawn, from the same two places as the other two - Claude
+    Code's SessionStart and `remem hook context` - because that pair is the
+    one trigger all three harnesses share.
+
+    A project with no memory designation does nothing, so this is a no-op
+    for everyone who has not opted in. Separate from `spawn_ingest` for the
+    same reason that one is separate from `spawn_process`: the jobs share
+    their trigger and nothing else, and neither should be able to delay the
+    other.
+
+    `remem memory refresh`, not `remem memory sync`: sync is the command a
+    person types, and it is loud on purpose - it exits non-zero on a
+    conflict and prints its report. `refresh` is the silent half, and it is
+    also what records the run as `trigger='auto'`. A conflict here writes
+    its sidecar and says nothing; `remem memory status` and the advisory
+    line in `remem record status` are what surface it afterwards.
+    """
+    return _spawn(["remem", "memory", "refresh"], env)
+
+
 def _spawn(cmd: list[str], env: Mapping[str, str]) -> bool:
     """Launch a detached background command, or report that it could not be.
 

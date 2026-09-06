@@ -19,7 +19,15 @@ import typer
 
 from remem.backends.postgres.migrate import applied_versions, migrate, pending_versions
 from remem.config import load
-from remem.domain import CollectionQuery, Entry, Kind, Match, Origin, Query
+from remem.domain import (
+    CollectionQuery,
+    Entry,
+    Kind,
+    Match,
+    MemoryTrigger,
+    Origin,
+    Query,
+)
 from remem.embed import EmbedderUnavailable, load_embedder
 from remem.project import repo_root, resolve_project, toplevel
 from remem.services import dedupe as dedupe_service
@@ -1185,6 +1193,12 @@ def hook_context(
         # places: a designated project's docs go stale otherwise, and
         # nothing but a session start reliably happens.
         hookio.spawn_ingest(env)
+        # And the memory sync, third and last, from the same two places.
+        # A designated project's memory directory has a second writer that
+        # cannot be told to stop, so it drifts exactly the way designated
+        # ingest paths did. An undesignated project - the common case -
+        # exits 0 having done nothing.
+        hookio.spawn_memory(env)
 
     raise typer.Exit(0)
 
@@ -1921,6 +1935,81 @@ def memory_sync(
         raise typer.Exit(1)
 
 
+@memory_app.command("refresh")
+def memory_refresh():
+    """Sync this project's memory directory. Spawned, not typed.
+
+    The silent half of `remem memory sync`, and the exact analogue of
+    `remem reingest run`: started detached by a session start, so it exits 0
+    on every path, prints nothing to stdout, and explains itself only to
+    stderr behind REMEM_HOOK_DEBUG. An undesignated project does nothing,
+    which is the common case.
+
+    `sync` keeps its own contract - loud, and non-zero on a conflict -
+    because a person typed it. Here a conflict writes its sidecar and says
+    nothing; `remem memory status` and the advisory line in `remem record
+    status` are what surface it afterwards, which is what that layer was
+    built for.
+    """
+    from remem import hookio
+
+    env = dict(os.environ)
+    try:
+        _memory_refresh_once(env)
+    except BaseException as exc:
+        # BaseException, not Exception, and the reason is narrower than it
+        # looks. `typer.Exit` is a RuntimeError, so `except Exception`
+        # already swallows the `typer.Exit(1)` `_session` raises for an
+        # unreachable database - measured, not assumed. What BaseException
+        # adds is everything else that is not an Exception: a real
+        # SystemExit from any library that calls sys.exit(), and a
+        # KeyboardInterrupt. A detached command nobody is watching has no
+        # path on which a non-zero exit helps anyone, so it catches the lot.
+        hookio.debug(env, f"{type(exc).__name__}: {exc}")
+    raise typer.Exit(0)
+
+
+def _memory_refresh_once(env: dict[str, str]) -> None:
+    """The work `memory refresh` wraps in silence. Free to raise."""
+    from remem import hookio
+
+    resolved = resolve_project()
+    if resolved is None:
+        hookio.debug(env, "no project to sync")
+        return
+    directory = _memory_dir(Path.cwd())
+    if directory is None:
+        hookio.debug(env, "claude-code has no memory directory here")
+        return
+    # autocommit, exactly as `remem memory sync` does it: the started run
+    # row has to be committed before any file is read, or a crash rolls it
+    # back and "crashed" becomes indistinguishable from "never ran".
+    with _session(autocommit=True) as s:
+        try:
+            report = memory_service.sync(
+                s.store,
+                s.owner.id,
+                project=resolved,
+                directory=directory,
+                trigger=MemoryTrigger.AUTO,
+            )
+        except memory_service.NotDesignated:
+            # The opt-in gate, and the common case - not a failure. Nothing
+            # is recorded, because nothing ran.
+            hookio.debug(env, f"{resolved} has no memory collection")
+            return
+    hookio.debug(
+        env,
+        f"memory sync: {report.adopted} adopted, {report.edited} edited, "
+        f"{report.regenerated} regenerated, {report.deleted} deleted, "
+        f"{report.unchanged} unchanged",
+    )
+    for name in report.conflicts:
+        hookio.debug(env, f"memory sync conflict: {name}")
+    for name, reason in report.failures:
+        hookio.debug(env, f"memory sync failed: {name}: {reason}")
+
+
 @memory_app.command("status")
 def memory_status(
     project: Annotated[Optional[str], typer.Option("--project")] = None,
@@ -2059,11 +2148,14 @@ def reingest_run():
     try:
         _reingest_once(env)
     except BaseException as exc:
-        # BaseException, not Exception, and this is the one place in the CLI
-        # that needs it: `_session` turns an unreachable database into
-        # `typer.Exit(1)`, which is a SystemExit and would sail straight
-        # past `except Exception` into a non-zero exit from a hook-spawned
-        # command. Everything below this line is best-effort by contract.
+        # BaseException, not Exception. The original reason recorded here
+        # was wrong: `typer.Exit` is a RuntimeError, so the `typer.Exit(1)`
+        # `_session` raises for an unreachable database is caught by
+        # `except Exception` too. What BaseException actually buys is a real
+        # SystemExit - from any library that calls sys.exit() - and a
+        # KeyboardInterrupt. A detached command nobody is watching has no
+        # path on which a non-zero exit helps anyone, so it catches the lot.
+        # Everything below this line is best-effort by contract.
         hookio.debug(env, f"{type(exc).__name__}: {exc}")
     raise typer.Exit(0)
 
