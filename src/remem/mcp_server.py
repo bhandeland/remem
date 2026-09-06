@@ -24,6 +24,18 @@ mcp = MCPServer("remem")
 
 AGENT_NAME = "claude-code"
 
+# Set once at launch by `configure`. Under stdio both stay at their defaults
+# and every behaviour below is exactly what it was before HTTP existed.
+_pinned_project: str | None = None
+_http_mode = False
+
+
+def configure(*, project: str | None = None, http: bool = False) -> None:
+    """Record how this process was launched. Call before serving."""
+    global _pinned_project, _http_mode
+    _pinned_project = project
+    _http_mode = http
+
 
 def _default_project() -> str | None:
     """The project an agent is working in, from the server's own directory.
@@ -35,13 +47,25 @@ def _default_project() -> str | None:
 
     Resolved from the git repository rather than the directory name, so a
     subdirectory or a worktree still files under the project it belongs to.
+
+    Over HTTP the server is a host-side process whose working directory has
+    nothing to do with the agent's, so the project is pinned at launch
+    instead. An explicit `project` argument on a tool call still wins; this
+    only supplies the default.
     """
+    if _pinned_project is not None:
+        return _pinned_project
     return resolve_project()
 
 
 def _session_id() -> str | None:
     # MCP tool calls carry no session id; use one only if the environment
     # supplies it. Recording null is better than fabricating a value.
+    #
+    # Over HTTP the environment is the launcher's, not the agent's, so the
+    # variable is not merely absent but wrong. Same argument, stronger case.
+    if _http_mode:
+        return None
     return os.environ.get("CLAUDE_SESSION_ID")
 
 
