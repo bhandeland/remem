@@ -2013,6 +2013,7 @@ def _memory_refresh_once(env: dict[str, str]) -> None:
 @memory_app.command("status")
 def memory_status(
     project: Annotated[Optional[str], typer.Option("--project")] = None,
+    as_json: Annotated[bool, typer.Option("--json")] = False,
 ):
     """What is designated, what is on disk, and what overlaps the KB."""
     resolved = _require_project(_resolve_project(project, False))
@@ -2025,6 +2026,12 @@ def memory_status(
             directory=directory,
             kb_slug=resolved,
         )
+    if as_json:
+        # Before the not-designated early return below: --json keeps one
+        # shape for every state, so an undesignated project is a null
+        # `collection`, not a different document.
+        typer.echo(json.dumps(memory_service.status_to_dict(st), indent=2))
+        return
     if st.collection is None:
         typer.echo(f"{resolved}: not designated.")
         return

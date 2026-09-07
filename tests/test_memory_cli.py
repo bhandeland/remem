@@ -8,6 +8,7 @@ than a fixture object the CLI can see directly.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import psycopg
@@ -216,6 +217,30 @@ def test_status_reports_the_designation_and_the_overlap(env):
     result = runner.invoke(app, ["memory", "status"], env=env)
     assert result.exit_code == 0
     assert "not designated" in result.stdout
+
+
+def test_status_json_on_an_undesignated_project_still_has_every_key(env):
+    """The text path early-returns one line here. --json keeps one shape,
+    so a consumer checks `collection` for null rather than branching on
+    which keys arrived."""
+    result = runner.invoke(app, ["memory", "status", "--json"], env=env)
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["collection"] is None
+    assert payload["run"] is None
+    assert payload["overlap"] == {"entries": 0, "bytes": 0}
+
+
+def test_status_json_reports_the_sync_that_just_ran(env, memory_dir_with_one_stray):
+    runner.invoke(app, ["memory", "sync"], env=env)
+
+    result = runner.invoke(app, ["memory", "status", "--json"], env=env)
+
+    payload = json.loads(result.stdout)
+    assert payload["collection"] == "proj-memory"
+    assert payload["run"]["trigger"] == "manual"
+    assert payload["run"]["adopted"] == 1
 
 
 # --- sync --all ---------------------------------------------------------

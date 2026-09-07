@@ -605,6 +605,18 @@ entry first.
   the failure count in `advisories()` and deliberately not on the sidecar
   count - a sidecar outlives every run, so naming the last one beside it
   would attribute it to a sync that may not have written it.
+- `remem memory status --json` emits **one object, not a list**, which is
+  the deliberate departure from `remem reingest status --json`: that one
+  sweeps every designated project and so returns an array, while this
+  command resolves exactly one project by construction. The keys are the
+  same in every state - an undesignated project is a null `collection` and
+  a null `run`, not a shorter document - so a consumer checks a field for
+  null rather than branching on which keys arrived. That is the one place
+  the JSON and the text output differ, the text path having an early
+  return for it. Timestamps are a raw `isoformat()`: the offset travels in
+  the string, so the local-time conversion `render_run` does for a human
+  reading beside `reingest status` would only rewrite it for no reader.
+
 - `memory.advisories()` raises one line per unhealthy designated project in
   `remem record status`: an unresolved conflict sidecar, a run that did not
   finish, failures in the last run, or a designation that has never synced.

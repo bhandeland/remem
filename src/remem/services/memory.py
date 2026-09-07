@@ -1080,6 +1080,55 @@ def render_run(run: MemoryRun | None) -> str:
     return f"  last sync {run.trigger} {when}: {counts}"
 
 
+def _run_to_dict(run: MemoryRun | None) -> dict | None:
+    """`MemoryRun` as plain JSON. Mirrors `ingest._run_to_dict`, including
+    the raw `.isoformat()`: `render_run` converts to local time because a
+    person reads it beside `reingest status`, but an ISO string carries its
+    own offset, so converting here would only rewrite it for no reader."""
+    if run is None:
+        return None
+    return {
+        "id": str(run.id),
+        "trigger": str(run.trigger),
+        "started_at": run.started_at.isoformat() if run.started_at else None,
+        "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+        "adopted": run.adopted,
+        "healed": run.healed,
+        "edited": run.edited,
+        "regenerated": run.regenerated,
+        "deleted": run.deleted,
+        "unchanged": run.unchanged,
+        "renamed": [list(pair) for pair in run.renamed],
+        "conflicts": list(run.conflicts),
+        "sidecars": list(run.sidecars),
+        "failures": list(run.failures),
+    }
+
+
+def status_to_dict(st: Status) -> dict:
+    """One object, not a list - and that is the deliberate departure from
+    `ingest.status_to_dict`, which returns a list because `reingest status`
+    sweeps every designated project. This command resolves exactly one, so
+    a single-element array would be shape kept for symmetry's sake.
+
+    An undesignated project gets these same keys with nulls and zeros,
+    unlike the text output, which early-returns a single line. A consumer
+    that must branch on which keys are present is a worse interface than
+    one that checks `collection` for null.
+    """
+    return {
+        "project": st.project,
+        "collection": st.collection,
+        "directory": str(st.directory) if st.directory else None,
+        "entries": st.entries,
+        "files": st.files,
+        "stale": st.stale,
+        "conflicts": st.conflicts,
+        "overlap": {"entries": st.overlap, "bytes": st.overlap_bytes},
+        "run": _run_to_dict(st.run),
+    }
+
+
 #: Where a person goes after reading an advisory line. Carries its scope,
 #: because a pointer leading to a screen that contradicts the line teaches
 #: the user the line lies.
