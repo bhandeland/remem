@@ -75,6 +75,11 @@ testpaths = ["tests"]
 # failed and stops at the first one, so a broken run costs a handful of
 # lines instead of a screen. CI overrides both - it wants the whole list.
 addopts = "-q --no-header --tb=line -x --lf"
+# `classic` drops pytest's per-line percentage column, turning 17 lines of
+# progress into one. The character count is much the same - it is the same
+# 1,210 dots - but one line of them is skimmed past, where seventeen have
+# to be read to find the summary underneath.
+console_output_style = "classic"
 filterwarnings = [
     "ignore::DeprecationWarning",
     "ignore::PendingDeprecationWarning",

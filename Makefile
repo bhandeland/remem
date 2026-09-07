@@ -11,6 +11,11 @@
 .PHONY: check format lint typecheck test
 .NOTPARALLEL:
 
+# uv warns once per invocation when an unrelated venv is active - three
+# identical lines of noise in a four-stage run, on any machine whose shell
+# has one activated. The project environment is `.venv` either way.
+unexport VIRTUAL_ENV
+
 check: format lint typecheck test
 
 format:
