@@ -287,7 +287,10 @@ def _run_job(
             JobStatus.DONE,
             None,
             written,
-            max(e.occurred_at for e in events),
+            # Optional on the dataclass only for an Event not yet
+            # inserted - everything here was read back from the store,
+            # where the column is NOT NULL.
+            max(e.occurred_at for e in events if e.occurred_at is not None),
         )
         return True, written
     except Exception as exc:

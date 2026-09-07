@@ -63,6 +63,32 @@ class Config:
     semantic_threshold: float
 
 
+def _as_int(value: object, default: int) -> int:
+    """A config value as an int, or the default.
+
+    `pick` hands back whatever the TOML file holds - a list, a table, a
+    None - so the bare `int()` this replaces was relying on TypeError to
+    do an isinstance check. Same outcome, said directly, and the range
+    checks at the call sites still get a real int to test.
+    """
+    if isinstance(value, (int, float, str)):
+        try:
+            return int(value)
+        except ValueError:
+            return default
+    return default
+
+
+def _as_float(value: object, default: float) -> float:
+    """A config value as a float, or the default. See `_as_int`."""
+    if isinstance(value, (int, float, str)):
+        try:
+            return float(value)
+        except ValueError:
+            return default
+    return default
+
+
 def default_config_path() -> Path:
     return user_config_path("remem") / "config.toml"
 
@@ -93,19 +119,15 @@ def load(
             return env[env_key]
         return data.get(file_key, default)
 
-    max_chars = pick("REMEM_MAX_CHARS", "max_chars", DEFAULT_MAX_CHARS)
-    try:
-        max_chars = int(max_chars)
-    except TypeError, ValueError:
-        max_chars = DEFAULT_MAX_CHARS
-
-    threshold = pick(
-        "REMEM_FUZZY_THRESHOLD", "fuzzy_threshold", DEFAULT_FUZZY_THRESHOLD
+    max_chars = _as_int(
+        pick("REMEM_MAX_CHARS", "max_chars", DEFAULT_MAX_CHARS),
+        DEFAULT_MAX_CHARS,
     )
-    try:
-        threshold = float(threshold)
-    except TypeError, ValueError:
-        threshold = DEFAULT_FUZZY_THRESHOLD
+
+    threshold = _as_float(
+        pick("REMEM_FUZZY_THRESHOLD", "fuzzy_threshold", DEFAULT_FUZZY_THRESHOLD),
+        DEFAULT_FUZZY_THRESHOLD,
+    )
     if not 0.0 < threshold <= 1.0:
         # Outside this range the setting is meaningless: 0 matches everything,
         # above 1 matches nothing. Fall back rather than silently disable search.
@@ -140,11 +162,7 @@ def load(
         extract_model = DEFAULT_EXTRACT_MODEL
 
     def positive_int(env_key: str, file_key: str, default: int) -> int:
-        value = pick(env_key, file_key, default)
-        try:
-            value = int(value)
-        except TypeError, ValueError:
-            return default
+        value = _as_int(pick(env_key, file_key, default), default)
         # A non-positive threshold would warn on every prompt forever, which
         # is how a warning gets ignored.
         return value if value > 0 else default
@@ -172,10 +190,7 @@ def load(
     semantic = pick(
         "REMEM_SEMANTIC_THRESHOLD", "semantic_threshold", DEFAULT_SEMANTIC_THRESHOLD
     )
-    try:
-        semantic = float(semantic)
-    except TypeError, ValueError:
-        semantic = DEFAULT_SEMANTIC_THRESHOLD
+    semantic = _as_float(semantic, DEFAULT_SEMANTIC_THRESHOLD)
     if not 0.0 < semantic <= 1.0:
         # Same reasoning as fuzzy_threshold: outside this range the setting is
         # meaningless, and falling back beats silently disabling the tier.

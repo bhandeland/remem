@@ -782,6 +782,11 @@ def _sync_body(
             continue
 
         if case is Case.ADOPT_NEW:
+            # classify() returns this case only when file_sha is not
+            # None, which is exactly when there is a file - see the two
+            # early returns at the top of it. Asserted rather than assumed,
+            # because the invariant lives in another function.
+            assert mf is not None
             report.adopted += 1
             if not dry_run:
                 new = remember(
@@ -809,6 +814,11 @@ def _sync_body(
             continue
 
         if case is Case.ADOPT_EDIT:
+            # classify() returns this case only when file_sha is not
+            # None, which is exactly when there is a file - see the two
+            # early returns at the top of it. Asserted rather than assumed,
+            # because the invariant lives in another function.
+            assert mf is not None
             if entry is None:
                 # The file was edited for an entry that has left the
                 # collection. Re-adopting would duplicate the entry that
@@ -868,6 +878,10 @@ def _sync_body(
             continue
 
         if case is Case.HEAL:
+            # classify() reaches this case only with entry_sha set, so
+            # there is an entry - the invariant lives in classify(), not
+            # here, which is why it is stated rather than assumed.
+            assert entry is not None
             report.healed += 1
             if not dry_run:
                 marks[name] = Watermark(
@@ -878,6 +892,10 @@ def _sync_body(
             continue
 
         if case is Case.REGENERATE:
+            # classify() reaches this case only with entry_sha set, so
+            # there is an entry - the invariant lives in classify(), not
+            # here, which is why it is stated rather than assumed.
+            assert entry is not None
             report.regenerated += 1
             if not dry_run:
                 directory.mkdir(parents=True, exist_ok=True)

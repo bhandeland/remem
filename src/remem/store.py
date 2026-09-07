@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from contextlib import AbstractContextManager
 from datetime import datetime
-from typing import Protocol
+from typing import Any, Protocol
 from uuid import UUID
 
 from remem.domain import (
@@ -283,7 +283,11 @@ class Store(Protocol):
     ) -> list[ExtractJob]: ...
     def try_advisory_lock(self, name: str, owner_id: UUID) -> bool: ...
 
-    def transaction(self) -> AbstractContextManager[None]:
+    #: `Any`, not `None`: what the context manager yields is deliberately
+    #: not part of this contract - callers use a bare `with` and never bind
+    #: it - and naming psycopg's `Transaction` here would drag the driver
+    #: into the one module that exists to keep it out.
+    def transaction(self) -> AbstractContextManager[Any]:
         """Group statements that must commit or roll back together.
 
         Under an autocommit connection this opens a real transaction; inside

@@ -339,7 +339,13 @@ class ClaudeCodeAdapter:
             if not skill_dir.is_dir():
                 continue
             target = root / skill_dir.name
-            shutil.copytree(skill_dir, target, dirs_exist_ok=True)
+            # `files()` gives a Traversable, which copytree cannot take.
+            # For any normal installation it is already a filesystem path,
+            # so this conversion is exact; a zipimported remem would need
+            # `resources.as_file`, and has other problems first (the
+            # entry-point adapters and the .sql migrations both read off
+            # disk).
+            shutil.copytree(Path(str(skill_dir)), target, dirs_exist_ok=True)
             report.actions.append(f"Installed the {skill_dir.name} skill in {target}")
 
     def identity(self, env: Mapping[str, str], payload: dict) -> Identity:

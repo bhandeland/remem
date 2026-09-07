@@ -35,10 +35,11 @@ def applied_versions(conn: psycopg.Connection) -> list[str]:
     """Versions already applied. Read-only: inspecting a database must not
     write to it, so an unmigrated database reports [] rather than having the
     tracking table created as a side effect of asking."""
-    exists = conn.execute("select to_regclass('public.schema_migrations')").fetchone()[
-        0
-    ]
-    if exists is None:
+    row = conn.execute("select to_regclass('public.schema_migrations')").fetchone()
+    # A bare select always returns exactly one row - it is the value inside
+    # it that is None when the table does not exist yet.
+    assert row is not None
+    if row[0] is None:
         return []
     rows = conn.execute("select version from schema_migrations order by version")
     return [r[0] for r in rows.fetchall()]

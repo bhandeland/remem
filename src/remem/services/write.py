@@ -137,7 +137,11 @@ def update(
         entry.summary = summary.strip()
     if tags is not None:
         entry.tags = list(tags)
-    if project is CLEAR:
+    if isinstance(project, _Clear):
+        # `is CLEAR` reads better but narrows nothing - the sentinel stays
+        # in the union for every branch below it. CLEAR is the only _Clear
+        # there is, so isinstance says exactly the same thing and lets the
+        # assignment below be checked.
         entry.project = None
     elif project is not None:
         entry.project = project

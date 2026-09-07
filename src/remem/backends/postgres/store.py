@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from contextlib import AbstractContextManager
 from datetime import datetime, timezone
+from typing import Any
 from uuid import UUID
 
 import psycopg
@@ -59,6 +60,23 @@ ENTRY_FIELDS = [
     "created_at",
     "updated_at",
 ]
+
+
+def _one(cur: psycopg.Cursor[dict[str, Any]]) -> dict[str, Any]:
+    """The single row a statement that cannot return zero rows returned.
+
+    `fetchone()` is typed `dict | None` because most statements might match
+    nothing, and most callers here check for that - `get_collection` returns
+    None for an unknown slug on purpose. These sites are the other kind: a
+    `count(*)`, a `returning` on a row this statement just wrote, a
+    `pg_try_advisory_lock`. Saying so once beats a dozen scattered asserts,
+    and it turns "None is not subscriptable" three frames downstream into a
+    named failure at the point where the assumption actually lives.
+    """
+    row = cur.fetchone()
+    if row is None:
+        raise RuntimeError("expected exactly one row, got none")
+    return row
 
 
 def entry_columns(alias: str = "") -> str:
@@ -800,7 +818,7 @@ class PostgresStore:
         """
         with self._cur() as cur:
             cur.execute(f"select count(*) as n {joins}", params)
-            total = int(cur.fetchone()["n"])
+            total = int(_one(cur)["n"])
             if total == 0:
                 return [], 0
             cur.execute(
@@ -845,7 +863,7 @@ class PostgresStore:
                 """,
                 {**params, "model": model},
             )
-            row = cur.fetchone()
+            row = _one(cur)
         return int(row["embedded"]), int(row["total"])
 
     # ---------------- collections ----------------
@@ -878,7 +896,7 @@ class PostgresStore:
                     "query": json.dumps(collection.query.to_dict()),
                 },
             )
-            return _row_to_collection(cur.fetchone())
+            return _row_to_collection(_one(cur))
 
     def get_collection(self, slug: str, owner_id: UUID) -> Collection | None:
         with self._cur() as cur:
@@ -1090,7 +1108,7 @@ class PostgresStore:
                 """,
                 (run_id, owner_id, project, str(trigger), archive),
             )
-            return _row_to_ingest_run(cur.fetchone())
+            return _row_to_ingest_run(_one(cur))
 
     def finish_ingest_run(
         self,
@@ -1166,7 +1184,7 @@ class PostgresStore:
                 """,
                 (run_id, owner_id, project, str(trigger)),
             )
-            return _row_to_memory_run(cur.fetchone())
+            return _row_to_memory_run(_one(cur))
 
     def finish_memory_run(
         self,
@@ -1260,7 +1278,7 @@ class PostgresStore:
                 "where owner_id = %s and status = 'pending'",
                 (owner_id,),
             )
-            return int(cur.fetchone()["n"])
+            return int(_one(cur)["n"])
 
     def enabled_record_projects(self, owner_id: UUID) -> list[str]:
         """Projects with recording switched on, for the status commands."""
@@ -1403,7 +1421,7 @@ class PostgresStore:
             # The row actually stored, which on a duplicate is the earlier
             # one - so every caller gets a usable Event either way, and the
             # id it carries is the id that is really in the table.
-            row = cur.fetchone()
+            row = _one(cur)
             event.id = row["id"]
             event.recorded_at = row["recorded_at"]
         return event
@@ -1607,7 +1625,7 @@ class PostgresStore:
                     "project": project,
                 },
             )
-            row = cur.fetchone()
+            row = _one(cur)
             return (row["deleted"], row["dangling"], row["kept_unextracted"])
 
     # ---------------- extraction spool ----------------
@@ -1717,9 +1735,9 @@ class PostgresStore:
                 "select pg_try_advisory_lock(hashtext(%s), hashtext(%s))",
                 (name, str(owner_id)),
             )
-            return bool(cur.fetchone()["pg_try_advisory_lock"])
+            return bool(_one(cur)["pg_try_advisory_lock"])
 
-    def transaction(self) -> AbstractContextManager[None]:
+    def transaction(self) -> AbstractContextManager[Any]:
         # psycopg's own transaction() already does exactly what the
         # Protocol promises: a real transaction under autocommit, a
         # savepoint inside one already open. No wrapping needed.
@@ -1770,7 +1788,7 @@ class PostgresStore:
                     "session_id": session.session_id,
                 },
             )
-            return _row_to_extract_job(cur.fetchone())
+            return _row_to_extract_job(_one(cur))
 
     def claim_extract_job_by_id(
         self, job_id: UUID, owner_id: UUID

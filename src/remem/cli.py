@@ -188,6 +188,24 @@ def _resolve_project(project: str | None, is_global: bool) -> str | None:
     return project or _default_project()
 
 
+def _require_project(project: str | None) -> str:
+    """A project name, or a refusal - never None passed on to a service.
+
+    `resolve_project` returns None when there is no name to be had, which
+    in practice means the working directory is the filesystem root. The
+    services below take `project: str`, so passing that None through wrote
+    a row nothing could ever query on again. Rare is not the same as
+    impossible, and a refusal here costs one line.
+    """
+    if project is None:
+        typer.echo(
+            "No project name for this directory - pass --project.",
+            err=True,
+        )
+        raise typer.Exit(1)
+    return project
+
+
 def _read_body(body: str | None) -> str:
     if body == "-":
         return sys.stdin.read()
@@ -927,6 +945,10 @@ def config_set(
         backup = svc.write_remem(remem_path, var.name, resolved)
         where = remem_path
     else:
+        # resolve_targets returns agent_path=None only alongside an empty
+        # table, and `route` raises on an empty table before it can answer
+        # Target.AGENT - so getting here proves there is a path.
+        assert agent_path is not None
         backup = svc.write_agent(agent_path, var.name, resolved)
         where = agent_path
 
@@ -960,6 +982,10 @@ def config_unset(
     if target is svc.Target.REMEM:
         backup = svc.write_remem(remem_path, var.name, None)
     else:
+        # resolve_targets returns agent_path=None only alongside an empty
+        # table, and `route` raises on an empty table before it can answer
+        # Target.AGENT - so getting here proves there is a path.
+        assert agent_path is not None
         backup = svc.write_agent(agent_path, var.name, None)
     typer.echo(f"Unset {var.name}.")
     if backup is not None:
@@ -1173,7 +1199,7 @@ def capture_enable(
     typer.echo("`capture enable` is renamed to `remem record enable`.", err=True)
     from remem.services import record
 
-    name = project or _default_project()
+    name = _require_project(project or _default_project())
     with _session() as s:
         record.enable(s.store, s.owner.id, name)
         model = s.config.extract_model
@@ -1199,7 +1225,7 @@ def capture_disable(
     typer.echo("`capture disable` is renamed to `remem record disable`.", err=True)
     from remem.services import record
 
-    name = project or _default_project()
+    name = _require_project(project or _default_project())
     with _session() as s:
         record.disable(s.store, s.owner.id, name)
     typer.echo(f"capture disabled for '{name}'")
@@ -1480,7 +1506,7 @@ def record_enable(
     """Turn on event recording for a project (defaults to this directory)."""
     from remem.services import record
 
-    name = project or _default_project()
+    name = _require_project(project or _default_project())
     with _session() as s:
         record.enable(s.store, s.owner.id, name)
         model = s.config.extract_model
@@ -1502,7 +1528,7 @@ def record_disable(
     """Turn off event recording for a project."""
     from remem.services import record
 
-    name = project or _default_project()
+    name = _require_project(project or _default_project())
     with _session() as s:
         record.disable(s.store, s.owner.id, name)
     typer.echo(f"recording disabled for '{name}'")
@@ -1603,7 +1629,7 @@ def handoff_write(
     """
     from remem.services import handoff as handoff_svc
 
-    name = project or _default_project()
+    name = _require_project(project or _default_project())
     text = _body_from_editor(handoff_svc.BLANK_BODY) if edit else _read_body(body)
     with _session() as s:
         try:
@@ -1632,7 +1658,7 @@ def handoff_latest(
     """Print the newest live handoff for this project."""
     from remem.services import handoff as handoff_svc
 
-    name = project or _default_project()
+    name = _require_project(project or _default_project())
     if not name:
         # No project to query at all - a printed one-liner, not a reason to
         # open a database connection (and, if Postgres is down, an error).
@@ -1773,7 +1799,11 @@ def _memory_sync_all(dry_run: bool) -> None:
             problems += 1
             typer.echo(f"{o.project:<{width}}  skipped: {o.skipped}", err=True)
             continue
+        # Every outcome carries either a skip reason or a report, and the
+        # `continue` above took the skips - see sync_all, which is where
+        # that invariant is created.
         r = o.report
+        assert r is not None
         typer.echo(
             f"{o.project:<{width}}  {r.adopted} adopted, {r.edited} edited, "
             f"{r.regenerated} regenerated, {r.healed} healed, "
@@ -1814,7 +1844,7 @@ def memory_sync(
             raise typer.BadParameter("pass --project or --all, not both")
         _memory_sync_all(dry_run)
         return
-    resolved = _resolve_project(project, False)
+    resolved = _require_project(_resolve_project(project, False))
     directory = _memory_dir(Path.cwd())
     if directory is None:
         typer.echo("claude-code has no memory directory here.", err=True)
@@ -1896,7 +1926,7 @@ def memory_status(
     project: Annotated[Optional[str], typer.Option("--project")] = None,
 ):
     """What is designated, what is on disk, and what overlaps the KB."""
-    resolved = _resolve_project(project, False)
+    resolved = _require_project(_resolve_project(project, False))
     directory = _memory_dir(Path.cwd())
     with _session() as s:
         st = memory_service.status(
