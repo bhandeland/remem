@@ -144,7 +144,10 @@ class ClaudeHook:
 #: place the attempt-cap rule is evaluated.
 HOOK_ENTRIES: tuple[ClaudeHook, ...] = (
     ClaudeHook(
-        "SessionStart", HOOK_COMMAND, 10, True,
+        "SessionStart",
+        HOOK_COMMAND,
+        10,
+        True,
         "context injection, and the spawn that drains the extraction backlog",
     ),
     # A hint, not a requirement: extraction runs on an idle timer now, so a
@@ -152,19 +155,28 @@ HOOK_ENTRIES: tuple[ClaudeHook, ...] = (
     # promptness of the timer. It records through the same command and the
     # same event() mapping as PostToolUse.
     ClaudeHook(
-        "SessionEnd", RECORD_EVENT_COMMAND, 10, False,
+        "SessionEnd",
+        RECORD_EVENT_COMMAND,
+        10,
+        False,
         "a prompt end-of-session record; the idle timer covers it either way",
     ),
     # Runs once per tool call and does one INSERT, so it gets the short
     # budget UserPromptSubmit has, not the 10s SessionStart needs.
     ClaudeHook(
-        "PostToolUse", RECORD_EVENT_COMMAND, 5, True,
+        "PostToolUse",
+        RECORD_EVENT_COMMAND,
+        5,
+        True,
         "every tool call - without it nothing is recorded at all",
     ),
     # Runs on every prompt, so it gets the shortest timeout of the four; it
     # reads one file and never opens Postgres.
     ClaudeHook(
-        "UserPromptSubmit", SESSION_SIZE_COMMAND, 5, False,
+        "UserPromptSubmit",
+        SESSION_SIZE_COMMAND,
+        5,
+        False,
         "the handoff size warning on long sessions",
     ),
 )

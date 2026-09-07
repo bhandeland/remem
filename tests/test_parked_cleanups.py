@@ -100,13 +100,14 @@ def test_clamping_an_oversized_limit_preserves_the_origins_filter(store, owner):
     worse than no filter: nothing reports the loss."""
     from remem.domain import Origin
 
-    write.remember(store, owner.id, title="Human", body="shared",
-                   origin=Origin.HUMAN)
-    write.remember(store, owner.id, title="Captured", body="shared",
-                   origin=Origin.EXTRACTED)
+    write.remember(store, owner.id, title="Human", body="shared", origin=Origin.HUMAN)
+    write.remember(
+        store, owner.id, title="Captured", body="shared", origin=Origin.EXTRACTED
+    )
 
-    hits = find(store, owner.id,
-                Query(text="shared", origins=[Origin.HUMAN], limit=100000))
+    hits = find(
+        store, owner.id, Query(text="shared", origins=[Origin.HUMAN], limit=100000)
+    )
     assert [h.entry.title for h in hits] == ["Human"]
 
 
@@ -131,15 +132,15 @@ def test_applied_versions_does_not_create_the_tracking_table(conn):
     from remem.backends.postgres.migrate import applied_versions, pending_versions
 
     assert applied_versions(conn) == []
-    exists = conn.execute(
-        "select to_regclass('public.schema_migrations')"
-    ).fetchone()[0]
+    exists = conn.execute("select to_regclass('public.schema_migrations')").fetchone()[
+        0
+    ]
     assert exists is None, "reading migration state created the tracking table"
 
     assert "001_initial" in pending_versions(conn)
-    exists = conn.execute(
-        "select to_regclass('public.schema_migrations')"
-    ).fetchone()[0]
+    exists = conn.execute("select to_regclass('public.schema_migrations')").fetchone()[
+        0
+    ]
     assert exists is None
 
 
@@ -158,8 +159,9 @@ def test_set_query_replaces_a_collections_query(store, owner):
 
 def test_set_query_can_empty_a_query(store, owner):
     write.remember(store, owner.id, title="Styled", body="B", tags=["style"])
-    kb.create(store, owner.id, slug="s", title="T",
-              query=CollectionQuery(tags=["style"]))
+    kb.create(
+        store, owner.id, slug="s", title="T", query=CollectionQuery(tags=["style"])
+    )
     assert kb.resolve(store, owner.id, "s")
 
     kb.set_query(store, owner.id, "s", CollectionQuery())
@@ -167,8 +169,9 @@ def test_set_query_can_empty_a_query(store, owner):
 
 
 def test_set_query_preserves_title_description_and_pins(store, owner):
-    collection = kb.create(store, owner.id, slug="s", title="Original",
-                           description="keep me")
+    collection = kb.create(
+        store, owner.id, slug="s", title="Original", description="keep me"
+    )
     pinned = write.remember(store, owner.id, title="Pinned", body="B")
     kb.pin(store, owner.id, "s", pinned.id)
 

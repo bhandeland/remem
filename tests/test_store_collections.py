@@ -21,8 +21,12 @@ def owner(store):
 
 def test_put_and_get_collection_roundtrip(store, owner):
     c = Collection(
-        id=new_id(), slug="remem-core", title="remem core", owner_id=owner.id,
-        description="the important bits", project="remem",
+        id=new_id(),
+        slug="remem-core",
+        title="remem core",
+        owner_id=owner.id,
+        description="the important bits",
+        project="remem",
         query=CollectionQuery(tags=["style"], kinds=[Kind.RULE], project="remem"),
     )
     store.put_collection(c)
@@ -44,8 +48,12 @@ def test_get_collection_is_owner_scoped(store, owner):
 
 def test_list_collections_returns_only_mine(store, owner):
     other = store.ensure_principal("someone-else")
-    store.put_collection(Collection(id=new_id(), slug="a", title="A", owner_id=owner.id))
-    store.put_collection(Collection(id=new_id(), slug="b", title="B", owner_id=other.id))
+    store.put_collection(
+        Collection(id=new_id(), slug="a", title="A", owner_id=owner.id)
+    )
+    store.put_collection(
+        Collection(id=new_id(), slug="b", title="B", owner_id=other.id)
+    )
     assert [c.slug for c in store.list_collections(owner.id)] == ["a"]
 
 
@@ -56,7 +64,10 @@ def test_pin_and_read_back_in_position_order(store, owner):
     second = remember(store, owner.id, title="Second", body="b")
     store.pin(c.id, second.id, position=0, owner_id=owner.id)
     store.pin(c.id, first.id, position=1, owner_id=owner.id)
-    assert [e.title for e in store.pinned_entries(c.id, owner.id)] == ["Second", "First"]
+    assert [e.title for e in store.pinned_entries(c.id, owner.id)] == [
+        "Second",
+        "First",
+    ]
 
 
 def test_pinning_twice_updates_position_instead_of_erroring(store, owner):

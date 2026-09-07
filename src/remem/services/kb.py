@@ -104,9 +104,7 @@ def pin(
         # we get here. A False means something changed in between - surface
         # it rather than reporting a pin that wrote no row, exactly as
         # `write.supersede` does for `set_superseded`.
-        raise RuntimeError(
-            f"failed to pin {entry_id} into {slug}"
-        )
+        raise RuntimeError(f"failed to pin {entry_id} into {slug}")
 
 
 def set_query(
@@ -241,7 +239,10 @@ def render(collection: Collection, entries: list[Entry], max_chars: int) -> str:
 
     # The notice is part of the block, so it has to fit inside the budget too.
     # Drop further entries until it does, rather than overshooting by its length.
-    while included < len(others) and used + len(_notice(len(others) - included)) > max_chars:
+    while (
+        included < len(others)
+        and used + len(_notice(len(others) - included)) > max_chars
+    ):
         if not body_parts:
             break
         used -= len(body_parts.pop())

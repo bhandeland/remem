@@ -35,9 +35,9 @@ def applied_versions(conn: psycopg.Connection) -> list[str]:
     """Versions already applied. Read-only: inspecting a database must not
     write to it, so an unmigrated database reports [] rather than having the
     tracking table created as a side effect of asking."""
-    exists = conn.execute(
-        "select to_regclass('public.schema_migrations')"
-    ).fetchone()[0]
+    exists = conn.execute("select to_regclass('public.schema_migrations')").fetchone()[
+        0
+    ]
     if exists is None:
         return []
     rows = conn.execute("select version from schema_migrations order by version")
@@ -65,8 +65,6 @@ def migrate(conn: psycopg.Connection) -> list[str]:
         if version in done:
             continue
         conn.execute(sql)
-        conn.execute(
-            "insert into schema_migrations (version) values (%s)", (version,)
-        )
+        conn.execute("insert into schema_migrations (version) values (%s)", (version,))
         newly.append(version)
     return newly

@@ -141,6 +141,4 @@ def _no_shared_embedder(monkeypatch):
     want a semantic tier pass their own stub explicitly, which never touches
     this cache.
     """
-    monkeypatch.setattr(
-        "remem.services.search._EMBEDDERS", {DEFAULT_EMBED_MODEL: None}
-    )
+    monkeypatch.setattr("remem.services.search._EMBEDDERS", {DEFAULT_EMBED_MODEL: None})

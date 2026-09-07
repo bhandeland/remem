@@ -21,16 +21,21 @@ def write_settings(home, hooks):
 
 
 def entry(command, timeout=5):
-    return {"matcher": "", "hooks": [{"type": "command", "command": command,
-                                      "timeout": timeout}]}
+    return {
+        "matcher": "",
+        "hooks": [{"type": "command", "command": command, "timeout": timeout}],
+    }
 
 
 def test_a_hook_that_is_not_registered_is_reported_as_absent(tmp_path):
-    write_settings(tmp_path, {
-        "SessionStart": [entry("remem hook session-start")],
-        "SessionEnd": [entry("remem hook record-event")],
-        "UserPromptSubmit": [entry("remem hook session-size")],
-    })
+    write_settings(
+        tmp_path,
+        {
+            "SessionStart": [entry("remem hook session-start")],
+            "SessionEnd": [entry("remem hook record-event")],
+            "UserPromptSubmit": [entry("remem hook session-size")],
+        },
+    )
     state = ClaudeCodeAdapter().hook_state("user", tmp_path, {})
     assert state.found["PostToolUse"] == ()
     assert state.found["SessionStart"] == ("remem hook session-start",)
@@ -39,13 +44,19 @@ def test_a_hook_that_is_not_registered_is_reported_as_absent(tmp_path):
 def test_a_hook_registered_twice_reports_both(tmp_path):
     """525b491 infers this downstream from duplicate event rows. Read off
     the file it is visible before a single duplicate row is written."""
-    write_settings(tmp_path, {
-        "PostToolUse": [entry("remem hook record-event"),
-                        entry("remem hook record-event")],
-    })
+    write_settings(
+        tmp_path,
+        {
+            "PostToolUse": [
+                entry("remem hook record-event"),
+                entry("remem hook record-event"),
+            ],
+        },
+    )
     state = ClaudeCodeAdapter().hook_state("user", tmp_path, {})
     assert state.found["PostToolUse"] == (
-        "remem hook record-event", "remem hook record-event",
+        "remem hook record-event",
+        "remem hook record-event",
     )
 
 
@@ -59,10 +70,15 @@ def test_a_legacy_command_is_reported_as_the_command_it_actually_names(tmp_path)
 
 
 def test_another_tool_s_hook_on_the_same_event_is_not_remem_s_business(tmp_path):
-    write_settings(tmp_path, {
-        "PostToolUse": [entry("some-other-tool --hook"),
-                        entry("remem hook record-event")],
-    })
+    write_settings(
+        tmp_path,
+        {
+            "PostToolUse": [
+                entry("some-other-tool --hook"),
+                entry("remem hook record-event"),
+            ],
+        },
+    )
     state = ClaudeCodeAdapter().hook_state("user", tmp_path, {})
     assert state.found["PostToolUse"] == ("remem hook record-event",)
 
@@ -87,7 +103,10 @@ def test_unreadable_settings_are_not_rewritten(tmp_path):
 def test_the_expected_set_is_every_hook_the_adapter_installs(tmp_path):
     state = ClaudeCodeAdapter().hook_state("user", tmp_path, {})
     assert [h.event for h in state.expected] == [
-        "SessionStart", "SessionEnd", "PostToolUse", "UserPromptSubmit",
+        "SessionStart",
+        "SessionEnd",
+        "PostToolUse",
+        "UserPromptSubmit",
     ]
 
 
@@ -102,7 +121,7 @@ def test_opencode_declines_the_capability_rather_than_answering_ok():
 
 
 def test_a_missing_settings_file_still_names_the_path_examined(tmp_path):
-    """"Not installed" without a path is indistinguishable from a check
+    """ "Not installed" without a path is indistinguishable from a check
     that looked somewhere else entirely - which is exactly how `remem
     doctor` came to report cursor absent while it was installed."""
     state = ClaudeCodeAdapter().hook_state("user", tmp_path, {})

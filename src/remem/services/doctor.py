@@ -110,10 +110,15 @@ def _judge(state: HookState) -> tuple[Finding, ...]:
             detail = f"names `{commands[0]}`, superseded by `{hook.command}`"
         else:
             verdict, detail = Verdict.OK, ""
-        findings.append(Finding(
-            event=hook.event, verdict=verdict,
-            required=hook.required, provides=hook.provides, detail=detail,
-        ))
+        findings.append(
+            Finding(
+                event=hook.event,
+                verdict=verdict,
+                required=hook.required,
+                provides=hook.provides,
+                detail=detail,
+            )
+        )
     return tuple(findings)
 
 
@@ -162,10 +167,13 @@ def check(
             adapter = adapter() if isinstance(adapter, type) else adapter
             state_fn = getattr(adapter, "hook_state", None)
         except Exception as exc:
-            reports.append(AgentReport(
-                agent=name, verdict=Verdict.UNCHECKED,
-                warning=f"could not load {name}'s adapter: {exc}",
-            ))
+            reports.append(
+                AgentReport(
+                    agent=name,
+                    verdict=Verdict.UNCHECKED,
+                    warning=f"could not load {name}'s adapter: {exc}",
+                )
+            )
             continue
         if state_fn is None:
             reports.append(AgentReport(agent=name, verdict=Verdict.UNCHECKED))
@@ -182,20 +190,28 @@ def check(
                 if sweeping:
                     continue
                 answered += 1
-                reports.append(AgentReport(
-                    agent=name, scope=one, verdict=Verdict.UNCHECKED,
-                    warning=str(exc),
-                ))
+                reports.append(
+                    AgentReport(
+                        agent=name,
+                        scope=one,
+                        verdict=Verdict.UNCHECKED,
+                        warning=str(exc),
+                    )
+                )
                 continue
             except Exception as exc:
                 # One scope failing does not make the others unknowable, so
                 # this is per-scope rather than per-adapter: a report for the
                 # scope that broke, and real answers for the ones that did not.
                 answered += 1
-                reports.append(AgentReport(
-                    agent=name, scope=one, verdict=Verdict.UNCHECKED,
-                    warning=f"could not read {name}'s hook configuration: {exc}",
-                ))
+                reports.append(
+                    AgentReport(
+                        agent=name,
+                        scope=one,
+                        verdict=Verdict.UNCHECKED,
+                        warning=f"could not read {name}'s hook configuration: {exc}",
+                    )
+                )
                 continue
 
             # Deduplicated, order preserved: an adapter that resolves user
@@ -206,13 +222,15 @@ def check(
                 examined.append(state.path)
             if any(state.found.get(h.event) for h in state.expected):
                 answered += 1
-                reports.append(AgentReport(
-                    agent=name,
-                    scope=one,
-                    path=state.path,
-                    installed=True,
-                    findings=_judge(state),
-                ))
+                reports.append(
+                    AgentReport(
+                        agent=name,
+                        scope=one,
+                        path=state.path,
+                        installed=True,
+                        findings=_judge(state),
+                    )
+                )
 
         # "Not installed" is said once per adapter and only when no scope
         # held a remem command, never per scope: an adapter absent from both
@@ -220,9 +238,13 @@ def check(
         # could not be read, because an unread file is not evidence of
         # absence - that adapter already has its UNCHECKED row.
         if answered == 0:
-            reports.append(AgentReport(
-                agent=name, installed=False, examined=tuple(examined),
-            ))
+            reports.append(
+                AgentReport(
+                    agent=name,
+                    installed=False,
+                    examined=tuple(examined),
+                )
+            )
     return reports
 
 
@@ -249,8 +271,7 @@ def failed(reports: list[AgentReport]) -> bool:
     all, so this only ever fires on a genuinely half-populated install.
     """
     return any(
-        f.verdict is Verdict.MISSING and f.required
-        for r in reports for f in r.findings
+        f.verdict is Verdict.MISSING and f.required for r in reports for f in r.findings
     )
 
 
@@ -283,7 +304,7 @@ def advisories(reports: list[AgentReport]) -> list[str]:
 
 
 def _complaint(broken: list[Finding]) -> str:
-    """"Incomplete" is only true when something is actually absent.
+    """ "Incomplete" is only true when something is actually absent.
 
     A STALE-only install has every hook registered, under a superseded
     command name that still runs - calling that incomplete sends the user
@@ -329,15 +350,15 @@ def render(reports: list[AgentReport]) -> str:
         lines.append(f"{report.agent} ({report.scope})  {report.path}")
         for f in report.findings:
             mark = "ok" if f.verdict is Verdict.OK else f.verdict.upper()
-            note = f"  - {f.detail or f.provides}" if f.verdict is not Verdict.OK else ""
+            note = (
+                f"  - {f.detail or f.provides}" if f.verdict is not Verdict.OK else ""
+            )
             lines.append(f"  {f.event:<18} {mark}{note}")
         if any(f.verdict is not Verdict.OK for f in report.findings):
             # Scoped, for the same reason the advisory line is: a fix line
             # that omits the scope sends the user to reinstall a different
             # file than the one this finding is about.
-            lines.append(
-                f"  Fix: remem install {report.agent} --scope {report.scope}"
-            )
+            lines.append(f"  Fix: remem install {report.agent} --scope {report.scope}")
     return "\n".join(lines)
 
 

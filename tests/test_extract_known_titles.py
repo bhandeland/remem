@@ -16,8 +16,13 @@ from remem.extract.claude_cli import ClaudeCliExtractor, build_prompt
 
 def an_event(payload=None):
     return Event(
-        id=new_id(), owner_id=new_id(), project="remem", harness="claude-code",
-        session_id="s1", kind=EventKind.TOOL_CALL, tool="Bash",
+        id=new_id(),
+        owner_id=new_id(),
+        project="remem",
+        harness="claude-code",
+        session_id="s1",
+        kind=EventKind.TOOL_CALL,
+        tool="Bash",
         payload=payload or {"command": "ls"},
         occurred_at=datetime(2026, 8, 29, 12, 0, tzinfo=timezone.utc),
     )
@@ -66,6 +71,7 @@ def test_the_extractor_passes_known_titles_into_the_prompt(monkeypatch):
 
 def test_known_titles_are_optional(monkeypatch):
     """The protocol's older two-argument call must keep working."""
+
     def fake_run(cmd, **kwargs):
         return subprocess.CompletedProcess(cmd, 0, stdout="[]", stderr="")
 

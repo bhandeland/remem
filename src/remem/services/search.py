@@ -159,8 +159,9 @@ def find(
         # the fallbacks to be approximately like.
         return hits
 
-    hits = _semantic(store, owner_id, query, text, embedder,
-                     semantic_threshold, embed_model)
+    hits = _semantic(
+        store, owner_id, query, text, embedder, semantic_threshold, embed_model
+    )
     if hits:
         return hits
 
@@ -200,5 +201,4 @@ def _semantic(
         return []
     if not vectors:
         return []
-    return store.semantic_search(query, owner_id, vectors[0], embedder.name,
-                                 threshold)
+    return store.semantic_search(query, owner_id, vectors[0], embedder.name, threshold)

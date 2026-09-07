@@ -62,11 +62,7 @@ def remember(
     session_id: str | None = None,
     origin: Origin = Origin.AGENT,
 ) -> Entry:
-    if (
-        kind is Kind.RULE
-        and origin in INJECTED_ORIGINS
-        and not (summary or "").strip()
-    ):
+    if kind is Kind.RULE and origin in INJECTED_ORIGINS and not (summary or "").strip():
         # In the service, not the CLI: mcp_server's remember_tool accepts a
         # `kind` and would write a summary-less rule straight past a
         # frontend check. One rule enforced here is one every frontend gets.
@@ -185,9 +181,7 @@ def supersede(
         # our read and write (e.g. concurrent modification) - surface that
         # loudly rather than returning a replacement that silently failed
         # to supersede anything.
-        raise RuntimeError(
-            f"failed to mark {old.id} superseded by {replacement.id}"
-        )
+        raise RuntimeError(f"failed to mark {old.id} superseded by {replacement.id}")
     return replacement
 
 

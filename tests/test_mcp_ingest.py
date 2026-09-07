@@ -10,6 +10,7 @@ pytestmark = pytest.mark.db
 @pytest.fixture
 def env(live_dsn, monkeypatch, tmp_path):
     import psycopg
+
     with psycopg.connect(live_dsn) as c:
         migrate(c)
         c.commit()

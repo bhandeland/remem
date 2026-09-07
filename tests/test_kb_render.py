@@ -7,13 +7,25 @@ OWNER = new_id()
 
 
 def collection(**kw):
-    return Collection(id=new_id(), slug=kw.pop("slug", "s"),
-                      title=kw.pop("title", "My KB"), owner_id=OWNER, **kw)
+    return Collection(
+        id=new_id(),
+        slug=kw.pop("slug", "s"),
+        title=kw.pop("title", "My KB"),
+        owner_id=OWNER,
+        **kw,
+    )
 
 
 def entry(title, body, kind=Kind.NOTE, tags=None, summary=None):
-    return Entry(id=new_id(), kind=kind, title=title, body=body,
-                 owner_id=OWNER, tags=tags or [], summary=summary)
+    return Entry(
+        id=new_id(),
+        kind=kind,
+        title=title,
+        body=body,
+        owner_id=OWNER,
+        tags=tags or [],
+        summary=summary,
+    )
 
 
 def test_renders_the_collection_title_and_description():
@@ -41,8 +53,8 @@ def test_entry_metadata_line_carries_id_and_tags():
 def test_budget_drops_whole_entries_not_partial_ones():
     entries = [entry(f"Entry {i}", "x" * 200) for i in range(20)]
     out = render(collection(), entries, max_chars=800)
-    assert "x" * 200 in out          # any included entry is complete
-    assert len(out) <= 1200          # budget plus the notice line
+    assert "x" * 200 in out  # any included entry is complete
+    assert len(out) <= 1200  # budget plus the notice line
 
 
 def test_omitted_entries_are_announced_with_a_count():
@@ -63,16 +75,20 @@ def test_rules_are_never_truncated_even_over_budget():
     Unchanged invariant, restated for short forms: what must survive whole
     is now each rule's summary, not its body.
     """
-    rules = [entry(f"Rule {i}", "body that is not rendered", kind=Kind.RULE,
-                   summary="s" * 300) for i in range(4)]
+    rules = [
+        entry(
+            f"Rule {i}", "body that is not rendered", kind=Kind.RULE, summary="s" * 300
+        )
+        for i in range(4)
+    ]
     others = [entry(f"Doc {i}", "z" * 800) for i in range(10)]
 
     out = render(collection(), rules + others, max_chars=2000)
 
     for i in range(4):
         assert f"Rule {i}" in out
-    assert out.count("s" * 300) == 4     # every rule summary, in full
-    assert "z" * 800 not in out          # the budget really did bite
+    assert out.count("s" * 300) == 4  # every rule summary, in full
+    assert "z" * 800 not in out  # the budget really did bite
     assert "10 more entries not shown" in out
 
 
@@ -84,8 +100,9 @@ def test_rules_alone_exceeding_the_budget_raises():
     An agent handed a partial rule set proceeds believing it has the
     conventions, which is worse than having none - so this raises.
     """
-    rules = [entry(f"Rule {i}", "body", kind=Kind.RULE, summary="y" * 500)
-             for i in range(10)]
+    rules = [
+        entry(f"Rule {i}", "body", kind=Kind.RULE, summary="y" * 500) for i in range(10)
+    ]
     with pytest.raises(RulesExceedBudget):
         render(collection(), rules, max_chars=500)
 
@@ -114,8 +131,12 @@ def test_a_rule_renders_its_summary_and_not_its_body():
     Rule bodies in this project are essays - the incident, the reasoning,
     the lesson - and shipping all of them is what kept blowing the budget.
     """
-    e = entry("Mark tests by behaviour", "y" * 2000, kind=Kind.RULE,
-              summary="If a test can open a socket, its marker says so.")
+    e = entry(
+        "Mark tests by behaviour",
+        "y" * 2000,
+        kind=Kind.RULE,
+        summary="If a test can open a socket, its marker says so.",
+    )
 
     out = render(collection(), [e], max_chars=5000)
 

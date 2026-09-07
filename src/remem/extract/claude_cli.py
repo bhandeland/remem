@@ -100,8 +100,7 @@ def constant_payload_keys(events: list[Event]) -> dict[str, object]:
     for key, value in first.items():
         rendered = _dump(value)
         if all(
-            key in (e.payload or {})
-            and _dump((e.payload or {})[key]) == rendered
+            key in (e.payload or {}) and _dump((e.payload or {})[key]) == rendered
             for e in events[1:]
         ):
             shared[key] = value
@@ -133,8 +132,11 @@ def _render_event(
     """
     when = event.occurred_at.isoformat() if event.occurred_at else "unknown-time"
     tool = f" {event.tool}" if event.tool else ""
-    body = {k: _cap(v, cap) for k, v in (event.payload or {}).items()
-            if not omit or k not in omit}
+    body = {
+        k: _cap(v, cap)
+        for k, v in (event.payload or {}).items()
+        if not omit or k not in omit
+    }
     # separators= keeps the payload on one line and as small as possible: the
     # budget below is bytes, and every space spent on formatting is a line of
     # session the model does not get to see.
@@ -266,9 +268,7 @@ def build_env(base: Mapping[str, str]) -> dict[str, str]:
 
 
 class ClaudeCliExtractor:
-    def __init__(
-        self, timeout: int = 180, model: str = DEFAULT_EXTRACT_MODEL
-    ) -> None:
+    def __init__(self, timeout: int = 180, model: str = DEFAULT_EXTRACT_MODEL) -> None:
         self._timeout = timeout
         self._model = model
 
@@ -278,9 +278,7 @@ class ClaudeCliExtractor:
         project: str,
         known_titles: list[str] | None = None,
     ) -> list[ExtractedEntry]:
-        payload = (
-            f"Project: {project}\n\nEvents:\n{render_events(events)}"
-        )
+        payload = f"Project: {project}\n\nEvents:\n{render_events(events)}"
         size = len(payload)
         try:
             result = subprocess.run(
@@ -305,7 +303,6 @@ class ClaudeCliExtractor:
             # exit code alone is not a diagnosis, so say what was sent too.
             detail = result.stderr[:300].strip() or "no stderr output"
             raise ExtractionFailed(
-                f"claude exited {result.returncode} on {size} bytes of input: "
-                f"{detail}"
+                f"claude exited {result.returncode} on {size} bytes of input: {detail}"
             )
         return parse_entries(result.stdout)

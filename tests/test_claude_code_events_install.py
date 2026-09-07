@@ -47,9 +47,12 @@ def test_install_verification_cleans_up_after_itself(env, tmp_path):
     ClaudeCodeAdapter().verify(env=env, home=tmp_path)
 
     with psycopg.connect(env["REMEM_DSN"]) as c:
-        assert c.execute(
-            "select count(*) from events where project = %s", (VERIFY_PROJECT,)
-        ).fetchone()[0] == 0
+        assert (
+            c.execute(
+                "select count(*) from events where project = %s", (VERIFY_PROJECT,)
+            ).fetchone()[0]
+            == 0
+        )
         enabled = c.execute(
             "select enabled from record_settings where project = %s",
             (VERIFY_PROJECT,),
@@ -90,9 +93,7 @@ def test_install_verification_does_not_touch_events_outside_the_verify_project(
     ClaudeCodeAdapter().verify(env=env, home=tmp_path)
 
     with psycopg.connect(env["REMEM_DSN"]) as c:
-        row = c.execute(
-            "select id from events where id = %s", (other.id,)
-        ).fetchone()
+        row = c.execute("select id from events where id = %s", (other.id,)).fetchone()
         assert row is not None, (
             "verify()'s cleanup deleted an event outside the reserved "
             "verification project"
@@ -118,7 +119,10 @@ def test_the_hook_table_names_every_hook_the_install_registers():
     from remem.agents.claude_code.adapter import HOOK_ENTRIES
 
     assert [h.event for h in HOOK_ENTRIES] == [
-        "SessionStart", "SessionEnd", "PostToolUse", "UserPromptSubmit",
+        "SessionStart",
+        "SessionEnd",
+        "PostToolUse",
+        "UserPromptSubmit",
     ]
 
 

@@ -226,9 +226,15 @@ def remember(
     with _session() as s:
         try:
             entry = write.remember(
-                s.store, s.owner.id, title=title, body=text, kind=kind,
+                s.store,
+                s.owner.id,
+                title=title,
+                body=text,
+                kind=kind,
                 summary=summary,
-                project=resolved, tags=list(tag or []), origin=Origin.HUMAN,
+                project=resolved,
+                tags=list(tag or []),
+                origin=Origin.HUMAN,
             )
         except write.RuleNeedsSummary:
             typer.echo(
@@ -261,9 +267,15 @@ def rule(
     with _session() as s:
         try:
             entry = write.remember(
-                s.store, s.owner.id, title=title, body=text, kind=Kind.RULE,
+                s.store,
+                s.owner.id,
+                title=title,
+                body=text,
+                kind=Kind.RULE,
                 summary=summary,
-                project=resolved, tags=list(tag or []), origin=Origin.HUMAN,
+                project=resolved,
+                tags=list(tag or []),
+                origin=Origin.HUMAN,
             )
         except write.RuleNeedsSummary:
             typer.echo(
@@ -311,8 +323,13 @@ def ingest(
         root = top
     with _session() as s:
         report = ingest_service.ingest_manual(
-            s.store, s.owner.id, given,
-            project=resolved, root=root, archive=archive, dry_run=dry_run,
+            s.store,
+            s.owner.id,
+            given,
+            project=resolved,
+            root=root,
+            archive=archive,
+            dry_run=dry_run,
         )
     prefix = "Would write: " if dry_run else ""
     typer.echo(
@@ -364,9 +381,15 @@ def search(
         # a None rather than an error - both of which are policy, and neither
         # of which a frontend should be restating.
         hits = find(
-            s.store, s.owner.id,
-            Query(text=query, kinds=list(kind or []), project=project,
-                  tags=list(tag or []), limit=limit),
+            s.store,
+            s.owner.id,
+            Query(
+                text=query,
+                kinds=list(kind or []),
+                project=project,
+                tags=list(tag or []),
+                limit=limit,
+            ),
             fuzzy_threshold=s.config.fuzzy_threshold,
             include_handoffs=handoff,
             include_archived=archived,
@@ -388,11 +411,13 @@ def search(
     # before reading any of them. Tiers never blend, so hits[0] speaks for
     # the whole result set.
     if hits[0].match is Match.SEMANTIC:
-        typer.echo(f"No exact matches for {query!r}. Showing entries with "
-                   f"related meaning:\n")
+        typer.echo(
+            f"No exact matches for {query!r}. Showing entries with related meaning:\n"
+        )
     elif hits[0].match is Match.FUZZY:
-        typer.echo(f"No exact or related matches for {query!r}. Showing "
-                   f"similar spellings:\n")
+        typer.echo(
+            f"No exact or related matches for {query!r}. Showing similar spellings:\n"
+        )
     for h in hits:
         marker = {Match.EXACT: "", Match.SEMANTIC: "~ ", Match.FUZZY: "? "}[h.match]
         typer.echo(f"{marker}{h.entry.id}  [{h.entry.kind}] {h.entry.title}")
@@ -401,8 +426,9 @@ def search(
 
 @app.command()
 def embed(
-    limit: Annotated[Optional[int], typer.Option(
-        "--limit", help="Stop after this many entries.")] = None,
+    limit: Annotated[
+        Optional[int], typer.Option("--limit", help="Stop after this many entries.")
+    ] = None,
     batch: Annotated[int, typer.Option("--batch")] = 32,
 ):
     """Embed entries that have no vector for the configured model.
@@ -432,8 +458,9 @@ def embed(
             # command they will turn off. The same rule as `events process`:
             # every command in this pipeline is expected to overlap itself.
             raise typer.Exit(0)
-        result = backfill(s.store, s.owner.id, embedder,
-                          batch_size=batch, max_entries=limit)
+        result = backfill(
+            s.store, s.owner.id, embedder, batch_size=batch, max_entries=limit
+        )
 
     typer.echo(f"Embedded {result.embedded} entries with {result.model}.")
     if result.failed:
@@ -497,9 +524,16 @@ def update(
 
     with _session() as s:
         try:
-            entry = write.update(s.store, s.owner.id, parsed,
-                                 title=title, body=text, summary=summary,
-                                 project=new_project, tags=new_tags)
+            entry = write.update(
+                s.store,
+                s.owner.id,
+                parsed,
+                title=title,
+                body=text,
+                summary=summary,
+                project=new_project,
+                tags=new_tags,
+            )
         except write.EntryNotFound:
             typer.echo(f"No entry {entry_id}", err=True)
             raise typer.Exit(1)
@@ -531,8 +565,9 @@ def supersede(
     text = _read_body(body)
     with _session() as s:
         try:
-            entry = write.supersede(s.store, s.owner.id, parsed,
-                                    title=title, body=text, summary=summary)
+            entry = write.supersede(
+                s.store, s.owner.id, parsed, title=title, body=text, summary=summary
+            )
         except write.EntryNotFound:
             typer.echo(f"No entry {entry_id}", err=True)
             raise typer.Exit(1)
@@ -558,8 +593,12 @@ def kb_new(
     """Create a knowledge base."""
     with _session() as s:
         c = kb.create(
-            s.store, s.owner.id, slug=slug, title=title,
-            description=description, project=project,
+            s.store,
+            s.owner.id,
+            slug=slug,
+            title=title,
+            description=description,
+            project=project,
             query=CollectionQuery(tags=list(tag or []), project=project),
         )
         typer.echo(c.slug)
@@ -584,8 +623,12 @@ def kb_query(
         typer.echo("Pass either --clear or the filters, not both", err=True)
         raise typer.Exit(1)
 
-    query = CollectionQuery() if clear else CollectionQuery(
-        tags=list(tag or []), kinds=list(kind or []), project=project
+    query = (
+        CollectionQuery()
+        if clear
+        else CollectionQuery(
+            tags=list(tag or []), kinds=list(kind or []), project=project
+        )
     )
     with _session() as s:
         try:
@@ -607,8 +650,9 @@ def kb_list():
 
 
 @kb_app.command("pin")
-def kb_pin(slug: str, entry_id: str,
-           position: Annotated[int, typer.Option("--position")] = 0):
+def kb_pin(
+    slug: str, entry_id: str, position: Annotated[int, typer.Option("--position")] = 0
+):
     """Pin an entry into a knowledge base."""
     parsed = _entry_id(entry_id)
     with _session() as s:
@@ -1025,7 +1069,7 @@ def hook_context(
         stdin_text = sys.stdin.read()
         try:
             payload = json.loads(stdin_text) if stdin_text.strip() else {}
-        except (json.JSONDecodeError, AttributeError):
+        except json.JSONDecodeError, AttributeError:
             debug(env, "stdin was not valid JSON")
             raise typer.Exit(0)
 
@@ -1071,12 +1115,13 @@ def hook_context(
         inject = getattr(adapter, "inject", None)
         if inject is not None:
             try:
-                written = inject(rendered, payload, note=lambda reason: debug(env, reason))
+                written = inject(
+                    rendered, payload, note=lambda reason: debug(env, reason)
+                )
             except Exception as exc:
                 debug(
                     env,
-                    f"{agent} adapter's inject() raised "
-                    f"{type(exc).__name__}: {exc}",
+                    f"{agent} adapter's inject() raised {type(exc).__name__}: {exc}",
                 )
             else:
                 if written:
@@ -1172,15 +1217,20 @@ def capture_status(
         projects = s.store.enabled_record_projects(s.owner.id)
 
     if as_json:
-        typer.echo(json.dumps({
-            "model": model,
-            "enabled_projects": projects,
-            "counts": counts,
-            "failures": [
-                {"id": str(f.id), "project": f.project, "error": f.error}
-                for f in failures
-            ],
-        }, indent=2))
+        typer.echo(
+            json.dumps(
+                {
+                    "model": model,
+                    "enabled_projects": projects,
+                    "counts": counts,
+                    "failures": [
+                        {"id": str(f.id), "project": f.project, "error": f.error}
+                        for f in failures
+                    ],
+                },
+                indent=2,
+            )
+        )
         return
 
     typer.echo(f"Recording enabled for: {', '.join(projects) or 'no projects'}")
@@ -1237,15 +1287,17 @@ def events_process(
         extractor = ClaudeCliExtractor(model=s.config.extract_model)
         if job_id is not None:
             try:
-                report = extraction.process_job(s.store, s.owner.id, job_id,
-                                                extractor)
+                report = extraction.process_job(s.store, s.owner.id, job_id, extractor)
             except extraction.ExtractJobNotFound as exc:
                 typer.echo(str(exc), err=True)
                 raise typer.Exit(1)
         else:
             report = extraction.process(
-                s.store, s.owner.id, extractor,
-                idle_seconds=s.config.idle_minutes * 60, limit=limit,
+                s.store,
+                s.owner.id,
+                extractor,
+                idle_seconds=s.config.idle_minutes * 60,
+                limit=limit,
             )
     typer.echo(
         f"claimed {report.claimed}, succeeded {report.succeeded}, "
@@ -1306,12 +1358,17 @@ def events_prune(
             raise typer.Exit(1)
 
     if as_json:
-        typer.echo(json.dumps({
-            "deleted": report.deleted,
-            "kept_unextracted": report.kept_unextracted,
-            "dangling": report.dangling,
-            "project": project,
-        }, indent=2))
+        typer.echo(
+            json.dumps(
+                {
+                    "deleted": report.deleted,
+                    "kept_unextracted": report.kept_unextracted,
+                    "dangling": report.dangling,
+                    "project": project,
+                },
+                indent=2,
+            )
+        )
         return
     # The dangling count prints even when it is zero - its absence would be
     # indistinguishable from a prune that never reported it at all.
@@ -1382,8 +1439,10 @@ def record_status(
         # events status it decorates.
         try:
             ingest_advisories = ingest_service.advisories(
-                s.store, s.owner.id,
-                current_project=resolve_project(), root=repo_root(),
+                s.store,
+                s.owner.id,
+                current_project=resolve_project(),
+                root=repo_root(),
             )
         except Exception:
             ingest_advisories = []
@@ -1397,7 +1456,9 @@ def record_status(
             memory_advisories = []
 
         report = events.status(
-            s.store, s.owner.id, idle_seconds=s.config.idle_minutes * 60,
+            s.store,
+            s.owner.id,
+            idle_seconds=s.config.idle_minutes * 60,
             hook_advisories=advisories,
             ingest_advisories=ingest_advisories,
             memory_advisories=memory_advisories,
@@ -1470,7 +1531,7 @@ def record_event(
 
     try:
         payload = json.loads(stdin_text) if stdin_text.strip() else {}
-    except (json.JSONDecodeError, AttributeError):
+    except json.JSONDecodeError, AttributeError:
         debug(env, "stdin was not valid JSON")
         if loud:
             typer.echo("stdin was not valid JSON", err=True)
@@ -1540,13 +1601,15 @@ def handoff_write(
     from remem.services import handoff as handoff_svc
 
     name = project or _default_project()
-    text = (
-        _body_from_editor(handoff_svc.BLANK_BODY) if edit else _read_body(body)
-    )
+    text = _body_from_editor(handoff_svc.BLANK_BODY) if edit else _read_body(body)
     with _session() as s:
         try:
             entry, superseded = handoff_svc.write(
-                s.store, s.owner.id, project=name, topic=topic, body=text,
+                s.store,
+                s.owner.id,
+                project=name,
+                topic=topic,
+                body=text,
             )
         except (handoff_svc.NoProject, ValueError) as exc:
             typer.echo(str(exc), err=True)
@@ -1554,10 +1617,7 @@ def handoff_write(
     typer.echo(entry.id)
     if superseded is not None:
         typer.echo(f"superseded {superseded.id}")
-    typer.echo(
-        f"resume with: /clear, then remem-prime "
-        f"{handoff_svc.topic_of(entry)}"
-    )
+    typer.echo(f"resume with: /clear, then remem-prime {handoff_svc.topic_of(entry)}")
 
 
 @handoff_app.command("latest")
@@ -1652,7 +1712,10 @@ def memory_designate(
     with _session() as s:
         try:
             memory_service.designate(
-                s.store, s.owner.id, resolved, None if clear else slug,
+                s.store,
+                s.owner.id,
+                resolved,
+                None if clear else slug,
                 working_dir=None if clear else str(Path.cwd().resolve()),
             )
         except memory_service.NoProject:
@@ -1689,7 +1752,9 @@ def _memory_sync_all(dry_run: bool) -> None:
     # rolled the store back and left the disk moved.
     with _session(autocommit=True) as s:
         outcomes = memory_service.sync_all(
-            s.store, s.owner.id, resolve_directory=_memory_dir,
+            s.store,
+            s.owner.id,
+            resolve_directory=_memory_dir,
             dry_run=dry_run,
         )
     if not outcomes:
@@ -1724,7 +1789,8 @@ def _memory_sync_all(dry_run: bool) -> None:
         for name, reason in r.failures:
             problems += 1
             typer.echo(
-                f"{o.project:<{width}}  failed: {name}: {reason}", err=True,
+                f"{o.project:<{width}}  failed: {name}: {reason}",
+                err=True,
             )
     if problems:
         # Same fail-loud contract as a single sync, and for the same reason:
@@ -1759,8 +1825,11 @@ def memory_sync(
     with _session(autocommit=True) as s:
         try:
             report = memory_service.sync(
-                s.store, s.owner.id, project=resolved,
-                directory=directory, dry_run=dry_run,
+                s.store,
+                s.owner.id,
+                project=resolved,
+                directory=directory,
+                dry_run=dry_run,
             )
         except memory_service.NotDesignated:
             typer.echo(
@@ -1828,8 +1897,11 @@ def memory_status(
     directory = _memory_dir(Path.cwd())
     with _session() as s:
         st = memory_service.status(
-            s.store, s.owner.id, project=resolved,
-            directory=directory, kb_slug=resolved,
+            s.store,
+            s.owner.id,
+            project=resolved,
+            directory=directory,
+            kb_slug=resolved,
         )
     if st.collection is None:
         typer.echo(f"{resolved}: not designated.")
@@ -1857,8 +1929,10 @@ if __name__ == "__main__":
 
 @reingest_app.command("designate")
 def reingest_designate(
-    paths: Annotated[Optional[list[str]], typer.Argument(
-        help="Repo-relative paths. Omit with --clear.")] = None,
+    paths: Annotated[
+        Optional[list[str]],
+        typer.Argument(help="Repo-relative paths. Omit with --clear."),
+    ] = None,
     archive: Annotated[bool, typer.Option("--archive")] = False,
     clear: Annotated[bool, typer.Option("--clear")] = False,
     project: Annotated[Optional[str], typer.Option("--project")] = None,
@@ -1876,8 +1950,10 @@ def reingest_designate(
     """
     resolved = _resolve_project(project, False)
     if resolved is None:
-        typer.echo("No project to designate. Run this inside a repository "
-                   "or pass --project.", err=True)
+        typer.echo(
+            "No project to designate. Run this inside a repository or pass --project.",
+            err=True,
+        )
         raise typer.Exit(1)
     if clear and paths:
         typer.echo("Pass either paths or --clear, not both", err=True)
@@ -1885,8 +1961,11 @@ def reingest_designate(
     with _session() as s:
         try:
             ingest_service.designate(
-                s.store, s.owner.id, resolved,
-                None if clear else list(paths or []), archive=archive,
+                s.store,
+                s.owner.id,
+                resolved,
+                None if clear else list(paths or []),
+                archive=archive,
             )
         except ingest_service.BadDesignation as exc:
             # Fail-loud: a person typed this, and the whole point of
@@ -1897,9 +1976,7 @@ def reingest_designate(
     if clear:
         typer.echo(f"Cleared the {half} re-ingest designation for {resolved}.")
         return
-    typer.echo(
-        f"{resolved} ({half}) re-ingests: {', '.join(paths or [])}"
-    )
+    typer.echo(f"{resolved} ({half}) re-ingests: {', '.join(paths or [])}")
 
 
 @reingest_app.command("status")
@@ -1919,8 +1996,11 @@ def reingest_status(
     current = resolve_project()
     with _session() as s:
         found = ingest_service.status(
-            s.store, s.owner.id, resolved,
-            current_project=current, root=repo_root(),
+            s.store,
+            s.owner.id,
+            resolved,
+            current_project=current,
+            root=repo_root(),
         )
     if as_json:
         typer.echo(json.dumps(ingest_service.status_to_dict(found), indent=2))
@@ -1969,7 +2049,10 @@ def _reingest_once(env: dict[str, str]) -> None:
     # mid-run rolls its own "I started" back and looks like it never ran.
     with _session(autocommit=True) as s:
         result = ingest_service.refresh(
-            s.store, s.owner.id, resolved, repo_root(),
+            s.store,
+            s.owner.id,
+            resolved,
+            repo_root(),
             embed_model=load().embed_model,
             load_embedder=lambda: load_embedder(load().embed_model),
         )
@@ -1989,10 +2072,10 @@ def dedupe_report(
     project: Annotated[Optional[str], typer.Option("--project")] = None,
     kind: Annotated[Optional[list[Kind]], typer.Option("--kind")] = None,
     tag: Annotated[Optional[list[str]], typer.Option("--tag")] = None,
-    threshold: Annotated[float, typer.Option("--threshold")]
-        = dedupe_service.DEFAULT_THRESHOLD,
-    limit: Annotated[int, typer.Option("--limit")]
-        = dedupe_service.DEFAULT_PAIR_LIMIT,
+    threshold: Annotated[
+        float, typer.Option("--threshold")
+    ] = dedupe_service.DEFAULT_THRESHOLD,
+    limit: Annotated[int, typer.Option("--limit")] = dedupe_service.DEFAULT_PAIR_LIMIT,
     as_json: Annotated[bool, typer.Option("--json")] = False,
 ):
     """Report entries that duplicate each other. Read-only.
@@ -2006,33 +2089,47 @@ def dedupe_report(
     """
     with _session() as s:
         report = dedupe_service.report(
-            s.store, s.owner.id,
-            Query(project=project, kinds=list(kind or []),
-                  tags=list(tag or []), limit=limit),
+            s.store,
+            s.owner.id,
+            Query(
+                project=project,
+                kinds=list(kind or []),
+                tags=list(tag or []),
+                limit=limit,
+            ),
             model=s.config.embed_model,
             threshold=threshold,
             limit=limit,
         )
     if as_json:
-        typer.echo(json.dumps({
-            "exact": [[_entry_dict(e) for e in g.entries]
-                      for g in report.exact],
-            "near": [
-                {"similarity": p.similarity,
-                 "entries": [_entry_dict(p.a), _entry_dict(p.b)]}
-                for p in report.near
-            ],
-            "near_total": report.near_total,
-            "near_suppressed": report.near_suppressed,
-            "near_truncated": report.near_truncated,
-            # Explicit rather than inferred from an empty "near": a machine
-            # reader must be able to tell "none found" from "never ran", for
-            # the same reason the human rendering says so in words.
-            "near_checked": report.embedded > 0,
-            "threshold": report.threshold,
-            "model": report.model,
-            "coverage": {"embedded": report.embedded, "total": report.total},
-        }, indent=2, default=str))
+        typer.echo(
+            json.dumps(
+                {
+                    "exact": [
+                        [_entry_dict(e) for e in g.entries] for g in report.exact
+                    ],
+                    "near": [
+                        {
+                            "similarity": p.similarity,
+                            "entries": [_entry_dict(p.a), _entry_dict(p.b)],
+                        }
+                        for p in report.near
+                    ],
+                    "near_total": report.near_total,
+                    "near_suppressed": report.near_suppressed,
+                    "near_truncated": report.near_truncated,
+                    # Explicit rather than inferred from an empty "near": a machine
+                    # reader must be able to tell "none found" from "never ran", for
+                    # the same reason the human rendering says so in words.
+                    "near_checked": report.embedded > 0,
+                    "threshold": report.threshold,
+                    "model": report.model,
+                    "coverage": {"embedded": report.embedded, "total": report.total},
+                },
+                indent=2,
+                default=str,
+            )
+        )
         return
     typer.echo(dedupe_service.render(report))
 
@@ -2051,7 +2148,8 @@ def dedupe_resolve(
     with _session() as s:
         try:
             dropped, kept = dedupe_service.resolve(
-                s.store, s.owner.id, UUID(drop_id), UUID(keep))
+                s.store, s.owner.id, UUID(drop_id), UUID(keep)
+            )
         except (dedupe_service.CannotResolve, ValueError) as exc:
             typer.echo(f"Cannot resolve: {exc}")
             raise typer.Exit(1)

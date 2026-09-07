@@ -106,9 +106,7 @@ def test_debug_is_silent_unless_asked_for(capsys):
 
 
 @pytest.mark.db
-def test_the_session_end_hook_records_an_event_and_enqueues_nothing(
-    live_dsn, tmp_path
-):
+def test_the_session_end_hook_records_an_event_and_enqueues_nothing(live_dsn, tmp_path):
     """The idle rule replaced the end hook as the trigger. SessionEnd is now
     a hint that shortens the wait, and a harness without one loses nothing
     but time - what it must still do is record, and it must not enqueue
@@ -134,19 +132,11 @@ def test_the_session_end_hook_records_an_event_and_enqueues_nothing(
         record.enable(PostgresStore(c), owner.id, "myproj")
         c.commit()
 
-    hook.record_event(
-        _payload(str(project_dir), hook_event_name="SessionEnd"), env=env
-    )
+    hook.record_event(_payload(str(project_dir), hook_event_name="SessionEnd"), env=env)
 
     with psycopg.connect(live_dsn) as c:
-        rows = c.execute(
-            "select kind from events"
-        ).fetchall()
+        rows = c.execute("select kind from events").fetchall()
         assert len(rows) == 1
         assert rows[0][0] == "session_end"
-        assert c.execute(
-            "select count(*) from extract_jobs"
-        ).fetchone()[0] == 0
-        assert c.execute(
-            "select count(*) from capture_jobs_legacy"
-        ).fetchone()[0] == 0
+        assert c.execute("select count(*) from extract_jobs").fetchone()[0] == 0
+        assert c.execute("select count(*) from capture_jobs_legacy").fetchone()[0] == 0

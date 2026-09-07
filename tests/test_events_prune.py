@@ -58,13 +58,14 @@ def _mark_done(store, owner, session_id, covers_through):
     job = store.claim_extract_job(
         owner.id,
         SessionRef(
-            project="remem", harness="claude-code", session_id=session_id,
-            event_count=0, last_event_at=covers_through,
+            project="remem",
+            harness="claude-code",
+            session_id=session_id,
+            event_count=0,
+            last_event_at=covers_through,
         ),
     )
-    store.finish_extract_job(
-        job.id, owner.id, JobStatus.DONE, None, 0, covers_through
-    )
+    store.finish_extract_job(job.id, owner.id, JobStatus.DONE, None, 0, covers_through)
 
 
 def test_prune_without_a_window_is_refused_at_the_cli(live_dsn, monkeypatch, tmp_path):
@@ -129,9 +130,7 @@ def test_prune_reports_what_it_left_dangling(store, owner):
 
 def test_events_inside_the_window_are_kept(store, owner):
     old = store.put_event(an_event(owner, at=NOW - timedelta(days=40)))
-    recent = store.put_event(
-        an_event(owner, at=NOW - timedelta(days=1), session="s1")
-    )
+    recent = store.put_event(an_event(owner, at=NOW - timedelta(days=1), session="s1"))
     _mark_done(store, owner, "s1", covers_through=NOW)
 
     report = events.prune(store, owner.id, before=NOW - timedelta(days=30))
@@ -158,13 +157,10 @@ def test_a_mixed_window_prunes_what_it_can_without_refusing(store, owner):
 
     assert report.deleted == 1
     assert report.kept_unextracted == 1
-    assert store.events_for_session(
-        owner.id, "remem", "claude-code", "done"
-    ) == []
+    assert store.events_for_session(owner.id, "remem", "claude-code", "done") == []
     assert [
-        e.id for e in store.events_for_session(
-            owner.id, "remem", "claude-code", "stuck"
-        )
+        e.id
+        for e in store.events_for_session(owner.id, "remem", "claude-code", "stuck")
     ] == [unextracted.id]
 
 
@@ -221,9 +217,7 @@ def test_prune_deletes_through_the_cli(cli_env):
     assert "deleted 1 events" in result.stdout
     with psycopg.connect(cli_env) as c:
         store = PostgresStore(c)
-        assert store.events_for_session(
-            owner_id, "remem", "claude-code", "s1"
-        ) == []
+        assert store.events_for_session(owner_id, "remem", "claude-code", "s1") == []
 
 
 def test_prune_json_reports_all_three_counts_and_the_scope(cli_env):
@@ -241,7 +235,10 @@ def test_prune_json_reports_all_three_counts_and_the_scope(cli_env):
 
     assert result.exit_code == 0, result.stdout + str(result.stderr)
     assert json.loads(result.stdout) == {
-        "deleted": 1, "kept_unextracted": 0, "dangling": 0, "project": None
+        "deleted": 1,
+        "kept_unextracted": 0,
+        "dangling": 0,
+        "project": None,
     }
 
 
@@ -301,13 +298,14 @@ def _mark_done_in(store, owner, project, session_id, covers_through):
     job = store.claim_extract_job(
         owner.id,
         SessionRef(
-            project=project, harness="claude-code", session_id=session_id,
-            event_count=0, last_event_at=covers_through,
+            project=project,
+            harness="claude-code",
+            session_id=session_id,
+            event_count=0,
+            last_event_at=covers_through,
         ),
     )
-    store.finish_extract_job(
-        job.id, owner.id, JobStatus.DONE, None, 0, covers_through
-    )
+    store.finish_extract_job(job.id, owner.id, JobStatus.DONE, None, 0, covers_through)
 
 
 def _seed_two_projects(store, owner):
@@ -329,9 +327,7 @@ def test_prune_scoped_to_a_project_leaves_every_other_project_alone(store, owner
 
     assert report.deleted == 1
     assert store.events_for_session(owner.id, "remem", "claude-code", "s1") != []
-    assert store.events_for_session(
-        owner.id, "client-work", "claude-code", "s2"
-    ) == []
+    assert store.events_for_session(owner.id, "client-work", "claude-code", "s2") == []
 
 
 def test_prune_without_a_project_still_spans_them_all(store, owner):
@@ -399,12 +395,10 @@ def test_prune_project_through_the_cli(cli_env):
     assert result.exit_code == 0, result.stdout + str(result.stderr)
     with psycopg.connect(cli_env) as c:
         store = PostgresStore(c)
-        assert store.events_for_session(
-            owner_id, "client-work", "claude-code", "s2"
-        ) == []
-        assert store.events_for_session(
-            owner_id, "remem", "claude-code", "s1"
-        ) != []
+        assert (
+            store.events_for_session(owner_id, "client-work", "claude-code", "s2") == []
+        )
+        assert store.events_for_session(owner_id, "remem", "claude-code", "s1") != []
 
 
 def test_the_cli_says_which_project_it_pruned(cli_env):

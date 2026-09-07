@@ -29,9 +29,7 @@ def env(live_dsn, monkeypatch, tmp_path):
 
 
 def _entry(query):
-    payload = json.loads(
-        runner.invoke(app, ["search", query, "--json"]).stdout
-    )
+    payload = json.loads(runner.invoke(app, ["search", query, "--json"]).stdout)
     return payload[0] if payload else None
 
 
@@ -54,8 +52,9 @@ def test_an_explicit_project_still_wins(env, monkeypatch, tmp_path):
     project_dir.mkdir()
     monkeypatch.chdir(project_dir)
 
-    runner.invoke(app, ["remember", "Explicit", "--body", "shared body",
-                        "--project", "other"])
+    runner.invoke(
+        app, ["remember", "Explicit", "--body", "shared body", "--project", "other"]
+    )
     assert _entry("shared")["project"] == "other"
 
 
@@ -67,15 +66,15 @@ def test_global_writes_an_entry_with_no_project(env, monkeypatch, tmp_path):
     project_dir.mkdir()
     monkeypatch.chdir(project_dir)
 
-    runner.invoke(app, ["remember", "Everywhere", "--body", "shared body",
-                        "--global"])
+    runner.invoke(app, ["remember", "Everywhere", "--body", "shared body", "--global"])
     assert _entry("shared")["project"] is None
 
 
 @pytest.mark.db
 def test_global_and_project_together_are_refused(env):
-    result = runner.invoke(app, ["remember", "T", "--body", "b",
-                                 "--global", "--project", "x"])
+    result = runner.invoke(
+        app, ["remember", "T", "--body", "b", "--global", "--project", "x"]
+    )
     assert result.exit_code != 0
 
 
@@ -88,9 +87,17 @@ def test_rule_writes_a_rule(env, monkeypatch, tmp_path):
     project_dir.mkdir()
     monkeypatch.chdir(project_dir)
 
-    result = runner.invoke(app, ["rule", "Spaced hyphens",
-                                 "--body", "never em dashes",
-                                 "--summary", "Use spaced hyphens, never em dashes"])
+    result = runner.invoke(
+        app,
+        [
+            "rule",
+            "Spaced hyphens",
+            "--body",
+            "never em dashes",
+            "--summary",
+            "Use spaced hyphens, never em dashes",
+        ],
+    )
     assert result.exit_code == 0, result.stdout
     entry = _entry("hyphens")
     assert entry["kind"] == "rule"
@@ -100,9 +107,20 @@ def test_rule_writes_a_rule(env, monkeypatch, tmp_path):
 @pytest.mark.db
 def test_rule_accepts_tags_and_global(env, monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
-    runner.invoke(app, ["rule", "Universal", "--body", "applies everywhere",
-                        "--summary", "This rule applies everywhere",
-                        "--tag", "style", "--global"])
+    runner.invoke(
+        app,
+        [
+            "rule",
+            "Universal",
+            "--body",
+            "applies everywhere",
+            "--summary",
+            "This rule applies everywhere",
+            "--tag",
+            "style",
+            "--global",
+        ],
+    )
     entry = _entry("everywhere")
     assert entry["project"] is None
     assert entry["tags"] == ["style"]
@@ -198,6 +216,5 @@ def test_mcp_remember_honours_an_explicit_project(env, monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     from remem.mcp_server import remember_tool
 
-    remember_tool(title="Explicit", body="distinctive explicit body",
-                  project="chosen")
+    remember_tool(title="Explicit", body="distinctive explicit body", project="chosen")
     assert _entry("distinctive")["project"] == "chosen"

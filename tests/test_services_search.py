@@ -80,8 +80,7 @@ class StubEmbedder:
 
 
 def _hit(match=Match.EXACT):
-    e = Entry(id=new_id(), kind=Kind.NOTE, title="t", body="b",
-              owner_id=new_id())
+    e = Entry(id=new_id(), kind=Kind.NOTE, title="t", body="b", owner_id=new_id())
     return Hit(entry=e, rank=1.0, snippet="s", match=match)
 
 

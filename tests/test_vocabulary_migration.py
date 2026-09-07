@@ -40,25 +40,20 @@ def apply_through(conn, last_version: str) -> None:
     )
     for version, sql in migration_files():
         conn.execute(sql)
-        conn.execute(
-            "insert into schema_migrations (version) values (%s)", (version,)
-        )
+        conn.execute("insert into schema_migrations (version) values (%s)", (version,))
         if version == last_version:
             return
 
 
 def apply_rest(conn) -> None:
     done = {
-        r[0]
-        for r in conn.execute("select version from schema_migrations").fetchall()
+        r[0] for r in conn.execute("select version from schema_migrations").fetchall()
     }
     for version, sql in migration_files():
         if version in done:
             continue
         conn.execute(sql)
-        conn.execute(
-            "insert into schema_migrations (version) values (%s)", (version,)
-        )
+        conn.execute("insert into schema_migrations (version) values (%s)", (version,))
 
 
 def _old_world(conn, origin: str = "capture"):
@@ -85,9 +80,11 @@ def _old_world(conn, origin: str = "capture"):
     conn.execute(
         "insert into collections (id, slug, title, owner_id, query)"
         " values (%s, 'pre', 'Pre', %s, %s)",
-        (uuid4(), owner, json.dumps(
-            {"tags": [], "kinds": ["memory"], "project": "proj"}
-        )),
+        (
+            uuid4(),
+            owner,
+            json.dumps({"tags": [], "kinds": ["memory"], "project": "proj"}),
+        ),
     )
     return owner, entry
 

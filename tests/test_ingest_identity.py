@@ -19,8 +19,7 @@ from remem.services import ingest
 
 
 def _git(path, *args):
-    subprocess.run(["git", "-C", str(path), *args], check=True,
-                   capture_output=True)
+    subprocess.run(["git", "-C", str(path), *args], check=True, capture_output=True)
 
 
 @pytest.fixture
@@ -53,15 +52,21 @@ def test_toplevel_is_none_outside_a_repository(tmp_path):
 
 
 def test_relative_from_the_root_is_unchanged(repo):
-    assert ingest.relative_to_root([Path("docs/a.md")], repo, cwd=repo) == [Path("docs/a.md")]
+    assert ingest.relative_to_root([Path("docs/a.md")], repo, cwd=repo) == [
+        Path("docs/a.md")
+    ]
 
 
 def test_relative_from_a_subdirectory_is_rewritten(repo):
-    assert ingest.relative_to_root([Path("a.md")], repo, cwd=repo / "docs") == [Path("docs/a.md")]
+    assert ingest.relative_to_root([Path("a.md")], repo, cwd=repo / "docs") == [
+        Path("docs/a.md")
+    ]
 
 
 def test_absolute_inside_the_repository_is_rewritten(repo):
-    assert ingest.relative_to_root([repo / "docs" / "a.md"], repo, cwd=repo / "docs" / "deep") == [Path("docs/a.md")]
+    assert ingest.relative_to_root(
+        [repo / "docs" / "a.md"], repo, cwd=repo / "docs" / "deep"
+    ) == [Path("docs/a.md")]
 
 
 def test_a_path_outside_the_repository_is_refused(repo, tmp_path):
@@ -76,4 +81,6 @@ def test_a_path_outside_the_repository_is_refused(repo, tmp_path):
 
 
 def test_a_dot_dot_that_stays_inside_is_fine(repo):
-    assert ingest.relative_to_root([Path("../docs/a.md")], repo, cwd=repo / "docs") == [Path("docs/a.md")]
+    assert ingest.relative_to_root([Path("../docs/a.md")], repo, cwd=repo / "docs") == [
+        Path("docs/a.md")
+    ]

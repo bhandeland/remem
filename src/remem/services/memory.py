@@ -67,7 +67,10 @@ class CollectionTooLarge(Exception):
 
 
 def designate(
-    store: Store, owner_id: UUID, project: str | None, slug: str | None,
+    store: Store,
+    owner_id: UUID,
+    project: str | None,
+    slug: str | None,
     working_dir: str | None = None,
 ) -> None:
     """Point a project's memory export at a collection, or clear it.
@@ -174,7 +177,7 @@ def load_watermarks(directory: Path) -> dict[str, Watermark]:
     path = directory / WATERMARK_NAME
     try:
         raw = json.loads(path.read_text())
-    except (OSError, ValueError):
+    except OSError, ValueError:
         return {}
     if not isinstance(raw, dict):
         return {}
@@ -186,7 +189,7 @@ def load_watermarks(directory: Path) -> dict[str, Watermark]:
                 body_sha=row["body_sha"],
                 exported_at=row["exported_at"],
             )
-        except (TypeError, KeyError):
+        except TypeError, KeyError:
             continue
     return out
 
@@ -251,7 +254,7 @@ class Report:
 def _name_of(entry: Entry) -> str | None:
     for tag in entry.tags:
         if tag.startswith(MEM_TAG_PREFIX):
-            return tag[len(MEM_TAG_PREFIX):]
+            return tag[len(MEM_TAG_PREFIX) :]
     return None
 
 
@@ -289,7 +292,7 @@ def _mint_name(entry: Entry, taken: set[str]) -> str:
     # same entry gets the same name whichever of the pair is seen first.
     for width in (8, 16, 32):
         suffix = f"-{entry.id.hex[:width]}"
-        candidate = base[:MAX_NAME - len(suffix)] + suffix
+        candidate = base[: MAX_NAME - len(suffix)] + suffix
         if candidate not in taken:
             return candidate
     raise AssertionError(f"no unique name for {entry.id}")  # pragma: no cover
@@ -332,7 +335,9 @@ def _adopt_names(
             if not dry_run:
                 try:
                     entry = update(
-                        store, owner_id, entry.id,
+                        store,
+                        owner_id,
+                        entry.id,
                         # update() changes only the fields it is given and
                         # writes the same entry back. supersede() would mint a
                         # replacement and rewrite this entry's history for what
@@ -399,12 +404,11 @@ def _follow_renames(
     # source of a rename would re-tag an entry away from a file that is
     # sitting right there.
     missing = sorted(
-        name for name in entries
+        name
+        for name in entries
         if name not in files and name in marks and name not in unreadable
     )
-    arrivals = [
-        name for name in files if name not in entries and name not in marks
-    ]
+    arrivals = [name for name in files if name not in entries and name not in marks]
     if not missing or not arrivals:
         return
 
@@ -429,31 +433,37 @@ def _follow_renames(
         if len(candidates) > 1:
             # Two files with the same body, one missing name. Picking either
             # makes the entry follow a coin flip.
-            report.failures.append((
-                old,
-                f"looks renamed but {' and '.join(candidates)} are identical "
-                f"copies of it - rename cannot be followed, so nothing was "
-                f"re-tagged; delete one or re-sync once they differ",
-            ))
+            report.failures.append(
+                (
+                    old,
+                    f"looks renamed but {' and '.join(candidates)} are identical "
+                    f"copies of it - rename cannot be followed, so nothing was "
+                    f"re-tagged; delete one or re-sync once they differ",
+                )
+            )
             continue
         new = candidates[0]
         rivals = claimed_by[new]
         if len(rivals) > 1:
             # The mirror image: two entries whose watermarks hold the same
             # body, one new file. Same refusal, reported against each.
-            report.failures.append((
-                old,
-                f"looks renamed to {new}, but {' and '.join(sorted(rivals))} "
-                f"both match it - rename cannot be followed, so nothing was "
-                f"re-tagged",
-            ))
+            report.failures.append(
+                (
+                    old,
+                    f"looks renamed to {new}, but {' and '.join(sorted(rivals))} "
+                    f"both match it - rename cannot be followed, so nothing was "
+                    f"re-tagged",
+                )
+            )
             continue
 
         entry = entries[old]
         if not dry_run:
             try:
                 entry = update(
-                    store, owner_id, entry.id,
+                    store,
+                    owner_id,
+                    entry.id,
                     # update(), not supersede(), for the reason _adopt_names
                     # gives: the knowledge did not change, only the name it
                     # is filed under, and a replacement entry would rewrite
@@ -517,43 +527,68 @@ def sync_all(
     out: list[AllOutcome] = []
     for d in designations(store, owner_id):
         if d.working_dir is None:
-            out.append(AllOutcome(
-                d.project, d.collection,
-                skipped=(
-                    "no working directory recorded - re-run `remem memory "
-                    "designate` from the project's directory"
-                ),
-            ))
+            out.append(
+                AllOutcome(
+                    d.project,
+                    d.collection,
+                    skipped=(
+                        "no working directory recorded - re-run `remem memory "
+                        "designate` from the project's directory"
+                    ),
+                )
+            )
             continue
         cwd = Path(d.working_dir)
         if not cwd.is_dir():
-            out.append(AllOutcome(
-                d.project, d.collection,
-                skipped=f"{cwd} no longer exists",
-            ))
+            out.append(
+                AllOutcome(
+                    d.project,
+                    d.collection,
+                    skipped=f"{cwd} no longer exists",
+                )
+            )
             continue
         directory = resolve_directory(cwd)
         if directory is None:
-            out.append(AllOutcome(
-                d.project, d.collection,
-                skipped=f"no memory directory for {cwd}",
-            ))
+            out.append(
+                AllOutcome(
+                    d.project,
+                    d.collection,
+                    skipped=f"no memory directory for {cwd}",
+                )
+            )
             continue
         try:
             report = sync(
-                store, owner_id, project=d.project, directory=directory,
+                store,
+                owner_id,
+                project=d.project,
+                directory=directory,
                 dry_run=dry_run,
             )
-        except (NotDesignated, CollectionTooLarge, kb.CollectionNotFound,
-                OSError) as exc:
-            out.append(AllOutcome(
-                d.project, d.collection, directory=directory,
-                skipped=f"{type(exc).__name__}: {exc}",
-            ))
+        except (
+            NotDesignated,
+            CollectionTooLarge,
+            kb.CollectionNotFound,
+            OSError,
+        ) as exc:
+            out.append(
+                AllOutcome(
+                    d.project,
+                    d.collection,
+                    directory=directory,
+                    skipped=f"{type(exc).__name__}: {exc}",
+                )
+            )
             continue
-        out.append(AllOutcome(
-            d.project, d.collection, directory=directory, report=report,
-        ))
+        out.append(
+            AllOutcome(
+                d.project,
+                d.collection,
+                directory=directory,
+                report=report,
+            )
+        )
     return out
 
 
@@ -590,14 +625,19 @@ def sync(
     # The row is started before any file is read, so a process killed
     # partway leaves a started-and-unfinished row: "crashed", not "never
     # ran". That only holds because the caller's session is autocommit.
-    run = None if dry_run else store.start_memory_run(owner_id, project,
-                                                      trigger)
+    run = None if dry_run else store.start_memory_run(owner_id, project, trigger)
     report = Report()
     error: BaseException | None = None
     try:
-        return _sync_body(store, owner_id, project=project,
-                          directory=directory, dry_run=dry_run, slug=slug,
-                          report=report)
+        return _sync_body(
+            store,
+            owner_id,
+            project=project,
+            directory=directory,
+            dry_run=dry_run,
+            slug=slug,
+            report=report,
+        )
     except BaseException as exc:
         error = exc
         raise
@@ -611,10 +651,14 @@ def sync(
                 # run, not about one file.
                 failures.append({"name": "*", "reason": str(error)})
             store.finish_memory_run(
-                run.id, owner_id,
-                adopted=report.adopted, healed=report.healed,
-                edited=report.edited, regenerated=report.regenerated,
-                deleted=report.deleted, unchanged=report.unchanged,
+                run.id,
+                owner_id,
+                adopted=report.adopted,
+                healed=report.healed,
+                edited=report.edited,
+                regenerated=report.regenerated,
+                deleted=report.deleted,
+                unchanged=report.unchanged,
                 renamed=[[old, new] for old, new in report.renamed],
                 conflicts=list(report.conflicts),
                 sidecars=list(report.sidecars),
@@ -676,14 +720,24 @@ def _sync_body(
         # decide which memories exist.
         raise CollectionTooLarge(slug, kb.RESOLVE_LIMIT)
     entries = _adopt_names(
-        store, owner_id, resolved,
-        taken=set(files) | unreadable, report=report, dry_run=dry_run,
+        store,
+        owner_id,
+        resolved,
+        taken=set(files) | unreadable,
+        report=report,
+        dry_run=dry_run,
     )
     # Before the cases, not inside them: a rename is one movement that
     # `classify` can only see as two independent names.
     _follow_renames(
-        store, owner_id, entries=entries, files=files, marks=marks,
-        unreadable=unreadable, report=report, dry_run=dry_run,
+        store,
+        owner_id,
+        entries=entries,
+        files=files,
+        marks=marks,
+        unreadable=unreadable,
+        report=report,
+        dry_run=dry_run,
     )
 
     # --- classify and apply ---------------------------------------------
@@ -731,7 +785,8 @@ def _sync_body(
             report.adopted += 1
             if not dry_run:
                 new = remember(
-                    store, owner_id,
+                    store,
+                    owner_id,
                     title=mf.title or memory_file.title_from_name(name),
                     body=mf.body,
                     summary=mf.description,
@@ -766,7 +821,9 @@ def _sync_body(
                 continue
             try:
                 new = supersede(
-                    store, owner_id, entry.id,
+                    store,
+                    owner_id,
+                    entry.id,
                     title=mf.title or entry.title,
                     body=mf.body,
                     # `mf.description` is "" for a missing or blank
@@ -792,12 +849,14 @@ def _sync_body(
                 # this name, so the next sync retries the same supersede
                 # rather than silently dropping the edit. `remem update
                 # --summary` on the entry directly resolves it for good.
-                report.failures.append((
-                    name,
-                    "needs a summary before this edit can sync - "
-                    "run `remem update <id> --summary '...'` on the "
-                    "entry, then sync again",
-                ))
+                report.failures.append(
+                    (
+                        name,
+                        "needs a summary before this edit can sync - "
+                        "run `remem update <id> --summary '...'` on the "
+                        "entry, then sync again",
+                    )
+                )
                 continue
             report.edited += 1
             live[name] = new
@@ -938,9 +997,11 @@ def status(
             mark = marks.get(path.stem)
             try:
                 mf = memory_file.parse(
-                    path.read_text(), name=path.stem, title="",
+                    path.read_text(),
+                    name=path.stem,
+                    title="",
                 )
-            except (memory_file.MalformedMemoryFile, OSError):
+            except memory_file.MalformedMemoryFile, OSError:
                 out.stale += 1
                 continue
             if mark is None or mark.body_sha != memory_file.body_sha(mf.body):
@@ -968,11 +1029,12 @@ def render_run(run: MemoryRun | None) -> str:
         return "  never synced"
     when = run.started_at.strftime("%Y-%m-%d %H:%M") if run.started_at else "?"
     if run.finished_at is None:
-        return (f"  last sync {when} did not finish - the process was "
-                f"killed partway")
-    counts = (f"{run.adopted} adopted, {run.edited} edited, "
-              f"{run.regenerated} regenerated, {run.deleted} deleted, "
-              f"{len(run.renamed)} renamed, {run.unchanged} unchanged")
+        return f"  last sync {when} did not finish - the process was killed partway"
+    counts = (
+        f"{run.adopted} adopted, {run.edited} edited, "
+        f"{run.regenerated} regenerated, {run.deleted} deleted, "
+        f"{len(run.renamed)} renamed, {run.unchanged} unchanged"
+    )
     trouble = []
     if run.conflicts:
         trouble.append(f"{len(run.conflicts)} conflict(s)")
@@ -1020,14 +1082,11 @@ def advisories(store: Store, owner_id: UUID) -> list[str]:
         run = store.latest_memory_run(owner_id, d.project)
 
         if run is None:
-            lines.append(
-                f"{d.project}: designated but never synced - {pointer}"
-            )
+            lines.append(f"{d.project}: designated but never synced - {pointer}")
             continue
         if run.finished_at is None:
             lines.append(
-                f"{d.project}: the last memory sync did not finish - "
-                f"{pointer}"
+                f"{d.project}: the last memory sync did not finish - {pointer}"
             )
             continue
 
@@ -1066,7 +1125,7 @@ def _as_file(
     type_ = None
     for tag in entry.tags:
         if tag.startswith("type:"):
-            type_ = tag[len("type:"):]
+            type_ = tag[len("type:") :]
     if type_ is None and source is not None:
         # Same footing as `extra`, and for the same reason. The tag is
         # minted at adoption from what parse() could see, so an entry

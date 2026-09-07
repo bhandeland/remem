@@ -221,9 +221,7 @@ class CursorAdapter:
         path.write_text(json.dumps(document, indent=2) + "\n")
 
         report = InstallReport(agent=self.name)
-        report.actions.append(
-            f"Merged {len(ENTRIES)} hook entries into {path}"
-        )
+        report.actions.append(f"Merged {len(ENTRIES)} hook entries into {path}")
         if backup is not None:
             # A .bak nobody is told about is barely a safety net.
             report.actions.append(f"Backed up the previous file to {backup}")
@@ -277,7 +275,9 @@ class CursorAdapter:
         genuinely redirects the file.
         """
         from remem.agents.cursor.install import (
-            HOOK_ENTRIES, LEGACY_COMMANDS, hooks_path,
+            HOOK_ENTRIES,
+            LEGACY_COMMANDS,
+            hooks_path,
         )
 
         home = home or Path.home()

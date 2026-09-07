@@ -55,7 +55,7 @@ def state_path() -> Path:
 def _load(path: Path) -> dict:
     try:
         data = json.loads(path.read_text())
-    except (OSError, ValueError):
+    except OSError, ValueError:
         # Unreadable or corrupt reads as "never warned". Both directions of
         # this file fail toward warning rather than toward silence.
         return {}
@@ -67,7 +67,7 @@ def read_last_warned(session_id: str, path: Path | None = None) -> int:
     record = sessions.get(session_id) or {}
     try:
         return int(record.get("count", 0))
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return 0
 
 

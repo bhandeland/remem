@@ -61,18 +61,19 @@ def _designated_store(env) -> tuple[PostgresStore, psycopg.Connection]:
     store = PostgresStore(conn)
     owner = store.ensure_principal("brandon")
     kb.create(
-        store, owner.id, slug="proj-memory", title="Memory",
-        project=PROJECT, query=CollectionQuery(project=PROJECT),
+        store,
+        owner.id,
+        slug="proj-memory",
+        title="Memory",
+        project=PROJECT,
+        query=CollectionQuery(project=PROJECT),
     )
     memory.designate(store, owner.id, PROJECT, "proj-memory")
     return store, conn
 
 
 def _memory_directory(env) -> Path:
-    return (
-        Path(env["CLAUDE_CONFIG_DIR"]) / "projects" / slug_for(Path.cwd())
-        / "memory"
-    )
+    return Path(env["CLAUDE_CONFIG_DIR"]) / "projects" / slug_for(Path.cwd()) / "memory"
 
 
 @pytest.fixture
@@ -89,8 +90,12 @@ def memory_dir_with_one_stray(env):
     (directory / "a-fact.md").write_text(
         memory_file.render(
             memory_file.MemoryFile(
-                name="a-fact", title="a-fact", description="a hook",
-                type="project", body="the body\n", extra={},
+                name="a-fact",
+                title="a-fact",
+                description="a hook",
+                type="project",
+                body="the body\n",
+                extra={},
             )
         )
     )
@@ -105,9 +110,14 @@ def memory_dir_in_conflict(env):
     store, conn = _designated_store(env)
     owner = store.ensure_principal("brandon")
     remember(
-        store, owner.id,
-        title="A fact", body="from remem\n", kind=Kind.NOTE,
-        project=PROJECT, tags=["mem:a-fact"], origin=Origin.AGENT,
+        store,
+        owner.id,
+        title="A fact",
+        body="from remem\n",
+        kind=Kind.NOTE,
+        project=PROJECT,
+        tags=["mem:a-fact"],
+        origin=Origin.AGENT,
     )
     conn.commit()
     conn.close()
@@ -117,8 +127,12 @@ def memory_dir_in_conflict(env):
     (directory / "a-fact.md").write_text(
         memory_file.render(
             memory_file.MemoryFile(
-                name="a-fact", title="a-fact", description="a hook",
-                type="project", body="from claude\n", extra={},
+                name="a-fact",
+                title="a-fact",
+                description="a hook",
+                type="project",
+                body="from claude\n",
+                extra={},
             )
         )
     )
@@ -182,9 +196,7 @@ def test_designate_none_still_clears(env):
     conn.close()
 
 
-def test_a_dry_run_conflict_does_not_promise_a_sidecar(
-    env, memory_dir_in_conflict
-):
+def test_a_dry_run_conflict_does_not_promise_a_sidecar(env, memory_dir_in_conflict):
     result = runner.invoke(app, ["memory", "sync", "--dry-run"], env=env)
 
     assert result.exit_code == 1
@@ -212,8 +224,12 @@ def test_designate_records_the_working_directory(env):
     store = PostgresStore(conn)
     owner = store.ensure_principal("brandon")
     kb.create(
-        store, owner.id, slug="proj-memory", title="Memory",
-        project=PROJECT, query=CollectionQuery(project=PROJECT),
+        store,
+        owner.id,
+        slug="proj-memory",
+        title="Memory",
+        project=PROJECT,
+        query=CollectionQuery(project=PROJECT),
     )
     conn.commit()
     conn.close()
@@ -245,7 +261,9 @@ def test_designate_refuses_a_project_that_is_not_this_directory(env):
 
 def test_sync_all_and_project_are_mutually_exclusive(env):
     result = runner.invoke(
-        app, ["memory", "sync", "--all", "--project", "x"], env=env,
+        app,
+        ["memory", "sync", "--all", "--project", "x"],
+        env=env,
     )
     assert result.exit_code != 0
 
@@ -270,9 +288,14 @@ def test_sync_all_syncs_a_designation_that_has_a_directory(
     env, memory_dir_with_one_stray
 ):
     # Re-designate through the CLI so the working directory is recorded.
-    assert runner.invoke(
-        app, ["memory", "designate", "proj-memory"], env=env,
-    ).exit_code == 0
+    assert (
+        runner.invoke(
+            app,
+            ["memory", "designate", "proj-memory"],
+            env=env,
+        ).exit_code
+        == 0
+    )
     result = runner.invoke(app, ["memory", "sync", "--all"], env=env)
     assert result.exit_code == 0, result.output
     assert "1 adopted" in result.output

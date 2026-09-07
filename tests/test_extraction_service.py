@@ -88,10 +88,11 @@ class FakeExtractor:
         return list(self.entries)
 
 
-def an_entry(title="pgvector needs no index yet", body="Under 10k rows a "
-             "sequential scan beats an ivfflat index."):
-    return ExtractedEntry(title=title, body=body, kind=Kind.NOTE,
-                          tags=["postgres"])
+def an_entry(
+    title="pgvector needs no index yet",
+    body="Under 10k rows a sequential scan beats an ivfflat index.",
+):
+    return ExtractedEntry(title=title, body=body, kind=Kind.NOTE, tags=["postgres"])
 
 
 # --- the round trip ---------------------------------------------------------
@@ -107,12 +108,15 @@ def test_an_extracted_rule_is_written_without_a_summary(store, owner):
     losing the note written earlier in the same batch along with it."""
     record.enable(store, owner.id, "remem")
     events = three_events(store, owner)
-    rule = ExtractedEntry(title="Always lint before committing",
-                          body="the case for it", kind=Kind.RULE, tags=[])
+    rule = ExtractedEntry(
+        title="Always lint before committing",
+        body="the case for it",
+        kind=Kind.RULE,
+        tags=[],
+    )
     extractor = FakeExtractor([an_entry(), rule])
 
-    report = extraction.process(store, owner.id, extractor,
-                                idle_seconds=IDLE, limit=10)
+    report = extraction.process(store, owner.id, extractor, idle_seconds=IDLE, limit=10)
 
     assert (report.claimed, report.succeeded, report.failed) == (1, 1, 0)
     assert report.entries_written == 2
@@ -122,8 +126,10 @@ def test_an_extracted_rule_is_written_without_a_summary(store, owner):
             Query(project="remem", origins=[Origin.EXTRACTED], limit=10), owner.id
         )
     }
-    assert set(written) == {"pgvector needs no index yet",
-                            "Always lint before committing"}
+    assert set(written) == {
+        "pgvector needs no index yet",
+        "Always lint before committing",
+    }
     assert written["Always lint before committing"].kind is Kind.RULE
     assert written["Always lint before committing"].summary is None
 
@@ -133,8 +139,7 @@ def test_processing_a_quiet_session_writes_entries_and_provenance(store, owner):
     events = three_events(store, owner)
     extractor = FakeExtractor([an_entry()])
 
-    report = extraction.process(store, owner.id, extractor,
-                                idle_seconds=IDLE, limit=10)
+    report = extraction.process(store, owner.id, extractor, idle_seconds=IDLE, limit=10)
 
     assert (report.claimed, report.succeeded, report.entries_written) == (1, 1, 1)
     assert report.failed == 0
@@ -162,7 +167,9 @@ def test_the_extractor_is_handed_events_not_a_transcript(store, owner):
     assert len(extractor.seen) == 1
     assert [e.id for e in extractor.seen[0]] == [e.id for e in events]
     assert [e.payload for e in extractor.seen[0]] == [
-        {"command": "ls 0"}, {"command": "ls 1"}, {"command": "ls 2"}
+        {"command": "ls 0"},
+        {"command": "ls 1"},
+        {"command": "ls 2"},
     ]
 
 
@@ -173,14 +180,16 @@ def test_a_second_run_extracts_nothing_new(store, owner):
     three_events(store, owner)
     extractor = FakeExtractor([an_entry()])
 
-    first = extraction.process(store, owner.id, extractor,
-                               idle_seconds=IDLE, limit=10)
-    second = extraction.process(store, owner.id, extractor,
-                                idle_seconds=IDLE, limit=10)
+    first = extraction.process(store, owner.id, extractor, idle_seconds=IDLE, limit=10)
+    second = extraction.process(store, owner.id, extractor, idle_seconds=IDLE, limit=10)
 
     assert first.claimed == 1
-    assert (second.claimed, second.succeeded, second.failed,
-            second.entries_written) == (0, 0, 0, 0)
+    assert (
+        second.claimed,
+        second.succeeded,
+        second.failed,
+        second.entries_written,
+    ) == (0, 0, 0, 0)
     assert len(extractor.seen) == 1
 
 
@@ -188,13 +197,10 @@ def test_a_session_still_being_worked_in_is_left_alone(store, owner):
     """The idle window is the whole trigger: extracting a live session would
     read half a conversation and then never look again."""
     record.enable(store, owner.id, "remem")
-    record.record(
-        store, owner.id, a_harness_event(occurred_at=NOW), "claude-code"
-    )
+    record.record(store, owner.id, a_harness_event(occurred_at=NOW), "claude-code")
     extractor = FakeExtractor([an_entry()])
 
-    report = extraction.process(store, owner.id, extractor,
-                                idle_seconds=IDLE, limit=10)
+    report = extraction.process(store, owner.id, extractor, idle_seconds=IDLE, limit=10)
 
     assert report.claimed == 0
     assert extractor.seen == []
@@ -219,8 +225,7 @@ def test_a_resumed_session_extracts_only_its_new_events(store, owner):
         for i in range(2)
     ]
 
-    report = extraction.process(store, owner.id, extractor,
-                                idle_seconds=IDLE, limit=10)
+    report = extraction.process(store, owner.id, extractor, idle_seconds=IDLE, limit=10)
 
     assert report.claimed == 1
     assert [e.id for e in extractor.seen[1]] == [e.id for e in later]
@@ -235,8 +240,9 @@ def test_an_extractor_that_raises_fails_the_job_and_records_why(store, owner):
         def extract(self, events, project, known_titles=None):
             return parse_entries(prose)
 
-    report = extraction.process(store, owner.id, ProseExtractor(),
-                                idle_seconds=IDLE, limit=10)
+    report = extraction.process(
+        store, owner.id, ProseExtractor(), idle_seconds=IDLE, limit=10
+    )
 
     assert (report.claimed, report.succeeded, report.failed) == (1, 0, 1)
     [job] = store.recent_failed_extract_jobs(owner.id)
@@ -269,7 +275,8 @@ def _all_jobs(conn, store, owner):
     than adding a method nothing in production wants.
     """
     ids = [
-        r[0] for r in conn.execute(
+        r[0]
+        for r in conn.execute(
             "select id from extract_jobs where owner_id = %s order by created_at",
             (owner.id,),
         ).fetchall()
@@ -277,9 +284,7 @@ def _all_jobs(conn, store, owner):
     return [store.get_extract_job(i, owner.id) for i in ids]
 
 
-def test_the_attempt_cap_stops_a_job_and_process_job_overrides_it(
-    conn, store, owner
-):
+def test_the_attempt_cap_stops_a_job_and_process_job_overrides_it(conn, store, owner):
     """A job that can never succeed must stop being retried and say so -
     and `--job ID` is the only way back for one that has given up."""
     record.enable(store, owner.id, "remem")
@@ -295,9 +300,9 @@ def test_the_attempt_cap_stops_a_job_and_process_job_overrides_it(
     # The extractor stopped being called once the cap was passed.
     assert len(boom.seen) == extraction.MAX_ATTEMPTS
 
-    report = extraction.process_job(store, owner.id, job.id,
-                                    FakeExtractor([an_entry()]))
-
+    report = extraction.process_job(
+        store, owner.id, job.id, FakeExtractor([an_entry()])
+    )
 
     assert (report.claimed, report.succeeded, report.entries_written) == (1, 1, 1)
     assert store.get_extract_job(job.id, owner.id).status is JobStatus.DONE
@@ -320,8 +325,7 @@ def test_a_session_that_gave_up_leaves_the_backlog(conn, store, owner):
     assert job.status is JobStatus.FAILED
     attempts_at_giving_up = job.attempts
 
-    report = extraction.process(store, owner.id, boom,
-                                idle_seconds=IDLE, limit=10)
+    report = extraction.process(store, owner.id, boom, idle_seconds=IDLE, limit=10)
 
     assert (report.claimed, report.failed, report.succeeded) == (0, 0, 0)
     after = store.get_extract_job(job.id, owner.id)
@@ -342,8 +346,7 @@ def test_a_dead_session_does_not_crowd_out_a_live_one(conn, store, owner):
     three_events(store, owner, session_id="live", base=NOW - timedelta(hours=2))
     good = FakeExtractor([an_entry()])
 
-    report = extraction.process(store, owner.id, good, idle_seconds=IDLE,
-                                limit=1)
+    report = extraction.process(store, owner.id, good, idle_seconds=IDLE, limit=1)
 
     assert (report.claimed, report.succeeded, report.entries_written) == (1, 1, 1)
     assert [e.session_id for e in good.seen[0]] == ["live", "live", "live"]
@@ -359,8 +362,7 @@ def test_process_job_rejects_another_owners_job(conn, store, owner):
     other = store.ensure_principal("someone-else")
     record.enable(store, other.id, "remem")
     three_events(store, other)
-    extraction.process(store, other.id, FakeExtractor([]),
-                       idle_seconds=IDLE, limit=10)
+    extraction.process(store, other.id, FakeExtractor([]), idle_seconds=IDLE, limit=10)
     [job] = _all_jobs(conn, store, other)
 
     with pytest.raises(extraction.ExtractJobNotFound):
@@ -374,22 +376,27 @@ def test_an_entry_the_project_already_holds_is_not_rewritten(store, owner):
     from remem.services.write import remember
 
     record.enable(store, owner.id, "remem")
-    remember(store, owner.id, title="Pool sizing", body="the user wrote this",
-             project="remem", origin=Origin.HUMAN)
+    remember(
+        store,
+        owner.id,
+        title="Pool sizing",
+        body="the user wrote this",
+        project="remem",
+        origin=Origin.HUMAN,
+    )
     three_events(store, owner, session_id="a")
-    three_events(store, owner, session_id="b",
-                 base=NOW - timedelta(hours=3))
+    three_events(store, owner, session_id="b", base=NOW - timedelta(hours=3))
     entry = ExtractedEntry(title="Pool sizing", body="extracted", kind=Kind.NOTE)
 
-    report = extraction.process(store, owner.id, FakeExtractor([entry]),
-                                idle_seconds=IDLE, limit=10)
+    report = extraction.process(
+        store, owner.id, FakeExtractor([entry]), idle_seconds=IDLE, limit=10
+    )
 
     # Two sessions, one entry each - and the second is suppressed by the
     # first, while the human's entry with the same title survives untouched.
     assert report.claimed == 2
     assert report.entries_written == 1
-    titles = [h.entry.title for h in store.search(Query(text="Pool sizing"),
-                                                  owner.id)]
+    titles = [h.entry.title for h in store.search(Query(text="Pool sizing"), owner.id)]
     assert titles.count("Pool sizing") == 2
 
 
@@ -397,12 +404,14 @@ def test_dedup_does_not_block_the_same_title_in_another_project(store, owner):
     record.enable(store, owner.id, "alpha")
     record.enable(store, owner.id, "beta")
     three_events(store, owner, project="alpha", session_id="a")
-    three_events(store, owner, project="beta", session_id="b",
-                 base=NOW - timedelta(hours=3))
+    three_events(
+        store, owner, project="beta", session_id="b", base=NOW - timedelta(hours=3)
+    )
     entry = ExtractedEntry(title="Pool sizing", body="b", kind=Kind.NOTE)
 
-    report = extraction.process(store, owner.id, FakeExtractor([entry]),
-                                idle_seconds=IDLE, limit=10)
+    report = extraction.process(
+        store, owner.id, FakeExtractor([entry]), idle_seconds=IDLE, limit=10
+    )
 
     assert report.entries_written == 2
 
@@ -413,10 +422,22 @@ def test_the_extractor_is_told_what_the_project_already_holds(store, owner):
     extractor most needs to see."""
     from remem.services.write import remember
 
-    remember(store, owner.id, title="A rule the user wrote", body="b",
-             project="remem", origin=Origin.HUMAN)
-    remember(store, owner.id, title="An earlier extraction", body="b",
-             project="remem", origin=Origin.EXTRACTED)
+    remember(
+        store,
+        owner.id,
+        title="A rule the user wrote",
+        body="b",
+        project="remem",
+        origin=Origin.HUMAN,
+    )
+    remember(
+        store,
+        owner.id,
+        title="An earlier extraction",
+        body="b",
+        project="remem",
+        origin=Origin.EXTRACTED,
+    )
     record.enable(store, owner.id, "remem")
     three_events(store, owner)
     extractor = FakeExtractor([])
@@ -438,8 +459,7 @@ def test_an_extractor_without_known_titles_support_still_works(store, owner):
         def extract(self, events, project):
             return []
 
-    report = extraction.process(store, owner.id, TwoArg(),
-                                idle_seconds=IDLE, limit=10)
+    report = extraction.process(store, owner.id, TwoArg(), idle_seconds=IDLE, limit=10)
     assert (report.claimed, report.succeeded) == (1, 1)
 
 
@@ -451,8 +471,7 @@ def test_a_long_raw_output_is_truncated_but_keeps_the_reason(store, owner):
         def extract(self, events, project, known_titles=None):
             return parse_entries("z" * 5000)
 
-    extraction.process(store, owner.id, ProseExtractor(),
-                       idle_seconds=IDLE, limit=10)
+    extraction.process(store, owner.id, ProseExtractor(), idle_seconds=IDLE, limit=10)
 
     [job] = store.recent_failed_extract_jobs(owner.id)
     assert "no JSON array" in job.error
@@ -476,8 +495,11 @@ def test_a_write_that_explodes_is_recorded_not_raised(store, owner):
             raise RuntimeError("connection lost")
 
     report = extraction.process(
-        ExplodingStore(store), owner.id, FakeExtractor([an_entry()]),
-        idle_seconds=IDLE, limit=10,
+        ExplodingStore(store),
+        owner.id,
+        FakeExtractor([an_entry()]),
+        idle_seconds=IDLE,
+        limit=10,
     )
 
     assert (report.claimed, report.failed) == (1, 1)
@@ -500,28 +522,36 @@ def test_one_failing_session_does_not_stop_the_others(store, owner):
                 raise ExtractionFailed("claude exploded", "raw")
             return [an_entry()]
 
-    report = extraction.process(store, owner.id, HalfBroken(),
-                                idle_seconds=IDLE, limit=10)
+    report = extraction.process(
+        store, owner.id, HalfBroken(), idle_seconds=IDLE, limit=10
+    )
 
     assert (report.claimed, report.succeeded, report.failed) == (2, 1, 1)
     assert report.entries_written == 1
 
 
 def test_process_on_an_idle_store_reports_nothing_claimed(store, owner):
-    report = extraction.process(store, owner.id, FakeExtractor([]),
-                                idle_seconds=IDLE, limit=10)
-    assert (report.claimed, report.succeeded, report.failed,
-            report.entries_written) == (0, 0, 0, 0)
+    report = extraction.process(
+        store, owner.id, FakeExtractor([]), idle_seconds=IDLE, limit=10
+    )
+    assert (
+        report.claimed,
+        report.succeeded,
+        report.failed,
+        report.entries_written,
+    ) == (0, 0, 0, 0)
 
 
 def test_the_limit_bounds_one_run(store, owner):
     record.enable(store, owner.id, "remem")
     for i, session in enumerate(("a", "b", "c")):
-        three_events(store, owner, session_id=session,
-                     base=NOW - timedelta(hours=2 + i))
+        three_events(
+            store, owner, session_id=session, base=NOW - timedelta(hours=2 + i)
+        )
 
-    report = extraction.process(store, owner.id, FakeExtractor([]),
-                                idle_seconds=IDLE, limit=2)
+    report = extraction.process(
+        store, owner.id, FakeExtractor([]), idle_seconds=IDLE, limit=2
+    )
 
     assert report.claimed == 2
 
@@ -550,8 +580,11 @@ def test_repeated_success_never_exhausts_the_attempt_budget(conn, store, owner):
             "claude-code",
         )
         report = extraction.process(
-            store, owner.id, FakeExtractor([an_entry(title=f"round {i}")]),
-            idle_seconds=IDLE, limit=10,
+            store,
+            owner.id,
+            FakeExtractor([an_entry(title=f"round {i}")]),
+            idle_seconds=IDLE,
+            limit=10,
         )
         assert (report.claimed, report.succeeded, report.failed) == (1, 1, 0), (
             f"round {i}: {report}"
@@ -573,8 +606,9 @@ def test_a_watermark_survives_a_later_failure_on_the_same_session(store, owner):
     """
     record.enable(store, owner.id, "remem")
     first = three_events(store, owner, base=NOW - timedelta(hours=4))
-    extraction.process(store, owner.id, FakeExtractor([an_entry()]),
-                       idle_seconds=IDLE, limit=10)
+    extraction.process(
+        store, owner.id, FakeExtractor([an_entry()]), idle_seconds=IDLE, limit=10
+    )
 
     later = [
         record.record(
@@ -589,8 +623,7 @@ def test_a_watermark_survives_a_later_failure_on_the_same_session(store, owner):
         for i in range(2)
     ]
     boom = FakeExtractor(error=RuntimeError("claude exploded"))
-    report = extraction.process(store, owner.id, boom, idle_seconds=IDLE,
-                                limit=10)
+    report = extraction.process(store, owner.id, boom, idle_seconds=IDLE, limit=10)
     assert report.failed == 1
 
     [awaiting] = store.sessions_awaiting_extraction(owner.id, IDLE, 10)

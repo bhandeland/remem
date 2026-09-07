@@ -27,10 +27,17 @@ def _designate(store, owner_id, project, directory):
     CollectionQuery, because an empty query matches nothing forever. This
     mirrors `_designated` in tests/test_memory_sync.py.
     """
-    kb.create(store, owner_id, slug="mem", title="Memory", project=project,
-              query=CollectionQuery(project=project))
-    memory_service.designate(store, owner_id, project, "mem",
-                             working_dir=str(directory))
+    kb.create(
+        store,
+        owner_id,
+        slug="mem",
+        title="Memory",
+        project=project,
+        query=CollectionQuery(project=project),
+    )
+    memory_service.designate(
+        store, owner_id, project, "mem", working_dir=str(directory)
+    )
 
 
 def test_a_dry_run_records_nothing(store, tmp_path):
@@ -38,8 +45,7 @@ def test_a_dry_run_records_nothing(store, tmp_path):
     owner = store.ensure_principal("run-dry")
     _designate(store, owner.id, "p", tmp_path)
 
-    memory_service.sync(store, owner.id, project="p", directory=tmp_path,
-                        dry_run=True)
+    memory_service.sync(store, owner.id, project="p", directory=tmp_path, dry_run=True)
 
     assert store.latest_memory_run(owner.id, "p") is None
 
@@ -61,8 +67,9 @@ def test_the_trigger_is_recorded_as_given(store, tmp_path):
     owner = store.ensure_principal("run-auto")
     _designate(store, owner.id, "p", tmp_path)
 
-    memory_service.sync(store, owner.id, project="p", directory=tmp_path,
-                        trigger=MemoryTrigger.AUTO)
+    memory_service.sync(
+        store, owner.id, project="p", directory=tmp_path, trigger=MemoryTrigger.AUTO
+    )
 
     assert store.latest_memory_run(owner.id, "p").trigger is MemoryTrigger.AUTO
 
@@ -71,7 +78,8 @@ def test_an_exception_is_recorded_and_re_raised(store, tmp_path, monkeypatch):
     owner = store.ensure_principal("run-boom")
     _designate(store, owner.id, "p", tmp_path)
     monkeypatch.setattr(
-        memory_service, "load_watermarks",
+        memory_service,
+        "load_watermarks",
         lambda directory: (_ for _ in ()).throw(OSError("disk gone")),
     )
 

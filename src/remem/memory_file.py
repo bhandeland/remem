@@ -123,8 +123,8 @@ def parse(text: str, *, name: str, title: str) -> MemoryFile:
     end = text.find("\n---\n", 4)
     if end == -1:
         raise MalformedMemoryFile("unterminated frontmatter")
-    head = text[4:end + 1]
-    body = text[end + len("\n---\n"):]
+    head = text[4 : end + 1]
+    body = text[end + len("\n---\n") :]
 
     fields: dict[str, str] = {}
     # Metadata keys other than `type`, in the order they appeared. remem
@@ -209,9 +209,7 @@ def render(mf: MemoryFile) -> str:
     return "\n".join(lines) + "\n" + mf.body
 
 
-def render_index(
-    files: list[MemoryFile], carried: dict[str, str] | None = None
-) -> str:
+def render_index(files: list[MemoryFile], carried: dict[str, str] | None = None) -> str:
     """Sorted by filename. Any deterministic order would do; the requirement
     is only that it not depend on iteration order, because an index that
     reshuffles itself makes every sync look like a change.
@@ -222,8 +220,10 @@ def render_index(
     unparseable does not also jump to the bottom of the index.
     """
     rows = [
-        (f"{mf.name}.md",
-         f"- [{mf.title}]({mf.name}.md){INDEX_SEPARATOR}{mf.description}")
+        (
+            f"{mf.name}.md",
+            f"- [{mf.title}]({mf.name}.md){INDEX_SEPARATOR}{mf.description}",
+        )
         for mf in files
     ]
     rows += list((carried or {}).items())

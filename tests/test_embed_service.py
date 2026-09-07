@@ -42,8 +42,15 @@ def store(conn):
 
 def _entries(store, owner_id, n):
     return [
-        store.put_entry(Entry(id=new_id(), kind=Kind.NOTE, title=f"t{i}",
-                              body=f"body {i}", owner_id=owner_id))
+        store.put_entry(
+            Entry(
+                id=new_id(),
+                kind=Kind.NOTE,
+                title=f"t{i}",
+                body=f"body {i}",
+                owner_id=owner_id,
+            )
+        )
         for i in range(n)
     ]
 
@@ -86,8 +93,15 @@ def test_embeds_title_and_body_together(store):
     # embedding makes "config command" fail to match an entry titled exactly
     # that. Both, joined, or the tier misses its most obvious cases.
     owner = store.ensure_principal("embed-text")
-    store.put_entry(Entry(id=new_id(), kind=Kind.NOTE, title="the title",
-                          body="the body", owner_id=owner.id))
+    store.put_entry(
+        Entry(
+            id=new_id(),
+            kind=Kind.NOTE,
+            title="the title",
+            body="the body",
+            owner_id=owner.id,
+        )
+    )
     embedder = FakeEmbedder()
 
     backfill(store, owner.id, embedder)
@@ -112,8 +126,7 @@ def test_max_entries_bounds_the_run(store):
     owner = store.ensure_principal("embed-bounded")
     _entries(store, owner.id, 5)
 
-    result = backfill(store, owner.id, FakeEmbedder(), batch_size=2,
-                      max_entries=3)
+    result = backfill(store, owner.id, FakeEmbedder(), batch_size=2, max_entries=3)
 
     assert result.embedded == 3
 
@@ -147,10 +160,13 @@ def test_a_second_embed_run_does_nothing_while_the_lock_is_held(
 
     holder = psycopg.connect(live_dsn)
     try:
-        assert holder.execute(
-            "select pg_try_advisory_lock(hashtext('embed'), hashtext(%s))",
-            (str(owner.id),),
-        ).fetchone()[0] is True
+        assert (
+            holder.execute(
+                "select pg_try_advisory_lock(hashtext('embed'), hashtext(%s))",
+                (str(owner.id),),
+            ).fetchone()[0]
+            is True
+        )
 
         result = CliRunner().invoke(app, ["embed"])
 

@@ -24,7 +24,9 @@ def _init_repo(path: Path) -> None:
     to branch from.
     """
     subprocess.run(["git", "init", "-q", str(path)], check=True)
-    subprocess.run(["git", "-C", str(path), "config", "user.email", "a@b.c"], check=True)
+    subprocess.run(
+        ["git", "-C", str(path), "config", "user.email", "a@b.c"], check=True
+    )
     subprocess.run(["git", "-C", str(path), "config", "user.name", "a"], check=True)
     subprocess.run(
         ["git", "-C", str(path), "commit", "-q", "-m", "init", "--allow-empty"],
@@ -122,7 +124,17 @@ def test_exclude_in_a_worktree_writes_to_the_shared_git_dir(tmp_path):
     _init_repo(main)
     worktree = tmp_path / "wt"
     subprocess.run(
-        ["git", "-C", str(main), "worktree", "add", "-q", str(worktree), "-b", "wtbranch"],
+        [
+            "git",
+            "-C",
+            str(main),
+            "worktree",
+            "add",
+            "-q",
+            str(worktree),
+            "-b",
+            "wtbranch",
+        ],
         check=True,
     )
     assert (worktree / ".git").is_file()

@@ -16,6 +16,7 @@ BODY = "## Done\nx\n\n## In flight\n\n## Next steps\n\n## Gotchas\n"
 @pytest.fixture
 def live(live_dsn, monkeypatch, tmp_path):
     import psycopg
+
     with psycopg.connect(live_dsn) as c:
         migrate(c)
         c.commit()
@@ -23,27 +24,36 @@ def live(live_dsn, monkeypatch, tmp_path):
     # every path. Pointed at this live test database they outlive the test
     # and race conftest's truncate-cascade for table locks - the same
     # deadlock test_hook_context_cli.py's env fixture stubs against.
-    monkeypatch.setattr("remem.agents.claude_code.hook.spawn_process",
-                         lambda env: False)
-    monkeypatch.setattr("remem.agents.claude_code.hook.spawn_ingest",
-                         lambda env: False)
-    return {"REMEM_DSN": live_dsn, "REMEM_USER_ID": "brandon",
-            "REMEM_CONFIG": str(tmp_path / "none.toml")}
+    monkeypatch.setattr(
+        "remem.agents.claude_code.hook.spawn_process", lambda env: False
+    )
+    monkeypatch.setattr("remem.agents.claude_code.hook.spawn_ingest", lambda env: False)
+    return {
+        "REMEM_DSN": live_dsn,
+        "REMEM_USER_ID": "brandon",
+        "REMEM_CONFIG": str(tmp_path / "none.toml"),
+    }
 
 
 def _seed(dsn, *, with_kb, with_handoff, project="remem"):
     import psycopg
+
     with psycopg.connect(dsn) as c:
         store = PostgresStore(c)
         owner = store.ensure_principal("brandon")
         if with_kb:
-            kb.create(store, owner.id, slug=project, title=project,
-                      query=CollectionQuery(project=project))
-            write.remember(store, owner.id, title="A note", body="body",
-                           project=project)
+            kb.create(
+                store,
+                owner.id,
+                slug=project,
+                title=project,
+                query=CollectionQuery(project=project),
+            )
+            write.remember(
+                store, owner.id, title="A note", body="body", project=project
+            )
         if with_handoff:
-            handoff.write(store, owner.id, project=project, topic="ci",
-                          body=BODY)
+            handoff.write(store, owner.id, project=project, topic="ci", body=BODY)
         c.commit()
 
 
@@ -55,6 +65,7 @@ def _payload(cwd):
 def repo(tmp_path):
     """A real git repository, since the project comes from git, not the dir."""
     import subprocess
+
     d = tmp_path / "remem"
     d.mkdir()
     subprocess.run(["git", "init", "-q"], cwd=d, check=True)

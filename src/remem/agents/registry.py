@@ -17,8 +17,7 @@ def discover() -> dict[str, type]:
             found[ep.name] = ep.load()
         except Exception as exc:  # a broken third-party adapter must not break remem
             warnings.warn(
-                f"remem agent adapter '{ep.name}' ({ep.value}) failed to load: "
-                f"{exc!r}",
+                f"remem agent adapter '{ep.name}' ({ep.value}) failed to load: {exc!r}",
                 stacklevel=2,
             )
             continue

@@ -53,9 +53,7 @@ def test_spawn_process_returns_false_when_remem_is_missing(monkeypatch):
     assert hook.spawn_process({}) is False
 
 
-def test_session_start_still_prints_nothing_when_spawning_fails(
-    monkeypatch, capsys
-):
+def test_session_start_still_prints_nothing_when_spawning_fails(monkeypatch, capsys):
     def boom(*a, **k):
         raise OSError("no processes")
 

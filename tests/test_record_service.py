@@ -47,9 +47,7 @@ def a_harness_event(**kw):
 
 def test_nothing_is_recorded_for_a_project_that_did_not_opt_in(store, owner):
     assert record.record(store, owner.id, a_harness_event(), "claude-code") is None
-    assert store.events_for_session(
-        owner.id, "remem", "claude-code", "s1"
-    ) == []
+    assert store.events_for_session(owner.id, "remem", "claude-code", "s1") == []
 
 
 def test_an_opted_in_project_records(store, owner):
@@ -77,13 +75,15 @@ def test_an_event_with_no_project_is_refused(store, owner):
     the gate - or attributed to a guess. Refusing is the only honest answer.
     """
     record.enable(store, owner.id, "remem")
-    assert record.record(
-        store, owner.id, a_harness_event(project=None), "claude-code"
-    ) is None
+    assert (
+        record.record(store, owner.id, a_harness_event(project=None), "claude-code")
+        is None
+    )
 
 
 def test_the_opt_in_is_per_project_not_global(store, owner):
     record.enable(store, owner.id, "remem")
-    assert record.record(
-        store, owner.id, a_harness_event(project="other"), "claude-code"
-    ) is None
+    assert (
+        record.record(store, owner.id, a_harness_event(project="other"), "claude-code")
+        is None
+    )

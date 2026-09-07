@@ -24,9 +24,12 @@ def migrated(conn):
 
 def test_events_and_entry_events_exist(migrated):
     for table in ("events", "entry_events"):
-        assert migrated.execute(
-            "select to_regclass(%s)", (f"public.{table}",)
-        ).fetchone()[0] is not None
+        assert (
+            migrated.execute("select to_regclass(%s)", (f"public.{table}",)).fetchone()[
+                0
+            ]
+            is not None
+        )
 
 
 def test_event_kind_is_small_and_closed(migrated):
@@ -44,8 +47,7 @@ def test_entry_events_has_no_foreign_key_to_events(migrated):
         " where conrelid = 'entry_events'::regclass and contype = 'f'"
     ).fetchall()
     referenced = [r[0] for r in fks]
-    assert not any("event" in name and "entry_id" not in name
-                   for name in referenced)
+    assert not any("event" in name and "entry_id" not in name for name in referenced)
 
 
 def test_deleting_an_entry_deletes_its_provenance(migrated):
@@ -63,8 +65,7 @@ def test_event_id_is_indexed(migrated):
     indexes = migrated.execute(
         "select indexdef from pg_indexes where tablename = 'entry_events'"
     ).fetchall()
-    assert any("event_id" in r[0] and "entry_events_event_idx" in r[0]
-               for r in indexes)
+    assert any("event_id" in r[0] and "entry_events_event_idx" in r[0] for r in indexes)
 
 
 def test_event_key_is_null_when_the_harness_supplies_no_id(migrated):

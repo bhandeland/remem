@@ -47,12 +47,19 @@ def _record(dsn, project, session_id, command, when=LONG_AGO):
         store = PostgresStore(c)
         owner = store.ensure_principal("brandon")
         record.enable(store, owner.id, project)
-        store.put_event(Event(
-            id=new_id(), owner_id=owner.id, project=project,
-            harness="claude-code", session_id=session_id,
-            kind=EventKind.TOOL_CALL, tool="Bash",
-            payload={"command": command}, occurred_at=when,
-        ))
+        store.put_event(
+            Event(
+                id=new_id(),
+                owner_id=owner.id,
+                project=project,
+                harness="claude-code",
+                session_id=session_id,
+                kind=EventKind.TOOL_CALL,
+                tool="Bash",
+                payload={"command": command},
+                occurred_at=when,
+            )
+        )
         c.commit()
         return owner.id
 
@@ -67,8 +74,11 @@ class _TitleFromFirstEvent:
         pass
 
     def extract(self, events, project, known_titles=None):
-        return [ExtractedEntry(title=events[0].payload["command"],
-                               body="body", kind=Kind.NOTE)]
+        return [
+            ExtractedEntry(
+                title=events[0].payload["command"], body="body", kind=Kind.NOTE
+            )
+        ]
 
 
 def test_a_run_with_nothing_to_do_succeeds_quietly(env):
@@ -95,8 +105,13 @@ def test_a_quiet_session_is_extracted(env, monkeypatch):
 def test_a_session_inside_the_idle_window_is_left_alone(env, monkeypatch):
     """REMEM_IDLE_MINUTES is the trigger, and the CLI must pass it through
     rather than letting the service's own default decide."""
-    _record(env, "remem", "s1", "STILL-GOING",
-            when=datetime.now(timezone.utc) - timedelta(minutes=5))
+    _record(
+        env,
+        "remem",
+        "s1",
+        "STILL-GOING",
+        when=datetime.now(timezone.utc) - timedelta(minutes=5),
+    )
     monkeypatch.setenv("REMEM_IDLE_MINUTES", "20")
     monkeypatch.setattr(
         "remem.extract.claude_cli.ClaudeCliExtractor", _TitleFromFirstEvent
@@ -108,11 +123,14 @@ def test_a_session_inside_the_idle_window_is_left_alone(env, monkeypatch):
     assert "claimed 0" in result.stdout
 
 
-def test_a_shorter_idle_window_makes_the_same_session_extractable(
-    env, monkeypatch
-):
-    _record(env, "remem", "s1", "RECENT",
-            when=datetime.now(timezone.utc) - timedelta(minutes=5))
+def test_a_shorter_idle_window_makes_the_same_session_extractable(env, monkeypatch):
+    _record(
+        env,
+        "remem",
+        "s1",
+        "RECENT",
+        when=datetime.now(timezone.utc) - timedelta(minutes=5),
+    )
     monkeypatch.setenv("REMEM_IDLE_MINUTES", "1")
     monkeypatch.setattr(
         "remem.extract.claude_cli.ClaudeCliExtractor", _TitleFromFirstEvent
@@ -123,9 +141,7 @@ def test_a_shorter_idle_window_makes_the_same_session_extractable(
     assert "claimed 1" in result.stdout
 
 
-def test_a_real_database_error_does_not_discard_the_rest_of_the_run(
-    env, monkeypatch
-):
+def test_a_real_database_error_does_not_discard_the_rest_of_the_run(env, monkeypatch):
     """One job erroring the connection must not roll back the whole batch.
 
     A genuine failed statement puts a non-autocommit connection into
@@ -135,8 +151,9 @@ def test_a_real_database_error_does_not_discard_the_rest_of_the_run(
     did not do. Unlike a wrapper raising a Python error, this touches the
     real connection, which is the only way to reproduce that state.
     """
-    owner_id = _record(env, "remem", "good", "GOOD",
-                       when=LONG_AGO - timedelta(minutes=5))
+    owner_id = _record(
+        env, "remem", "good", "GOOD", when=LONG_AGO - timedelta(minutes=5)
+    )
     _record(env, "remem", "bad", "BAD")
 
     real_put = PostgresStore.put_entry
@@ -158,9 +175,11 @@ def test_a_real_database_error_does_not_discard_the_rest_of_the_run(
 
     with psycopg.connect(env) as c:
         rows = {
-            r[0]: (r[1], r[2]) for r in c.execute(
+            r[0]: (r[1], r[2])
+            for r in c.execute(
                 "select session_id, status, error from extract_jobs "
-                "where owner_id = %s", (owner_id,)
+                "where owner_id = %s",
+                (owner_id,),
             ).fetchall()
         }
         titles = [r[0] for r in c.execute("select title from entries").fetchall()]
@@ -234,9 +253,7 @@ def test_the_run_uses_the_configured_model(env, monkeypatch):
     assert seen.get("model") == "opus"
 
 
-def test_a_second_run_says_nothing_while_the_first_holds_the_lock(
-    env, monkeypatch
-):
+def test_a_second_run_says_nothing_while_the_first_holds_the_lock(env, monkeypatch):
     """Cron overlap is the expected case, not an error. A non-zero exit here
     would mail the user about a working system."""
     owner_id = _record(env, "remem", "s1", "GOOD")
@@ -247,8 +264,8 @@ def test_a_second_run_says_nothing_while_the_first_holds_the_lock(
     holder = psycopg.connect(env)
     try:
         held = holder.execute(
-            "select pg_try_advisory_lock(hashtext('events-process'), "
-            "hashtext(%s))", (str(owner_id),)
+            "select pg_try_advisory_lock(hashtext('events-process'), hashtext(%s))",
+            (str(owner_id),),
         ).fetchone()[0]
         assert held is True
 

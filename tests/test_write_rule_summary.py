@@ -28,21 +28,41 @@ def owner(store):
 
 def test_a_rule_without_a_summary_is_refused(store, owner):
     with pytest.raises(write.RuleNeedsSummary):
-        write.remember(store, owner.id, title="A rule", body="the case for it",
-                       kind=Kind.RULE, project="remem")
+        write.remember(
+            store,
+            owner.id,
+            title="A rule",
+            body="the case for it",
+            kind=Kind.RULE,
+            project="remem",
+        )
 
 
 def test_a_blank_summary_is_refused_too(store, owner):
     """An empty string is not a summary. Accepting it would render a rule
     with a blank line where its instruction should be."""
     with pytest.raises(write.RuleNeedsSummary):
-        write.remember(store, owner.id, title="A rule", body="the case",
-                       summary="   ", kind=Kind.RULE, project="remem")
+        write.remember(
+            store,
+            owner.id,
+            title="A rule",
+            body="the case",
+            summary="   ",
+            kind=Kind.RULE,
+            project="remem",
+        )
 
 
 def test_a_rule_with_a_summary_is_written(store, owner):
-    e = write.remember(store, owner.id, title="A rule", body="the case",
-                       summary="do the thing", kind=Kind.RULE, project="remem")
+    e = write.remember(
+        store,
+        owner.id,
+        title="A rule",
+        body="the case",
+        summary="do the thing",
+        kind=Kind.RULE,
+        project="remem",
+    )
     assert e.summary == "do the thing"
 
 
@@ -50,8 +70,15 @@ def test_a_human_rule_without_a_summary_is_still_refused(store, owner):
     """Origin.HUMAN and Origin.AGENT are INJECTED_ORIGINS - the default
     test above (`write.remember` defaults to AGENT) covers the other one."""
     with pytest.raises(write.RuleNeedsSummary):
-        write.remember(store, owner.id, title="A rule", body="the case",
-                       kind=Kind.RULE, project="remem", origin=Origin.HUMAN)
+        write.remember(
+            store,
+            owner.id,
+            title="A rule",
+            body="the case",
+            kind=Kind.RULE,
+            project="remem",
+            origin=Origin.HUMAN,
+        )
 
 
 def test_an_extracted_rule_writes_without_a_summary(store, owner):
@@ -59,9 +86,15 @@ def test_an_extracted_rule_writes_without_a_summary(store, owner):
     EXTRACTED rule can never reach a context block - requiring a summary
     on one would be enforcement with no purpose, and it used to fail
     extraction's write of every rule the model proposed."""
-    e = write.remember(store, owner.id, title="An extracted rule",
-                       body="the case", kind=Kind.RULE, project="remem",
-                       origin=Origin.EXTRACTED)
+    e = write.remember(
+        store,
+        owner.id,
+        title="An extracted rule",
+        body="the case",
+        kind=Kind.RULE,
+        project="remem",
+        origin=Origin.EXTRACTED,
+    )
     assert e.summary is None
 
 
@@ -69,8 +102,9 @@ def test_notes_and_docs_do_not_need_a_summary(store, owner):
     """Only rules are injected into every session, so only rules are
     forced to state themselves in a line."""
     for kind in (Kind.NOTE, Kind.DOC):
-        e = write.remember(store, owner.id, title=f"A {kind}", body="body",
-                           kind=kind, project="remem")
+        e = write.remember(
+            store, owner.id, title=f"A {kind}", body="body", kind=kind, project="remem"
+        )
         assert e.summary is None
 
 
@@ -81,8 +115,15 @@ def test_update_sets_a_summary_without_creating_a_second_entry(store, owner):
     memory file whose frontmatter description this field feeds - all for
     adding a line that was always meant to be there.
     """
-    e = write.remember(store, owner.id, title="A rule", body="the case",
-                       summary="first", kind=Kind.RULE, project="remem")
+    e = write.remember(
+        store,
+        owner.id,
+        title="A rule",
+        body="the case",
+        summary="first",
+        kind=Kind.RULE,
+        project="remem",
+    )
 
     updated = write.update(store, owner.id, e.id, summary="better line")
 
@@ -95,8 +136,15 @@ def test_update_refuses_to_empty_a_rules_summary(store, owner):
     """update(summary="") passed the `is not None` test and silently wrote
     an empty string, which `_content` then treats as falsy - dropping the
     rule back to title-only through a door `remember` does not have."""
-    e = write.remember(store, owner.id, title="A rule", body="the case",
-                       summary="do the thing", kind=Kind.RULE, project="remem")
+    e = write.remember(
+        store,
+        owner.id,
+        title="A rule",
+        body="the case",
+        summary="do the thing",
+        kind=Kind.RULE,
+        project="remem",
+    )
     with pytest.raises(write.RuleNeedsSummary):
         write.update(store, owner.id, e.id, summary="")
 
@@ -105,22 +153,43 @@ def test_update_refuses_a_whitespace_summary_too(store, owner):
     """update(summary="   ") stored the padding, and _content's `if
     entry.summary:` is truthy for whitespace - rendering a blank line
     where the rule's instruction belongs."""
-    e = write.remember(store, owner.id, title="A rule", body="the case",
-                       summary="do the thing", kind=Kind.RULE, project="remem")
+    e = write.remember(
+        store,
+        owner.id,
+        title="A rule",
+        body="the case",
+        summary="do the thing",
+        kind=Kind.RULE,
+        project="remem",
+    )
     with pytest.raises(write.RuleNeedsSummary):
         write.update(store, owner.id, e.id, summary="   ")
 
 
 def test_update_strips_the_summary_it_stores(store, owner):
-    e = write.remember(store, owner.id, title="A rule", body="the case",
-                       summary="do the thing", kind=Kind.RULE, project="remem")
+    e = write.remember(
+        store,
+        owner.id,
+        title="A rule",
+        body="the case",
+        summary="do the thing",
+        kind=Kind.RULE,
+        project="remem",
+    )
     updated = write.update(store, owner.id, e.id, summary="  padded  ")
     assert updated.summary == "padded"
 
 
 def test_remember_strips_the_summary_it_stores(store, owner):
-    e = write.remember(store, owner.id, title="A note", body="b",
-                       summary="  padded  ", kind=Kind.NOTE, project="remem")
+    e = write.remember(
+        store,
+        owner.id,
+        title="A note",
+        body="b",
+        summary="  padded  ",
+        kind=Kind.NOTE,
+        project="remem",
+    )
     assert e.summary == "padded"
 
 
@@ -128,8 +197,15 @@ def test_update_leaves_the_summary_alone_when_not_given(store, owner):
     """None means unchanged here, as it does for every other field on
     update. There is no --clear-summary: a wrong summary is fixed by
     writing a better one."""
-    e = write.remember(store, owner.id, title="A rule", body="the case",
-                       summary="keep me", kind=Kind.RULE, project="remem")
+    e = write.remember(
+        store,
+        owner.id,
+        title="A rule",
+        body="the case",
+        summary="keep me",
+        kind=Kind.RULE,
+        project="remem",
+    )
 
     updated = write.update(store, owner.id, e.id, title="A renamed rule")
 

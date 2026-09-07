@@ -20,8 +20,14 @@ from remem.services import ingest
 
 def _anchor(src: str) -> Entry:
     return Entry(
-        id=uuid4(), kind=Kind.DOC, title="Doc", body="", project="proj",
-        owner_id=uuid4(), tags=[f"src:{src}"], origin=Origin.INGESTED,
+        id=uuid4(),
+        kind=Kind.DOC,
+        title="Doc",
+        body="",
+        project="proj",
+        owner_id=uuid4(),
+        tags=[f"src:{src}"],
+        origin=Origin.INGESTED,
     )
 
 
@@ -53,6 +59,7 @@ def test_no_anchors_no_twin():
 def store(conn):
     from remem.backends.postgres.migrate import migrate
     from remem.backends.postgres.store import PostgresStore
+
     migrate(conn)
     return PostgresStore(conn)
 
@@ -77,11 +84,13 @@ def _write(root: Path, rel: str) -> None:
 def test_a_new_file_with_a_twin_is_reported_with_its_live_count(store, owner, tmp_path):
     _write(tmp_path, "notes/docs/a.md")
     _write(tmp_path, "docs/a.md")
-    ingest.ingest_file(store, owner.id, Path("notes/docs/a.md"),
-                       project="proj", root=tmp_path)
+    ingest.ingest_file(
+        store, owner.id, Path("notes/docs/a.md"), project="proj", root=tmp_path
+    )
 
-    report = ingest.ingest_file(store, owner.id, Path("docs/a.md"),
-                                project="proj", root=tmp_path)
+    report = ingest.ingest_file(
+        store, owner.id, Path("docs/a.md"), project="proj", root=tmp_path
+    )
 
     assert report.created == 2
     assert report.twins == [("docs/a.md", "notes/docs/a.md", 2)]
@@ -90,10 +99,13 @@ def test_a_new_file_with_a_twin_is_reported_with_its_live_count(store, owner, tm
 @pytest.mark.db
 def test_a_re_ingest_of_an_existing_file_reports_no_twin(store, owner, tmp_path):
     _write(tmp_path, "docs/a.md")
-    ingest.ingest_file(store, owner.id, Path("docs/a.md"), project="proj", root=tmp_path)
+    ingest.ingest_file(
+        store, owner.id, Path("docs/a.md"), project="proj", root=tmp_path
+    )
 
-    report = ingest.ingest_file(store, owner.id, Path("docs/a.md"),
-                                project="proj", root=tmp_path)
+    report = ingest.ingest_file(
+        store, owner.id, Path("docs/a.md"), project="proj", root=tmp_path
+    )
 
     assert report.unchanged == 2
     assert report.twins == []
@@ -103,11 +115,13 @@ def test_a_re_ingest_of_an_existing_file_reports_no_twin(store, owner, tmp_path)
 def test_the_twin_check_never_sees_another_owners_chunks(store, owner, other, tmp_path):
     _write(tmp_path, "notes/docs/a.md")
     _write(tmp_path, "docs/a.md")
-    ingest.ingest_file(store, other.id, Path("notes/docs/a.md"),
-                       project="proj", root=tmp_path)
+    ingest.ingest_file(
+        store, other.id, Path("notes/docs/a.md"), project="proj", root=tmp_path
+    )
 
-    report = ingest.ingest_file(store, owner.id, Path("docs/a.md"),
-                                project="proj", root=tmp_path)
+    report = ingest.ingest_file(
+        store, owner.id, Path("docs/a.md"), project="proj", root=tmp_path
+    )
 
     assert report.twins == []
 
@@ -124,8 +138,9 @@ def test_a_twin_at_the_chunk_limit_does_not_fail_the_new_files_ingest(
     still reported, just without a precise count."""
     _write(tmp_path, "notes/docs/a.md")
     _write(tmp_path, "docs/a.md")
-    ingest.ingest_file(store, owner.id, Path("notes/docs/a.md"),
-                       project="proj", root=tmp_path)
+    ingest.ingest_file(
+        store, owner.id, Path("notes/docs/a.md"), project="proj", root=tmp_path
+    )
 
     calls = 0
     real = ingest._live_chunks
@@ -139,21 +154,26 @@ def test_a_twin_at_the_chunk_limit_does_not_fail_the_new_files_ingest(
 
     monkeypatch.setattr(ingest, "_live_chunks", flaky)
 
-    report = ingest.ingest_file(store, owner.id, Path("docs/a.md"),
-                                project="proj", root=tmp_path)
+    report = ingest.ingest_file(
+        store, owner.id, Path("docs/a.md"), project="proj", root=tmp_path
+    )
 
     assert report.created == 2
-    assert report.twins == [("docs/a.md", "notes/docs/a.md", ingest.MAX_CHUNKS_PER_FILE)]
+    assert report.twins == [
+        ("docs/a.md", "notes/docs/a.md", ingest.MAX_CHUNKS_PER_FILE)
+    ]
 
 
 @pytest.mark.db
 def test_a_dry_run_still_reports_the_twin(store, owner, tmp_path):
     _write(tmp_path, "notes/docs/a.md")
     _write(tmp_path, "docs/a.md")
-    ingest.ingest_file(store, owner.id, Path("notes/docs/a.md"),
-                       project="proj", root=tmp_path)
+    ingest.ingest_file(
+        store, owner.id, Path("notes/docs/a.md"), project="proj", root=tmp_path
+    )
 
-    report = ingest.ingest_file(store, owner.id, Path("docs/a.md"),
-                                project="proj", root=tmp_path, dry_run=True)
+    report = ingest.ingest_file(
+        store, owner.id, Path("docs/a.md"), project="proj", root=tmp_path, dry_run=True
+    )
 
     assert report.twins == [("docs/a.md", "notes/docs/a.md", 2)]

@@ -95,7 +95,7 @@ def _git_common_dir(root: Path) -> Path | None:
             text=True,
             timeout=5,
         )
-    except (OSError, subprocess.SubprocessError):
+    except OSError, subprocess.SubprocessError:
         return None
     if result.returncode != 0:
         # Not a repository at all - an ordinary thing, not an error.

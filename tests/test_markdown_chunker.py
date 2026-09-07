@@ -9,7 +9,10 @@ from remem.markdown import MAX_BODY, Chunk, slugify, split
 
 def test_slugify_lowercases_and_hyphenates():
     assert slugify("Invariants worth not breaking") == "invariants-worth-not-breaking"
-    assert slugify("`--archive` is a flag, not a path heuristic") == "archive-is-a-flag-not-a-path-heuristic"
+    assert (
+        slugify("`--archive` is a flag, not a path heuristic")
+        == "archive-is-a-flag-not-a-path-heuristic"
+    )
     assert slugify("Two   spaces") == "two-spaces"
 
 

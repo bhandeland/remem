@@ -20,7 +20,13 @@ from pathlib import Path, PurePosixPath
 from uuid import UUID
 
 from remem.domain import (
-    Entry, IngestDesignation, IngestRun, IngestTrigger, Kind, Origin, Query,
+    Entry,
+    IngestDesignation,
+    IngestRun,
+    IngestTrigger,
+    Kind,
+    Origin,
+    Query,
 )
 from remem.embed import Embedder
 from remem.markdown import Chunk, split
@@ -66,9 +72,7 @@ def designate(
     """
     if paths is not None:
         if not paths:
-            raise BadDesignation(
-                "No paths given. To clear a designation, pass None."
-            )
+            raise BadDesignation("No paths given. To clear a designation, pass None.")
         for raw in paths:
             path = PurePosixPath(Path(raw).as_posix())
             if path.is_absolute():
@@ -198,7 +202,7 @@ def _sec_of(entry: Entry) -> str:
     """An entry's slug, or "" for the anchor."""
     for tag in entry.tags:
         if tag.startswith("sec:"):
-            return tag[len("sec:"):]
+            return tag[len("sec:") :]
     return ""
 
 
@@ -206,7 +210,7 @@ def _src_of(entry: Entry) -> str:
     """An entry's `src:` path, or "" when it has none."""
     for tag in entry.tags:
         if tag.startswith("src:"):
-            return tag[len("src:"):]
+            return tag[len("src:") :]
     return ""
 
 
@@ -298,9 +302,13 @@ def ingest_file(
             report.created += 1
             if not dry_run:
                 written = remember(
-                    store, owner_id,
-                    title=chunk.title, body=chunk.body, kind=Kind.DOC,
-                    project=project, origin=origin,
+                    store,
+                    owner_id,
+                    title=chunk.title,
+                    body=chunk.body,
+                    kind=Kind.DOC,
+                    project=project,
+                    origin=origin,
                     tags=_tags_for(path, chunk),
                 )
                 if chunk.anchor:
@@ -323,8 +331,11 @@ def ingest_file(
             report.changed += 1
             if not dry_run:
                 replacement = supersede(
-                    store, owner_id, current.id,
-                    title=chunk.title, body=chunk.body,
+                    store,
+                    owner_id,
+                    current.id,
+                    title=chunk.title,
+                    body=chunk.body,
                 )
                 if chunk.anchor:
                     # The CURRENT anchor, not the retired row: if the anchor
@@ -388,8 +399,15 @@ def ingest_paths(
             # than aborting the whole path list.
             with store.transaction():
                 report.merge(
-                    ingest_file(store, owner_id, path, project=project,
-                                root=root, archive=archive, dry_run=dry_run)
+                    ingest_file(
+                        store,
+                        owner_id,
+                        path,
+                        project=project,
+                        root=root,
+                        archive=archive,
+                        dry_run=dry_run,
+                    )
                 )
         except (OSError, UnicodeDecodeError, TooManyChunks) as exc:
             report.failures.append((path, str(exc)))
@@ -413,9 +431,7 @@ def _discover(paths: list[Path], root: Path | None = None) -> list[Path]:
             found.append(path)
             continue
         hits = sorted(located.rglob("*.md"))
-        found.extend(
-            [h.relative_to(root) for h in hits] if root is not None else hits
-        )
+        found.extend([h.relative_to(root) for h in hits] if root is not None else hits)
     return found
 
 
@@ -442,12 +458,15 @@ def _outcome(report: Report, *, embedded: int, embed_error: str | None) -> dict:
     cannot disagree about the stored shape.
     """
     return dict(
-        created=report.created, changed=report.changed,
-        unchanged=report.unchanged, swept=report.swept, embedded=embedded,
-        failures=[{"path": Path(p).as_posix(), "reason": r}
-                  for p, r in report.failures],
-        twins=[{"path": p, "existing": e, "live": n}
-               for p, e, n in report.twins],
+        created=report.created,
+        changed=report.changed,
+        unchanged=report.unchanged,
+        swept=report.swept,
+        embedded=embedded,
+        failures=[
+            {"path": Path(p).as_posix(), "reason": r} for p, r in report.failures
+        ],
+        twins=[{"path": p, "existing": e, "live": n} for p, e, n in report.twins],
         embed_error=embed_error,
     )
 
@@ -475,12 +494,21 @@ def ingest_manual(
     any other, and the single transaction rolls the entries back with it.
     """
     if dry_run or project is None:
-        return ingest_paths(store, owner_id, paths, project=project,
-                            root=root, archive=archive, dry_run=dry_run)
-    run = store.start_ingest_run(owner_id, project, IngestTrigger.MANUAL,
-                                 archive=archive)
-    report = ingest_paths(store, owner_id, paths, project=project,
-                          root=root, archive=archive)
+        return ingest_paths(
+            store,
+            owner_id,
+            paths,
+            project=project,
+            root=root,
+            archive=archive,
+            dry_run=dry_run,
+        )
+    run = store.start_ingest_run(
+        owner_id, project, IngestTrigger.MANUAL, archive=archive
+    )
+    report = ingest_paths(
+        store, owner_id, paths, project=project, root=root, archive=archive
+    )
     store.finish_ingest_run(
         run.id, owner_id, **_outcome(report, embedded=0, embed_error=None)
     )
@@ -538,7 +566,8 @@ def refresh(
         for designation in designated:
             result.report.merge(
                 ingest_paths(
-                    store, owner_id,
+                    store,
+                    owner_id,
                     [Path(p) for p in designation.paths],
                     project=project,
                     root=root,
@@ -547,9 +576,7 @@ def refresh(
             )
 
         try:
-            embedded = backfill_if_pending(
-                store, owner_id, embed_model, load_embedder
-            )
+            embedded = backfill_if_pending(store, owner_id, embed_model, load_embedder)
         except Exception as exc:
             # Losing the semantic tier is worth strictly less than the
             # entries just written, and `remem embed` remains the loud way
@@ -561,20 +588,22 @@ def refresh(
         # BaseException, matching the guard in `reingest run`: a
         # `typer.Exit` from a nested helper is a SystemExit, and a row that
         # says nothing about why it stopped is the gap this table closes.
-        result.report.failures.append(
-            (Path("*"), f"{type(exc).__name__}: {exc}")
-        )
+        result.report.failures.append((Path("*"), f"{type(exc).__name__}: {exc}"))
         store.finish_ingest_run(
-            run.id, owner_id,
-            **_outcome(result.report, embedded=result.embedded,
-                       embed_error=result.embed_error),
+            run.id,
+            owner_id,
+            **_outcome(
+                result.report, embedded=result.embedded, embed_error=result.embed_error
+            ),
         )
         raise
 
     store.finish_ingest_run(
-        run.id, owner_id,
-        **_outcome(result.report, embedded=result.embedded,
-                   embed_error=result.embed_error),
+        run.id,
+        owner_id,
+        **_outcome(
+            result.report, embedded=result.embedded, embed_error=result.embed_error
+        ),
     )
     return result
 
@@ -648,13 +677,15 @@ def status(
                 for p in d.paths:
                     if not _exists(root / p):
                         missing.append(p)
-        found.append(ProjectIngestStatus(
-            project=name,
-            designations=designations,
-            last_run=store.latest_ingest_run(owner_id, name),
-            checked_against=checked_against,
-            missing=missing,
-        ))
+        found.append(
+            ProjectIngestStatus(
+                project=name,
+                designations=designations,
+                last_run=store.latest_ingest_run(owner_id, name),
+                checked_against=checked_against,
+                missing=missing,
+            )
+        )
 
     if (
         current_project is not None
@@ -668,13 +699,15 @@ def status(
             # against. `render_status` reads an empty `designations` list as
             # the signal to skip the check line entirely - "all designated
             # paths present" would otherwise describe a check that never ran.
-            found.append(ProjectIngestStatus(
-                project=current_project,
-                designations=[],
-                last_run=last_run,
-                checked_against=None,
-                missing=[],
-            ))
+            found.append(
+                ProjectIngestStatus(
+                    project=current_project,
+                    designations=[],
+                    last_run=last_run,
+                    checked_against=None,
+                    missing=[],
+                )
+            )
     return found
 
 
@@ -695,11 +728,11 @@ def _run_lines(run: IngestRun | None) -> list[str]:
     """The last-run block. Four states, four spellings - each calls for a
     different action, so none may be mistaken for another."""
     if run is None:
-        return ["last run: never. A session start inside this repository "
-                "spawns one."]
+        return ["last run: never. A session start inside this repository spawns one."]
     if run.finished_at is None:
-        return [f"last run: {run.trigger}, started {_when(run.started_at)}, "
-                f"did not finish"]
+        return [
+            f"last run: {run.trigger}, started {_when(run.started_at)}, did not finish"
+        ]
     lines = [
         f"last run: {run.trigger}, {_when(run.started_at)}, "
         f"{run.created} new, {run.changed} changed, {run.unchanged} unchanged, "
@@ -746,9 +779,7 @@ def render_status(found: list[ProjectIngestStatus], project: str | None) -> str:
             lines.append(f"{s.project} ({half}): {', '.join(d.paths)}")
         lines.extend(_run_lines(s.last_run))
         if s.checked_against is None:
-            lines.append(
-                f"paths not checked: run from inside {s.project}'s repository"
-            )
+            lines.append(f"paths not checked: run from inside {s.project}'s repository")
         elif s.missing:
             lines.append(
                 f"missing on disk: {', '.join(s.missing)}  "
@@ -756,8 +787,7 @@ def render_status(found: list[ProjectIngestStatus], project: str | None) -> str:
             )
         else:
             lines.append(
-                f"all designated paths present  "
-                f"(checked against {s.checked_against})"
+                f"all designated paths present  (checked against {s.checked_against})"
             )
     return "\n".join(lines)
 
@@ -771,8 +801,10 @@ def _run_to_dict(run: IngestRun | None) -> dict | None:
         "archive": run.archive,
         "started_at": run.started_at.isoformat() if run.started_at else None,
         "finished_at": run.finished_at.isoformat() if run.finished_at else None,
-        "created": run.created, "changed": run.changed,
-        "unchanged": run.unchanged, "swept": run.swept,
+        "created": run.created,
+        "changed": run.changed,
+        "unchanged": run.unchanged,
+        "swept": run.swept,
         "embedded": run.embedded,
         "failures": list(run.failures),
         "twins": list(run.twins),
@@ -785,8 +817,7 @@ def status_to_dict(found: list[ProjectIngestStatus]) -> list[dict]:
         {
             "project": s.project,
             "designations": [
-                {"archive": d.archive, "paths": list(d.paths)}
-                for d in s.designations
+                {"archive": d.archive, "paths": list(d.paths)} for d in s.designations
             ],
             "last_run": _run_to_dict(s.last_run),
             "check": {
@@ -817,8 +848,7 @@ def advisories(
     ends with STATUS_POINTER, scope included.
     """
     lines: list[str] = []
-    for s in status(store, owner_id, None, current_project=current_project,
-                    root=root):
+    for s in status(store, owner_id, None, current_project=current_project, root=root):
         # status()'s fallback surfaces an undesignated current project's
         # manual run too - right for the status screen, which is answering
         # "what happened here", but the spec scopes this advisory to

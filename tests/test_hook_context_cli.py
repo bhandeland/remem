@@ -63,10 +63,22 @@ def _seed_kb(dsn, *, project="myrepo"):
     with psycopg.connect(dsn) as c:
         store = PostgresStore(c)
         owner = store.ensure_principal("brandon")
-        kb.create(store, owner.id, slug=project, title=project,
-                  query=CollectionQuery(project=project))
-        remember(store, owner.id, title="Lint rule", body="always run ruff",
-                 summary="Run ruff linter", kind=Kind.RULE, project=project)
+        kb.create(
+            store,
+            owner.id,
+            slug=project,
+            title=project,
+            query=CollectionQuery(project=project),
+        )
+        remember(
+            store,
+            owner.id,
+            title="Lint rule",
+            body="always run ruff",
+            summary="Run ruff linter",
+            kind=Kind.RULE,
+            project=project,
+        )
         c.commit()
 
 
@@ -172,7 +184,9 @@ def test_context_prints_the_knowledge_base_for_the_session(env, repo):
     _seed_kb(env, project=repo.name)
 
     result = runner.invoke(
-        app, ["hook", "context"], input=json.dumps({"cwd": str(repo), "session_id": "x"})
+        app,
+        ["hook", "context"],
+        input=json.dumps({"cwd": str(repo), "session_id": "x"}),
     )
 
     assert result.exit_code == 0
@@ -207,7 +221,9 @@ def test_context_reads_a_named_agent_and_matches_the_default(env, repo):
     assert claude_code.stdout == opencode.stdout
 
 
-def test_an_adapter_whose_inject_capability_raises_degrades_to_stdout(env, monkeypatch, repo):
+def test_an_adapter_whose_inject_capability_raises_degrades_to_stdout(
+    env, monkeypatch, repo
+):
     """Same contract as identity()/event()/env_settings()/settings_path(): a
     broken inject() must not be why the block never reaches the harness -
     it just falls back to the stdout path every other adapter already
@@ -227,7 +243,9 @@ def test_an_adapter_whose_inject_capability_raises_degrades_to_stdout(env, monke
     assert "Lint rule" in result.stdout
 
 
-def test_an_adapter_whose_inject_capability_raises_explains_itself(env, monkeypatch, repo):
+def test_an_adapter_whose_inject_capability_raises_explains_itself(
+    env, monkeypatch, repo
+):
     monkeypatch.setenv("REMEM_HOOK_DEBUG", "1")
     _seed_kb(env, project=repo.name)
 
@@ -298,9 +316,7 @@ def test_context_spawns_the_extraction_processor(env, repo, monkeypatch):
     assert len(calls) == 1
 
 
-def test_context_spawns_the_processor_even_when_no_project_resolves(
-    env, monkeypatch
-):
+def test_context_spawns_the_processor_even_when_no_project_resolves(env, monkeypatch):
     """The backlog is global, not this session's project.
 
     `remem events process` works off every extractable session for the

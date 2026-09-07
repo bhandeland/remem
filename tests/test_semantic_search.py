@@ -25,8 +25,11 @@ def store(conn):
 
 
 def _entry(store, owner_id, title, body="body", **kw):
-    return store.put_entry(Entry(id=new_id(), kind=Kind.NOTE, title=title,
-                                 body=body, owner_id=owner_id, **kw))
+    return store.put_entry(
+        Entry(
+            id=new_id(), kind=Kind.NOTE, title=title, body=body, owner_id=owner_id, **kw
+        )
+    )
 
 
 def test_ranks_by_cosine_similarity(store):
@@ -36,8 +39,9 @@ def test_ranks_by_cosine_similarity(store):
     store.put_vector(near.id, MODEL, 2, [1.0, 0.0], owner.id)
     store.put_vector(far.id, MODEL, 2, [0.0, 1.0], owner.id)
 
-    hits = store.semantic_search(Query(text="q", limit=10), owner.id,
-                                 [1.0, 0.0], MODEL, threshold=0.1)
+    hits = store.semantic_search(
+        Query(text="q", limit=10), owner.id, [1.0, 0.0], MODEL, threshold=0.1
+    )
 
     assert [h.entry.id for h in hits] == [near.id]  # far is below threshold
     assert hits[0].match is Match.SEMANTIC
@@ -49,8 +53,9 @@ def test_threshold_excludes_weak_matches(store):
     entry = _entry(store, owner.id, "orthogonal")
     store.put_vector(entry.id, MODEL, 2, [0.0, 1.0], owner.id)
 
-    hits = store.semantic_search(Query(text="q", limit=10), owner.id,
-                                 [1.0, 0.0], MODEL, threshold=0.5)
+    hits = store.semantic_search(
+        Query(text="q", limit=10), owner.id, [1.0, 0.0], MODEL, threshold=0.5
+    )
     assert hits == []
 
 
@@ -60,8 +65,9 @@ def test_never_crosses_owners(store):
     theirs = _entry(store, yours.id, "not yours")
     store.put_vector(theirs.id, MODEL, 2, [1.0, 0.0], yours.id)
 
-    hits = store.semantic_search(Query(text="q", limit=10), mine.id,
-                                 [1.0, 0.0], MODEL, threshold=0.1)
+    hits = store.semantic_search(
+        Query(text="q", limit=10), mine.id, [1.0, 0.0], MODEL, threshold=0.1
+    )
     assert hits == []
 
 
@@ -72,8 +78,13 @@ def test_applies_the_same_filters_as_other_tiers(store):
     for e in (a, b):
         store.put_vector(e.id, MODEL, 2, [1.0, 0.0], owner.id)
 
-    hits = store.semantic_search(Query(text="q", project="alpha", limit=10),
-                                 owner.id, [1.0, 0.0], MODEL, threshold=0.1)
+    hits = store.semantic_search(
+        Query(text="q", project="alpha", limit=10),
+        owner.id,
+        [1.0, 0.0],
+        MODEL,
+        threshold=0.1,
+    )
     assert [h.entry.id for h in hits] == [a.id]
 
 
@@ -86,8 +97,9 @@ def test_ignores_vectors_from_another_model(store):
     entry = _entry(store, owner.id, "old model only")
     store.put_vector(entry.id, "other-model", 2, [1.0, 0.0], owner.id)
 
-    hits = store.semantic_search(Query(text="q", limit=10), owner.id,
-                                 [1.0, 0.0], MODEL, threshold=0.1)
+    hits = store.semantic_search(
+        Query(text="q", limit=10), owner.id, [1.0, 0.0], MODEL, threshold=0.1
+    )
     assert hits == []
 
 

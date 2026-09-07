@@ -12,6 +12,7 @@ def env(live_dsn, monkeypatch, tmp_path):
     """remember_tool opens its own session, so the schema must be committed
     before it connects. Same bootstrap as tests/test_mcp_server.py."""
     import psycopg
+
     with psycopg.connect(live_dsn) as c:
         migrate(c)
         c.commit()
@@ -35,8 +36,9 @@ def test_a_rule_without_a_summary_returns_an_error_not_a_raise(env):
 def test_a_rule_with_a_summary_is_written(env):
     from remem.mcp_server import remember_tool
 
-    result = remember_tool(title="A rule", body="the case", kind="rule",
-                           summary="do the thing")
+    result = remember_tool(
+        title="A rule", body="the case", kind="rule", summary="do the thing"
+    )
 
     assert "id" in result
 

@@ -47,8 +47,7 @@ def test_the_old_model_variable_still_works_and_warns(capsys):
 
 
 def test_the_new_variable_wins_when_both_are_set(capsys):
-    config = load(env={"REMEM_CAPTURE_MODEL": "haiku",
-                       "REMEM_EXTRACT_MODEL": "opus"})
+    config = load(env={"REMEM_CAPTURE_MODEL": "haiku", "REMEM_EXTRACT_MODEL": "opus"})
     assert config.extract_model == "opus"
 
 

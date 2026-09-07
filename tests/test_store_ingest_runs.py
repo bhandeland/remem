@@ -52,8 +52,13 @@ def test_finish_records_counts_failures_twins_and_the_embed_error(store, owner):
     run = store.start_ingest_run(owner.id, "proj", IngestTrigger.MANUAL, archive=True)
 
     store.finish_ingest_run(
-        run.id, owner.id,
-        created=3, changed=1, unchanged=40, swept=2, embedded=4,
+        run.id,
+        owner.id,
+        created=3,
+        changed=1,
+        unchanged=40,
+        swept=2,
+        embedded=4,
         failures=[{"path": "docs/gone", "reason": "No such file"}],
         twins=[{"path": "docs/a.md", "existing": "notes/docs/a.md", "live": 12}],
         embed_error="fastembed is not installed",
@@ -62,8 +67,13 @@ def test_finish_records_counts_failures_twins_and_the_embed_error(store, owner):
     latest = store.latest_ingest_run(owner.id, "proj")
     assert latest.finished_at is not None
     assert latest.archive is True
-    assert (latest.created, latest.changed, latest.unchanged, latest.swept,
-            latest.embedded) == (3, 1, 40, 2, 4)
+    assert (
+        latest.created,
+        latest.changed,
+        latest.unchanged,
+        latest.swept,
+        latest.embedded,
+    ) == (3, 1, 40, 2, 4)
     assert latest.failures == [{"path": "docs/gone", "reason": "No such file"}]
     assert latest.twins == [
         {"path": "docs/a.md", "existing": "notes/docs/a.md", "live": 12}
@@ -93,9 +103,16 @@ def test_finishing_someone_elses_row_raises_not_owner(store, owner, other):
 
     with pytest.raises(NotOwner):
         store.finish_ingest_run(
-            theirs.id, owner.id,
-            created=0, changed=0, unchanged=0, swept=0, embedded=0,
-            failures=[], twins=[], embed_error=None,
+            theirs.id,
+            owner.id,
+            created=0,
+            changed=0,
+            unchanged=0,
+            swept=0,
+            embedded=0,
+            failures=[],
+            twins=[],
+            embed_error=None,
         )
     assert store.latest_ingest_run(other.id, "proj").finished_at is None
 
@@ -107,7 +124,11 @@ def _ingest(store, owner, tmp_path, rel, project="proj", archive=False):
     full.parent.mkdir(parents=True, exist_ok=True)
     full.write_text("# Doc\n\nlead\n\n## One\n\nbody\n")
     return ingest.ingest_file(
-        store, owner.id, Path(rel), project=project, root=tmp_path,
+        store,
+        owner.id,
+        Path(rel),
+        project=project,
+        root=tmp_path,
         archive=archive,
     )
 
@@ -130,14 +151,28 @@ def test_anchors_excludes_superseded_other_projects_and_other_owners(
     _ingest(store, owner, tmp_path, "docs/elsewhere.md", project="other-proj")
     _ingest(store, other, tmp_path, "docs/theirs.md")
     # A hand-written doc with a src-looking tag but no ingest origin.
-    write.remember(store, owner.id, title="Hand", body="x", kind=Kind.DOC,
-                   project="proj", tags=["src:docs/hand.md"])
+    write.remember(
+        store,
+        owner.id,
+        title="Hand",
+        body="x",
+        kind=Kind.DOC,
+        project="proj",
+        tags=["src:docs/hand.md"],
+    )
     [anchor] = [e for e in store.anchors(owner.id, "proj")]
     theirs = store.anchors(other.id, "proj")
 
-    replacement = write.remember(store, owner.id, title="Doc", body="new",
-                                 kind=Kind.DOC, project="proj",
-                                 tags=["src:docs/a.md"], origin=Origin.INGESTED)
+    replacement = write.remember(
+        store,
+        owner.id,
+        title="Doc",
+        body="new",
+        kind=Kind.DOC,
+        project="proj",
+        tags=["src:docs/a.md"],
+        origin=Origin.INGESTED,
+    )
     store.set_superseded(anchor.id, replacement.id, owner.id)
 
     after = store.anchors(owner.id, "proj")

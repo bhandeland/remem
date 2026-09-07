@@ -28,9 +28,7 @@ from remem.domain import EventKind, new_id
 VERIFY_PROJECT = "__remem_verify__"
 
 
-def round_trip(
-    agent_name: str, env: Mapping[str, str] | None = None
-) -> InstallReport:
+def round_trip(agent_name: str, env: Mapping[str, str] | None = None) -> InstallReport:
     """Record an event under `agent_name`, read it back, delete it.
 
     Never raises - a failure here is a warning naming what could not be

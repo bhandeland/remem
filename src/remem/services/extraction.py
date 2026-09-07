@@ -109,16 +109,14 @@ def _extract(
     """
     try:
         accepts = "known_titles" in inspect.signature(extractor.extract).parameters
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         accepts = False
     if accepts:
         return extractor.extract(events, project, known_titles=known_titles)
     return extractor.extract(events, project)
 
 
-def _already_extracted(
-    store: Store, owner_id: UUID, project: str, title: str
-) -> bool:
+def _already_extracted(store: Store, owner_id: UUID, project: str, title: str) -> bool:
     """True when this project already has a live EXTRACTED entry with this title.
 
     Only prior extractions suppress an extraction. A human-written entry with
@@ -216,8 +214,13 @@ def _run_job(
     try:
         if enforce_cap and job.attempts > MAX_ATTEMPTS:
             _safe_finish(
-                store, job, owner_id, JobStatus.FAILED,
-                f"gave up after {MAX_ATTEMPTS} attempts", 0, mark,
+                store,
+                job,
+                owner_id,
+                JobStatus.FAILED,
+                f"gave up after {MAX_ATTEMPTS} attempts",
+                0,
+                mark,
             )
             return False, 0
         try:
@@ -225,14 +228,22 @@ def _run_job(
             # events after it are outstanding. A resumed session is therefore
             # extracted from where the last run stopped, not from its start.
             events = store.events_for_session(
-                owner_id, job.project, job.harness, job.session_id,
-                since=mark, limit=MAX_EVENTS_PER_JOB,
+                owner_id,
+                job.project,
+                job.harness,
+                job.session_id,
+                since=mark,
+                limit=MAX_EVENTS_PER_JOB,
             )
         except Exception as exc:
             _safe_finish(
-                store, job, owner_id, JobStatus.FAILED,
+                store,
+                job,
+                owner_id,
+                JobStatus.FAILED,
                 f"could not read events: {type(exc).__name__}: {exc}"[:500],
-                0, mark,
+                0,
+                mark,
             )
             return False, 0
 
@@ -247,20 +258,35 @@ def _run_job(
             entries = _extract(extractor, events, job.project, known)
         except ExtractionFailed as exc:
             _safe_finish(
-                store, job, owner_id, JobStatus.FAILED,
-                _failure_reason(exc), 0, mark,
+                store,
+                job,
+                owner_id,
+                JobStatus.FAILED,
+                _failure_reason(exc),
+                0,
+                mark,
             )
             return False, 0
         except Exception as exc:  # an extractor is third-party-ish code
             _safe_finish(
-                store, job, owner_id, JobStatus.FAILED,
-                f"extractor raised {type(exc).__name__}: {exc}"[:500], 0, mark,
+                store,
+                job,
+                owner_id,
+                JobStatus.FAILED,
+                f"extractor raised {type(exc).__name__}: {exc}"[:500],
+                0,
+                mark,
             )
             return False, 0
 
         written = _write(store, owner_id, job, entries, events)
         _safe_finish(
-            store, job, owner_id, JobStatus.DONE, None, written,
+            store,
+            job,
+            owner_id,
+            JobStatus.DONE,
+            None,
+            written,
             max(e.occurred_at for e in events),
         )
         return True, written
@@ -270,8 +296,13 @@ def _run_job(
         # must still be recorded against this job, and the caller must
         # move on rather than stranding it in `running`.
         _safe_finish(
-            store, job, owner_id, JobStatus.FAILED,
-            f"{type(exc).__name__}: {exc}"[:500], 0, mark,
+            store,
+            job,
+            owner_id,
+            JobStatus.FAILED,
+            f"{type(exc).__name__}: {exc}"[:500],
+            0,
+            mark,
         )
         return False, 0
 
@@ -326,7 +357,8 @@ def awaiting_sessions(
     """
     fetched = store.sessions_awaiting_extraction(owner_id, idle_seconds, limit)
     return [
-        session for session in fetched
+        session
+        for session in fetched
         if not _gave_up(store.extract_job_for_session(owner_id, session))
     ]
 

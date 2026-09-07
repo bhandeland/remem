@@ -16,6 +16,7 @@ BODY = "## Done\nlanded it\n\n## In flight\n\n## Next steps\n\n## Gotchas\n"
 @pytest.fixture
 def env(live_dsn, monkeypatch, tmp_path):
     import psycopg
+
     with psycopg.connect(live_dsn) as c:
         migrate(c)
         c.commit()
@@ -26,12 +27,14 @@ def env(live_dsn, monkeypatch, tmp_path):
 
 
 def test_write_then_latest_round_trips(env):
-    w = runner.invoke(app, ["handoff", "write", "--topic", "ci",
-                            "--project", "remem", "--body", BODY])
+    w = runner.invoke(
+        app, ["handoff", "write", "--topic", "ci", "--project", "remem", "--body", BODY]
+    )
     assert w.exit_code == 0, w.stdout
 
-    r = runner.invoke(app, ["handoff", "latest", "--topic", "ci",
-                            "--project", "remem", "--json"])
+    r = runner.invoke(
+        app, ["handoff", "latest", "--topic", "ci", "--project", "remem", "--json"]
+    )
     assert r.exit_code == 0
     payload = json.loads(r.stdout)
     assert payload["title"].startswith("Handoff: ci")
@@ -39,16 +42,21 @@ def test_write_then_latest_round_trips(env):
 
 
 def test_write_reports_what_it_superseded(env):
-    runner.invoke(app, ["handoff", "write", "--topic", "ci",
-                        "--project", "remem", "--body", BODY])
-    second = runner.invoke(app, ["handoff", "write", "--topic", "ci",
-                                 "--project", "remem", "--body", BODY])
+    runner.invoke(
+        app, ["handoff", "write", "--topic", "ci", "--project", "remem", "--body", BODY]
+    )
+    second = runner.invoke(
+        app, ["handoff", "write", "--topic", "ci", "--project", "remem", "--body", BODY]
+    )
     assert "superseded" in second.stdout
 
 
 def test_write_reads_the_body_from_stdin(env):
-    r = runner.invoke(app, ["handoff", "write", "--topic", "ci",
-                            "--project", "remem", "--body", "-"], input=BODY)
+    r = runner.invoke(
+        app,
+        ["handoff", "write", "--topic", "ci", "--project", "remem", "--body", "-"],
+        input=BODY,
+    )
     assert r.exit_code == 0, r.stdout
 
 
@@ -70,25 +78,31 @@ def test_a_handoff_with_no_project_fails_loudly(env, monkeypatch, tmp_path):
 def test_an_unslugable_topic_fails_loudly_and_does_not_touch_another_topic(env):
     """The CLI-level version of the silent-data-loss regression test: writing
     an unslug-able topic must not supersede an unrelated live handoff."""
-    first = runner.invoke(app, ["handoff", "write", "--topic", "ci",
-                                "--project", "remem", "--body", BODY])
+    first = runner.invoke(
+        app, ["handoff", "write", "--topic", "ci", "--project", "remem", "--body", BODY]
+    )
     assert first.exit_code == 0, first.stdout
 
-    bad = runner.invoke(app, ["handoff", "write", "--topic", "!!!",
-                              "--project", "remem", "--body", BODY])
+    bad = runner.invoke(
+        app,
+        ["handoff", "write", "--topic", "!!!", "--project", "remem", "--body", BODY],
+    )
     assert bad.exit_code == 1
     assert "topic" in bad.stderr
 
-    r = runner.invoke(app, ["handoff", "latest", "--topic", "ci",
-                            "--project", "remem", "--json"])
+    r = runner.invoke(
+        app, ["handoff", "latest", "--topic", "ci", "--project", "remem", "--json"]
+    )
     payload = json.loads(r.stdout)
     assert "landed it" in payload["body"]
 
 
 def test_latest_with_an_unslugable_topic_fails_loudly(env):
-    runner.invoke(app, ["handoff", "write", "--topic", "ci",
-                        "--project", "remem", "--body", BODY])
-    r = runner.invoke(app, ["handoff", "latest", "--topic", "!!!",
-                            "--project", "remem"])
+    runner.invoke(
+        app, ["handoff", "write", "--topic", "ci", "--project", "remem", "--body", BODY]
+    )
+    r = runner.invoke(
+        app, ["handoff", "latest", "--topic", "!!!", "--project", "remem"]
+    )
     assert r.exit_code == 1
     assert "topic" in r.stderr

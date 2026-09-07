@@ -65,9 +65,7 @@ def test_set_writes_a_remem_key(tmp_path):
 
 
 def test_set_rejects_an_unknown_key_with_a_nonzero_exit(tmp_path):
-    result = runner.invoke(
-        app, ["config", "set", "NOPE", "1"], env=_env(tmp_path)
-    )
+    result = runner.invoke(app, ["config", "set", "NOPE", "1"], env=_env(tmp_path))
     assert result.exit_code == 1
     assert "NOPE" in result.output
 
@@ -102,9 +100,7 @@ def test_set_warns_when_an_export_shadows_a_remem_key(tmp_path):
 
 
 def test_get_prints_the_effective_value(tmp_path):
-    runner.invoke(
-        app, ["config", "set", "REMEM_MAX_CHARS", "8000"], env=_env(tmp_path)
-    )
+    runner.invoke(app, ["config", "set", "REMEM_MAX_CHARS", "8000"], env=_env(tmp_path))
     result = runner.invoke(
         app, ["config", "get", "REMEM_MAX_CHARS"], env=_env(tmp_path)
     )
@@ -127,9 +123,7 @@ def test_unset_removes_the_key(tmp_path):
 
 
 def test_list_shows_keys_values_and_sources(tmp_path):
-    runner.invoke(
-        app, ["config", "set", "REMEM_MAX_CHARS", "8000"], env=_env(tmp_path)
-    )
+    runner.invoke(app, ["config", "set", "REMEM_MAX_CHARS", "8000"], env=_env(tmp_path))
     result = runner.invoke(app, ["config", "list"], env=_env(tmp_path))
     assert result.exit_code == 0
     assert "REMEM_MAX_CHARS" in result.stdout
@@ -262,9 +256,7 @@ def test_set_reports_where_the_agent_backup_went(tmp_path):
 
 
 def test_unset_reports_where_the_backup_went(tmp_path):
-    runner.invoke(
-        app, ["config", "set", "REMEM_MAX_CHARS", "8000"], env=_env(tmp_path)
-    )
+    runner.invoke(app, ["config", "set", "REMEM_MAX_CHARS", "8000"], env=_env(tmp_path))
     result = runner.invoke(
         app, ["config", "unset", "REMEM_MAX_CHARS"], env=_env(tmp_path)
     )
@@ -289,7 +281,9 @@ class _OtherAgent:
     def env_settings(self) -> Mapping[str, EnvVar]:
         return {
             "OTHER_TIMEOUT_MS": EnvVar(
-                "OTHER_TIMEOUT_MS", Kind.INT, "Another agent's timeout.",
+                "OTHER_TIMEOUT_MS",
+                Kind.INT,
+                "Another agent's timeout.",
                 minimum=1,
             )
         }
@@ -301,9 +295,7 @@ class _OtherAgent:
 @pytest.fixture
 def other_agent(monkeypatch):
     real = registry.discover()
-    monkeypatch.setattr(
-        registry, "discover", lambda: {**real, "other": _OtherAgent}
-    )
+    monkeypatch.setattr(registry, "discover", lambda: {**real, "other": _OtherAgent})
 
 
 def test_set_on_a_second_agent_writes_that_agents_file(
@@ -343,9 +335,7 @@ def test_an_unknown_key_error_is_not_wrapped_in_quotes(tmp_path):
     # UnknownSetting subclasses KeyError, whose str() is the repr of its
     # argument. Stripping quotes off both ends of that would also eat a
     # closing quote from a message that legitimately ends in a quoted key.
-    result = runner.invoke(
-        app, ["config", "get", "NOPE"], env=_env(tmp_path)
-    )
+    result = runner.invoke(app, ["config", "get", "NOPE"], env=_env(tmp_path))
     assert result.exit_code == 1
     line = result.output.strip().splitlines()[0]
     assert line.startswith("unknown setting")

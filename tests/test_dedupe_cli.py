@@ -95,8 +95,7 @@ def test_resolve_refuses_loudly(env):
 def test_resolve_refuses_a_malformed_id(env):
     keep = _write("alpha", "body")
 
-    result = runner.invoke(app, ["dedupe", "resolve", "not-a-uuid",
-                                 "--keep", keep])
+    result = runner.invoke(app, ["dedupe", "resolve", "not-a-uuid", "--keep", keep])
 
     assert result.exit_code == 1
     assert "Cannot resolve" in result.stdout

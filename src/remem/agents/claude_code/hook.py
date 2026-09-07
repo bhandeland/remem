@@ -27,7 +27,7 @@ def session_start(stdin_text: str, env: Mapping[str, str]) -> str:
     """Return a context block for the session's project, or "" for any problem."""
     try:
         payload = json.loads(stdin_text) if stdin_text.strip() else {}
-    except (json.JSONDecodeError, AttributeError):
+    except json.JSONDecodeError, AttributeError:
         _debug(env, "stdin was not valid JSON")
         return ""
 
@@ -92,7 +92,7 @@ def record_event(stdin_text: str, env: Mapping[str, str]) -> None:
 
     try:
         payload = json.loads(stdin_text) if stdin_text.strip() else {}
-    except (json.JSONDecodeError, AttributeError):
+    except json.JSONDecodeError, AttributeError:
         _debug(env, "stdin was not valid JSON")
         return
 
@@ -105,9 +105,7 @@ def record_event(stdin_text: str, env: Mapping[str, str]) -> None:
 
         config = load(env=env)
         with open_session(config) as s:
-            result = record.record(
-                s.store, s.owner.id, harness_event, adapter.name
-            )
+            result = record.record(s.store, s.owner.id, harness_event, adapter.name)
         if result is None:
             _debug(
                 env,
@@ -138,7 +136,7 @@ def session_size(stdin_text: str, env: Mapping[str, str]) -> str:
 
     try:
         payload = json.loads(stdin_text) if stdin_text.strip() else {}
-    except (json.JSONDecodeError, AttributeError):
+    except json.JSONDecodeError, AttributeError:
         _debug(env, "stdin was not valid JSON")
         return ""
 

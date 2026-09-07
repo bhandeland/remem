@@ -48,7 +48,9 @@ class Store(Protocol):
     # entries
     def put_entry(self, entry: Entry) -> Entry: ...
     def get_entry(self, entry_id: UUID, owner_id: UUID) -> Entry | None: ...
-    def set_superseded(self, old_id: UUID, new_entry_id: UUID, owner_id: UUID) -> bool: ...
+    def set_superseded(
+        self, old_id: UUID, new_entry_id: UUID, owner_id: UUID
+    ) -> bool: ...
     def search(self, query: Query, owner_id: UUID) -> list[Hit]: ...
     def fuzzy_search(
         self, query: Query, owner_id: UUID, threshold: float
@@ -60,8 +62,12 @@ class Store(Protocol):
     ) -> list[DuplicateSet]: ...
 
     def near_duplicate_pairs(
-        self, query: Query, owner_id: UUID, model: str,
-        threshold: float, limit: int,
+        self,
+        query: Query,
+        owner_id: UUID,
+        model: str,
+        threshold: float,
+        limit: int,
     ) -> tuple[list[NearPair], int]: ...
 
     def vector_coverage(
@@ -69,15 +75,23 @@ class Store(Protocol):
     ) -> tuple[int, int]: ...
 
     def put_vector(
-        self, entry_id: UUID, model: str, dim: int,
-        vector: list[float], owner_id: UUID,
+        self,
+        entry_id: UUID,
+        model: str,
+        dim: int,
+        vector: list[float],
+        owner_id: UUID,
     ) -> None: ...
     def entries_missing_vectors(
         self, owner_id: UUID, model: str, limit: int
     ) -> list[Entry]: ...
     def semantic_search(
-        self, query: Query, owner_id: UUID, vector: list[float],
-        model: str, threshold: float,
+        self,
+        query: Query,
+        owner_id: UUID,
+        vector: list[float],
+        model: str,
+        threshold: float,
     ) -> list[Hit]: ...
 
     # collections
@@ -94,7 +108,9 @@ class Store(Protocol):
     def pinned_entries(self, collection_id: UUID, owner_id: UUID) -> list[Entry]: ...
 
     # recording
-    def set_record_enabled(self, owner_id: UUID, project: str, enabled: bool) -> None: ...
+    def set_record_enabled(
+        self, owner_id: UUID, project: str, enabled: bool
+    ) -> None: ...
     def record_enabled(self, owner_id: UUID, project: str) -> bool: ...
     def enabled_record_projects(self, owner_id: UUID) -> list[str]: ...
     #: The retired capture spool, counted once so it is visible rather than
@@ -114,7 +130,10 @@ class Store(Protocol):
 
     # memory export
     def set_memory_collection(
-        self, owner_id: UUID, project: str, slug: str | None,
+        self,
+        owner_id: UUID,
+        project: str,
+        slug: str | None,
         working_dir: str | None = None,
     ) -> None: ...
     def memory_collection(self, owner_id: UUID, project: str) -> str | None: ...
@@ -132,18 +151,29 @@ class Store(Protocol):
     ) -> MemoryRun: ...
 
     def finish_memory_run(
-        self, run_id: UUID, owner_id: UUID, *,
-        adopted: int, healed: int, edited: int, regenerated: int,
-        deleted: int, unchanged: int, renamed: list[list[str]],
-        conflicts: list[str], sidecars: list[str], failures: list[dict],
+        self,
+        run_id: UUID,
+        owner_id: UUID,
+        *,
+        adopted: int,
+        healed: int,
+        edited: int,
+        regenerated: int,
+        deleted: int,
+        unchanged: int,
+        renamed: list[list[str]],
+        conflicts: list[str],
+        sidecars: list[str],
+        failures: list[dict],
     ) -> None: ...
 
-    def latest_memory_run(
-        self, owner_id: UUID, project: str
-    ) -> MemoryRun | None: ...
+    def latest_memory_run(self, owner_id: UUID, project: str) -> MemoryRun | None: ...
 
     def set_ingest_paths(
-        self, owner_id: UUID, project: str, paths: list[str] | None,
+        self,
+        owner_id: UUID,
+        project: str,
+        paths: list[str] | None,
         archive: bool = False,
     ) -> None: ...
     #: Every designation for one project, or for every project when
@@ -157,20 +187,30 @@ class Store(Protocol):
     #: Opens a row and returns it. Called before any file is read, so that a
     #: process which dies mid-run leaves a started, unfinished row behind.
     def start_ingest_run(
-        self, owner_id: UUID, project: str, trigger: IngestTrigger,
+        self,
+        owner_id: UUID,
+        project: str,
+        trigger: IngestTrigger,
         archive: bool = False,
     ) -> IngestRun: ...
     #: Records the outcome. Raises NotOwner for a row that is not the
     #: caller's - ownership is enforced here, not by callers.
     def finish_ingest_run(
-        self, run_id: UUID, owner_id: UUID, *,
-        created: int, changed: int, unchanged: int, swept: int, embedded: int,
-        failures: list[dict], twins: list[dict], embed_error: str | None,
+        self,
+        run_id: UUID,
+        owner_id: UUID,
+        *,
+        created: int,
+        changed: int,
+        unchanged: int,
+        swept: int,
+        embedded: int,
+        failures: list[dict],
+        twins: list[dict],
+        embed_error: str | None,
     ) -> None: ...
     #: The newest-started row for one project, finished or not.
-    def latest_ingest_run(
-        self, owner_id: UUID, project: str
-    ) -> IngestRun | None: ...
+    def latest_ingest_run(self, owner_id: UUID, project: str) -> IngestRun | None: ...
 
     #: Live ingested/archived entries in a project that carry a `src:` tag
     #: and no `sec:` tag - one per ingested document. `search` cannot say
@@ -182,8 +222,13 @@ class Store(Protocol):
     # events
     def put_event(self, event: Event) -> Event: ...
     def events_for_session(
-        self, owner_id: UUID, project: str, harness: str, session_id: str,
-        since: datetime | None = None, limit: int = 500,
+        self,
+        owner_id: UUID,
+        project: str,
+        harness: str,
+        session_id: str,
+        since: datetime | None = None,
+        limit: int = 500,
     ) -> list[Event]: ...
     #: Deletes every event for one (owner, project, harness, session) -
     #: nothing wider. Exists for install verification's cleanup, which must
@@ -204,7 +249,10 @@ class Store(Protocol):
     #: The gate that decides whether an event is ever recorded is per
     #: project, so the one that deletes it has to be too.
     def prune_events(
-        self, owner_id: UUID, before: datetime, force: bool,
+        self,
+        owner_id: UUID,
+        before: datetime,
+        force: bool,
         project: str | None = None,
     ) -> tuple[int, int, int]: ...
 
@@ -220,8 +268,12 @@ class Store(Protocol):
         self, job_id: UUID, owner_id: UUID
     ) -> ExtractJob | None: ...
     def finish_extract_job(
-        self, job_id: UUID, owner_id: UUID, status: JobStatus,
-        error: str | None, entries_written: int,
+        self,
+        job_id: UUID,
+        owner_id: UUID,
+        status: JobStatus,
+        error: str | None,
+        entries_written: int,
         covers_through: datetime | None,
     ) -> None: ...
     def get_extract_job(self, job_id: UUID, owner_id: UUID) -> ExtractJob | None: ...

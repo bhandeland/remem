@@ -319,8 +319,9 @@ def forensics(store: Store, owner_id: UUID, entry_id: UUID) -> list[ProvenanceRo
     a frontend.
     """
     return [
-        ProvenanceRow(event_id=eid, session_id=session_id, harness=harness,
-                      present=present)
+        ProvenanceRow(
+            event_id=eid, session_id=session_id, harness=harness, present=present
+        )
         for eid, session_id, harness, present in store.provenance(entry_id, owner_id)
     ]
 

@@ -74,8 +74,7 @@ def backfill(
             break
 
         for entry, vector in zip(batch, vectors, strict=True):
-            store.put_vector(entry.id, embedder.name, len(vector), vector,
-                             owner_id)
+            store.put_vector(entry.id, embedder.name, len(vector), vector, owner_id)
             embedded += 1
 
         if remaining is not None:
@@ -114,5 +113,6 @@ def backfill_if_pending(
     """
     if not store.entries_missing_vectors(owner_id, model, 1):
         return None
-    return backfill(store, owner_id, load(), batch_size=batch_size,
-                    max_entries=max_entries)
+    return backfill(
+        store, owner_id, load(), batch_size=batch_size, max_entries=max_entries
+    )

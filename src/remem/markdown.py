@@ -114,15 +114,20 @@ def split(text: str, *, doc_name: str) -> list[Chunk]:
         sections.append((title, current))
 
     chunks = [
-        Chunk(slug="", title=doc_title, body=_capped("\n".join(lead).strip()), anchor=True)
+        Chunk(
+            slug="", title=doc_title, body=_capped("\n".join(lead).strip()), anchor=True
+        )
     ]
 
     if not sections:
         # A file with no headings is still worth one searchable chunk. Its
         # slug is the document, so re-ingest matches it like any other.
         return chunks + [
-            Chunk(slug=slugify(doc_name), title=doc_title,
-                  body=_capped("\n".join(lead).strip()))
+            Chunk(
+                slug=slugify(doc_name),
+                title=doc_title,
+                body=_capped("\n".join(lead).strip()),
+            )
         ]
 
     seen: dict[str, int] = {}
@@ -135,7 +140,10 @@ def split(text: str, *, doc_name: str) -> list[Chunk]:
             # would supersede the first on every single ingest.
             slug = f"{slug}-{seen[slug]}"
         chunks.append(
-            Chunk(slug=slug, title=f"{doc_title} § {title}",
-                  body=_capped("\n".join(body_lines).strip()))
+            Chunk(
+                slug=slug,
+                title=f"{doc_title} § {title}",
+                body=_capped("\n".join(body_lines).strip()),
+            )
         )
     return chunks

@@ -30,9 +30,12 @@ def _indexdef(conn, name: str) -> str | None:
 
 def test_btree_gin_is_installed(store, conn):
     """Required to mix the scalar owner_id with the tsvector in one GIN index."""
-    assert conn.execute(
-        "select 1 from pg_extension where extname = 'btree_gin'"
-    ).fetchone() is not None
+    assert (
+        conn.execute(
+            "select 1 from pg_extension where extname = 'btree_gin'"
+        ).fetchone()
+        is not None
+    )
 
 
 def test_search_index_covers_owner_and_excludes_superseded(store, conn):

@@ -18,6 +18,7 @@ def env(live_dsn, monkeypatch, tmp_path):
     """Same bootstrap as tests/test_cli.py: the CLI opens its own session, so
     the schema has to be committed before it connects."""
     import psycopg
+
     with psycopg.connect(live_dsn) as c:
         migrate(c)
         c.commit()
@@ -35,7 +36,9 @@ def docs(tmp_path, monkeypatch):
     # chdir: the test process runs from the remem checkout, and inside a
     # repository `remem ingest` refuses a path outside it. tmp_path is not
     # under any repository, so from here identity is the path as typed.
-    (tmp_path / "alpha-doc.md").write_text("# Alpha doc\n\nlead\n\n## One\n\nbody one\n")
+    (tmp_path / "alpha-doc.md").write_text(
+        "# Alpha doc\n\nlead\n\n## One\n\nbody one\n"
+    )
     monkeypatch.chdir(tmp_path)
     return tmp_path
 
@@ -55,7 +58,9 @@ def test_dry_run_says_so_and_writes_nothing(env, docs):
 
 
 def test_dry_run_does_not_tell_you_to_embed(env, docs):
-    result = runner.invoke(app, ["ingest", str(docs), "--project", "remem", "--dry-run"])
+    result = runner.invoke(
+        app, ["ingest", str(docs), "--project", "remem", "--dry-run"]
+    )
 
     assert "Would write" in result.stdout
     assert "remem embed" not in result.stdout
@@ -67,7 +72,9 @@ def test_archived_chunks_are_hidden_until_asked_for(env, docs):
     hidden = runner.invoke(app, ["search", "body one", "--project", "remem"])
     assert "No matches." in hidden.stdout
 
-    shown = runner.invoke(app, ["search", "body one", "--project", "remem", "--archived"])
+    shown = runner.invoke(
+        app, ["search", "body one", "--project", "remem", "--archived"]
+    )
     assert "Alpha doc § One" in shown.stdout
 
 
@@ -93,7 +100,9 @@ def repo(tmp_path, monkeypatch):
     return root
 
 
-def test_ingest_from_a_subdirectory_supersedes_rather_than_duplicates(env, repo, monkeypatch):
+def test_ingest_from_a_subdirectory_supersedes_rather_than_duplicates(
+    env, repo, monkeypatch
+):
     first = runner.invoke(app, ["ingest", "docs/a.md"])
     assert first.exit_code == 0, first.output
     assert "2 new" in first.stdout
@@ -134,4 +143,6 @@ def test_ingest_prints_a_twin_and_still_exits_zero(env, repo):
     result = runner.invoke(app, ["ingest", "docs/a.md"])
 
     assert result.exit_code == 0
-    assert "twin: docs/a.md is new, but src:notes/a.md has 2 live chunks" in result.output
+    assert (
+        "twin: docs/a.md is new, but src:notes/a.md has 2 live chunks" in result.output
+    )

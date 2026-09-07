@@ -82,15 +82,19 @@ def test_a_blank_extract_model_falls_back_to_the_default():
 
 
 def test_turn_thresholds_come_from_the_environment(tmp_path):
-    cfg = load(env={"REMEM_TURN_WARN_AT": "80", "REMEM_TURN_WARN_EVERY": "20"},
-               config_path=tmp_path / "none.toml")
+    cfg = load(
+        env={"REMEM_TURN_WARN_AT": "80", "REMEM_TURN_WARN_EVERY": "20"},
+        config_path=tmp_path / "none.toml",
+    )
     assert cfg.turn_warn_at == 80
     assert cfg.turn_warn_every == 20
 
 
 def test_nonsense_turn_thresholds_fall_back_to_the_defaults(tmp_path):
-    cfg = load(env={"REMEM_TURN_WARN_AT": "zero", "REMEM_TURN_WARN_EVERY": "0"},
-               config_path=tmp_path / "none.toml")
+    cfg = load(
+        env={"REMEM_TURN_WARN_AT": "zero", "REMEM_TURN_WARN_EVERY": "0"},
+        config_path=tmp_path / "none.toml",
+    )
     assert cfg.turn_warn_at == 150
     assert cfg.turn_warn_every == 50
 
@@ -103,22 +107,19 @@ def test_idle_minutes_defaults_to_twenty(tmp_path):
 
 
 def test_idle_minutes_comes_from_the_environment(tmp_path):
-    cfg = load(env={"REMEM_IDLE_MINUTES": "5"},
-               config_path=tmp_path / "none.toml")
+    cfg = load(env={"REMEM_IDLE_MINUTES": "5"}, config_path=tmp_path / "none.toml")
     assert cfg.idle_minutes == 5
 
 
 def test_a_zero_idle_window_falls_back_to_the_default(tmp_path):
     """Zero would make a session extractable the instant its first event
     lands - extraction racing a session still being worked in."""
-    cfg = load(env={"REMEM_IDLE_MINUTES": "0"},
-               config_path=tmp_path / "none.toml")
+    cfg = load(env={"REMEM_IDLE_MINUTES": "0"}, config_path=tmp_path / "none.toml")
     assert cfg.idle_minutes == 20
 
 
 def test_a_nonsense_idle_window_falls_back_to_the_default(tmp_path):
-    cfg = load(env={"REMEM_IDLE_MINUTES": "soon"},
-               config_path=tmp_path / "none.toml")
+    cfg = load(env={"REMEM_IDLE_MINUTES": "soon"}, config_path=tmp_path / "none.toml")
     assert cfg.idle_minutes == 20
 
 

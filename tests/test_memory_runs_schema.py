@@ -21,8 +21,7 @@ def _columns(conn, table):
 def test_memory_runs_exists_with_its_counts(conn):
     migrate(conn)
     cols = _columns(conn, "memory_runs")
-    for name in ("adopted", "healed", "edited", "regenerated", "deleted",
-                 "unchanged"):
+    for name in ("adopted", "healed", "edited", "regenerated", "deleted", "unchanged"):
         assert cols[name][0] == "NO", name
     for name in ("renamed", "conflicts", "sidecars", "failures"):
         assert cols[name][1] == "jsonb", name
@@ -33,6 +32,7 @@ def test_memory_runs_exists_with_its_counts(conn):
 
 def test_the_trigger_check_rejects_an_unknown_value(conn):
     import psycopg
+
     migrate(conn)
     conn.execute(
         "insert into principals (id, handle) values "

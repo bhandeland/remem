@@ -33,24 +33,27 @@ def test_resolve_returns_pinned_entries(store, owner):
 
 
 def test_resolve_includes_query_matches(store, owner):
-    kb.create(store, owner.id, slug="s", title="T",
-              query=CollectionQuery(tags=["style"]))
+    kb.create(
+        store, owner.id, slug="s", title="T", query=CollectionQuery(tags=["style"])
+    )
     remember(store, owner.id, title="Styled", body="b", tags=["style"])
     remember(store, owner.id, title="Other", body="b", tags=["other"])
     assert [x.title for x in kb.resolve(store, owner.id, "s")] == ["Styled"]
 
 
 def test_resolve_dedupes_when_an_entry_is_both_pinned_and_matched(store, owner):
-    c = kb.create(store, owner.id, slug="s", title="T",
-                  query=CollectionQuery(tags=["style"]))
+    c = kb.create(
+        store, owner.id, slug="s", title="T", query=CollectionQuery(tags=["style"])
+    )
     e = remember(store, owner.id, title="Both", body="b", tags=["style"])
     store.pin(c.id, e.id, position=0, owner_id=owner.id)
     assert [x.title for x in kb.resolve(store, owner.id, "s")] == ["Both"]
 
 
 def test_pinned_entries_come_before_query_matches(store, owner):
-    c = kb.create(store, owner.id, slug="s", title="T",
-                  query=CollectionQuery(tags=["style"]))
+    c = kb.create(
+        store, owner.id, slug="s", title="T", query=CollectionQuery(tags=["style"])
+    )
     matched = remember(store, owner.id, title="Matched", body="b", tags=["style"])
     pinned = remember(store, owner.id, title="Pinned", body="b")
     store.pin(c.id, pinned.id, position=0, owner_id=owner.id)
@@ -59,8 +62,9 @@ def test_pinned_entries_come_before_query_matches(store, owner):
 
 
 def test_resolve_excludes_superseded_entries(store, owner):
-    kb.create(store, owner.id, slug="s", title="T",
-              query=CollectionQuery(tags=["deploys"]))
+    kb.create(
+        store, owner.id, slug="s", title="T", query=CollectionQuery(tags=["deploys"])
+    )
     old = remember(store, owner.id, title="Old", body="b", tags=["deploys"])
     supersede(store, owner.id, old.id, title="New", body="b")
     titles = [x.title for x in kb.resolve(store, owner.id, "s")]
@@ -68,10 +72,17 @@ def test_resolve_excludes_superseded_entries(store, owner):
 
 
 def test_resolve_filters_by_kind_in_the_query(store, owner):
-    kb.create(store, owner.id, slug="s", title="T",
-              query=CollectionQuery(kinds=[Kind.RULE]))
-    remember(store, owner.id, title="A rule", body="b",
-             summary="A rule that filters by kind", kind=Kind.RULE)
+    kb.create(
+        store, owner.id, slug="s", title="T", query=CollectionQuery(kinds=[Kind.RULE])
+    )
+    remember(
+        store,
+        owner.id,
+        title="A rule",
+        body="b",
+        summary="A rule that filters by kind",
+        kind=Kind.RULE,
+    )
     remember(store, owner.id, title="A memory", body="b", kind=Kind.NOTE)
     assert [x.title for x in kb.resolve(store, owner.id, "s")] == ["A rule"]
 

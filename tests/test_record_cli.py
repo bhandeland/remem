@@ -56,15 +56,11 @@ def _payload(cwd, **overrides):
 def test_record_event_writes_one_row(env, repo):
     runner.invoke(app, ["record", "enable", "--project", "myrepo"])
 
-    result = runner.invoke(
-        app, ["record", "event"], input=json.dumps(_payload(repo))
-    )
+    result = runner.invoke(app, ["record", "event"], input=json.dumps(_payload(repo)))
 
     assert result.exit_code == 0
     with psycopg.connect(env) as c:
-        rows = c.execute(
-            "select kind, tool, payload from events"
-        ).fetchall()
+        rows = c.execute("select kind, tool, payload from events").fetchall()
     assert len(rows) == 1
     kind, tool, payload = rows[0]
     assert kind == "tool_call"
@@ -72,12 +68,8 @@ def test_record_event_writes_one_row(env, repo):
     assert payload["tool_input"] == {"command": "ls"}
 
 
-def test_record_event_records_nothing_when_the_project_has_not_opted_in(
-    env, repo
-):
-    result = runner.invoke(
-        app, ["record", "event"], input=json.dumps(_payload(repo))
-    )
+def test_record_event_records_nothing_when_the_project_has_not_opted_in(env, repo):
+    result = runner.invoke(app, ["record", "event"], input=json.dumps(_payload(repo)))
     assert result.exit_code == 0
     with psycopg.connect(env) as c:
         count = c.execute("select count(*) from events").fetchone()[0]
@@ -93,9 +85,7 @@ def test_record_event_exits_zero_on_garbage_stdin(env):
 
 def test_record_event_explains_itself_under_hook_debug(env, monkeypatch, repo):
     monkeypatch.setenv("REMEM_HOOK_DEBUG", "1")
-    result = runner.invoke(
-        app, ["record", "event"], input=json.dumps(_payload(repo))
-    )
+    result = runner.invoke(app, ["record", "event"], input=json.dumps(_payload(repo)))
     assert result.exit_code == 0
     assert "myrepo" in result.stderr
     assert "remem record enable" in result.stderr
@@ -110,9 +100,7 @@ def test_an_adapter_whose_event_capability_raises_degrades(env, monkeypatch, rep
         raise RuntimeError("boom")
 
     monkeypatch.setattr(ClaudeCodeAdapter, "event", boom)
-    result = runner.invoke(
-        app, ["record", "event"], input=json.dumps(_payload(repo))
-    )
+    result = runner.invoke(app, ["record", "event"], input=json.dumps(_payload(repo)))
     assert result.exit_code == 0
 
 
@@ -123,12 +111,13 @@ def test_an_adapter_with_no_event_capability_says_so(env, monkeypatch, repo):
     monkeypatch.delattr(ClaudeCodeAdapter, "event")
     monkeypatch.setenv("REMEM_HOOK_DEBUG", "1")
 
-    result = runner.invoke(
-        app, ["record", "event"], input=json.dumps(_payload(repo))
-    )
+    result = runner.invoke(app, ["record", "event"], input=json.dumps(_payload(repo)))
 
     assert result.exit_code == 0
-    assert "does not support" in result.stderr.lower() or "no event" in result.stderr.lower()
+    assert (
+        "does not support" in result.stderr.lower()
+        or "no event" in result.stderr.lower()
+    )
 
 
 def test_record_event_reads_a_named_agent(env, repo):
@@ -151,8 +140,12 @@ def test_malformed_stdin_is_loud_under_strict(env):
 
 
 def test_record_enable_then_disable(env):
-    assert runner.invoke(app, ["record", "enable", "--project", "myrepo"]).exit_code == 0
-    assert runner.invoke(app, ["record", "disable", "--project", "myrepo"]).exit_code == 0
+    assert (
+        runner.invoke(app, ["record", "enable", "--project", "myrepo"]).exit_code == 0
+    )
+    assert (
+        runner.invoke(app, ["record", "disable", "--project", "myrepo"]).exit_code == 0
+    )
 
 
 def test_record_enable_states_the_model_and_cost(env):

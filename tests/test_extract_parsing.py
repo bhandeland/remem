@@ -18,8 +18,12 @@ def test_parses_a_well_formed_array():
     ]"""
     entries = parse_entries(raw)
     assert entries == [
-        ExtractedEntry(title="Pool sizing", body="pgbouncer saturates",
-                      kind=Kind.NOTE, tags=["ops"])
+        ExtractedEntry(
+            title="Pool sizing",
+            body="pgbouncer saturates",
+            kind=Kind.NOTE,
+            tags=["ops"],
+        )
     ]
 
 
@@ -61,17 +65,16 @@ def test_drops_entries_with_an_unknown_kind():
 
 
 def test_truncates_to_the_entry_cap():
-    raw = "[" + ",".join(
-        f'{{"title":"T{i}","body":"B","kind":"note"}}' for i in range(20)
-    ) + "]"
+    raw = (
+        "["
+        + ",".join(f'{{"title":"T{i}","body":"B","kind":"note"}}' for i in range(20))
+        + "]"
+    )
     assert len(parse_entries(raw)) == MAX_ENTRIES
 
 
 def test_caps_title_and_body_length():
-    raw = (
-        '[{"title":"' + "t" * 500 + '","body":"' + "b" * 9000
-        + '","kind":"note"}]'
-    )
+    raw = '[{"title":"' + "t" * 500 + '","body":"' + "b" * 9000 + '","kind":"note"}]'
     entry = parse_entries(raw)[0]
     assert len(entry.title) == MAX_TITLE
     assert len(entry.body) == MAX_BODY
@@ -90,20 +93,24 @@ def test_unparseable_output_raises_extraction_failed(raw):
 
 def test_prefers_the_array_that_actually_contains_entries():
     """A model second-guessing itself emits a decoy array before the real one."""
-    raw = ('First attempt: [1,2,3] was wrong. Correct output: '
-           '[{"title":"Good","body":"B","kind":"note"}]')
+    raw = (
+        "First attempt: [1,2,3] was wrong. Correct output: "
+        '[{"title":"Good","body":"B","kind":"note"}]'
+    )
     assert [e.title for e in parse_entries(raw)] == ["Good"]
 
 
 def test_tolerates_a_bracket_in_prose_after_a_fenced_block():
-    raw = ('```json\n[{"title":"Good","body":"B","kind":"note"}]\n```\n'
-           'Note: see items[0] for details.')
+    raw = (
+        '```json\n[{"title":"Good","body":"B","kind":"note"}]\n```\n'
+        "Note: see items[0] for details."
+    )
     assert [e.title for e in parse_entries(raw)] == ["Good"]
 
 
 def test_an_empty_array_still_wins_over_no_valid_entries():
     """[] is the deliberate 'nothing durable' answer and stays a success."""
-    assert parse_entries('Nothing to record: []') == []
+    assert parse_entries("Nothing to record: []") == []
 
 
 def test_whitespace_only_title_or_body_is_dropped():

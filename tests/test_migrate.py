@@ -29,8 +29,7 @@ def test_migrate_records_versions(conn):
 def test_schema_has_the_expected_tables(conn):
     migrate(conn)
     rows = conn.execute(
-        "select table_name from information_schema.tables "
-        "where table_schema = 'public'"
+        "select table_name from information_schema.tables where table_schema = 'public'"
     ).fetchall()
     names = {r[0] for r in rows}
     assert {"principals", "entries", "collections", "collection_members"} <= names

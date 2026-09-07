@@ -71,7 +71,7 @@ def _read_file(path: Path) -> dict:
     try:
         with path.open("rb") as fh:
             return tomllib.load(fh)
-    except (OSError, tomllib.TOMLDecodeError):
+    except OSError, tomllib.TOMLDecodeError:
         # A broken or missing config file must never stop remem from running.
         return {}
 
@@ -81,8 +81,10 @@ def load(
     config_path: Path | None = None,
 ) -> Config:
     env = os.environ if env is None else env
-    path = config_path if config_path is not None else Path(
-        env.get("REMEM_CONFIG", default_config_path())
+    path = (
+        config_path
+        if config_path is not None
+        else Path(env.get("REMEM_CONFIG", default_config_path()))
     )
     data = _read_file(path)
 
@@ -94,14 +96,15 @@ def load(
     max_chars = pick("REMEM_MAX_CHARS", "max_chars", DEFAULT_MAX_CHARS)
     try:
         max_chars = int(max_chars)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         max_chars = DEFAULT_MAX_CHARS
 
-    threshold = pick("REMEM_FUZZY_THRESHOLD", "fuzzy_threshold",
-                     DEFAULT_FUZZY_THRESHOLD)
+    threshold = pick(
+        "REMEM_FUZZY_THRESHOLD", "fuzzy_threshold", DEFAULT_FUZZY_THRESHOLD
+    )
     try:
         threshold = float(threshold)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         threshold = DEFAULT_FUZZY_THRESHOLD
     if not 0.0 < threshold <= 1.0:
         # Outside this range the setting is meaningless: 0 matches everything,
@@ -142,22 +145,25 @@ def load(
         value = pick(env_key, file_key, default)
         try:
             value = int(value)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return default
         # A non-positive threshold would warn on every prompt forever, which
         # is how a warning gets ignored.
         return value if value > 0 else default
 
-    turn_warn_at = positive_int("REMEM_TURN_WARN_AT", "turn_warn_at",
-                                DEFAULT_TURN_WARN_AT)
-    turn_warn_every = positive_int("REMEM_TURN_WARN_EVERY", "turn_warn_every",
-                                   DEFAULT_TURN_WARN_EVERY)
+    turn_warn_at = positive_int(
+        "REMEM_TURN_WARN_AT", "turn_warn_at", DEFAULT_TURN_WARN_AT
+    )
+    turn_warn_every = positive_int(
+        "REMEM_TURN_WARN_EVERY", "turn_warn_every", DEFAULT_TURN_WARN_EVERY
+    )
 
     # positive_int, not int: a zero window makes every session extractable
     # the instant its first event lands, which is extraction racing a
     # session that is still being worked in.
-    idle_minutes = positive_int("REMEM_IDLE_MINUTES", "idle_minutes",
-                                DEFAULT_IDLE_MINUTES)
+    idle_minutes = positive_int(
+        "REMEM_IDLE_MINUTES", "idle_minutes", DEFAULT_IDLE_MINUTES
+    )
 
     embed_model = str(
         pick("REMEM_EMBED_MODEL", "embed_model", DEFAULT_EMBED_MODEL)
@@ -165,11 +171,12 @@ def load(
     if not embed_model:
         embed_model = DEFAULT_EMBED_MODEL
 
-    semantic = pick("REMEM_SEMANTIC_THRESHOLD", "semantic_threshold",
-                    DEFAULT_SEMANTIC_THRESHOLD)
+    semantic = pick(
+        "REMEM_SEMANTIC_THRESHOLD", "semantic_threshold", DEFAULT_SEMANTIC_THRESHOLD
+    )
     try:
         semantic = float(semantic)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         semantic = DEFAULT_SEMANTIC_THRESHOLD
     if not 0.0 < semantic <= 1.0:
         # Same reasoning as fuzzy_threshold: outside this range the setting is

@@ -42,9 +42,22 @@ from remem.domain import (
 from remem.store import NotOwner
 
 ENTRY_FIELDS = [
-    "id", "kind", "title", "body", "summary", "project", "scope", "owner_id",
-    "tags", "links", "agent", "session_id", "origin", "superseded_by",
-    "created_at", "updated_at",
+    "id",
+    "kind",
+    "title",
+    "body",
+    "summary",
+    "project",
+    "scope",
+    "owner_id",
+    "tags",
+    "links",
+    "agent",
+    "session_id",
+    "origin",
+    "superseded_by",
+    "created_at",
+    "updated_at",
 ]
 
 
@@ -65,14 +78,27 @@ def _aliased_entry_columns(alias: str, prefix: str) -> str:
 
 def _row_to_entry_prefixed(row: dict, prefix: str) -> Entry:
     return _row_to_entry(
-        {k[len(prefix):]: v for k, v in row.items() if k.startswith(prefix)}
+        {k[len(prefix) :]: v for k, v in row.items() if k.startswith(prefix)}
     )
 
 
 MEMORY_RUN_FIELDS = [
-    "id", "owner_id", "project", "trigger", "started_at", "finished_at",
-    "adopted", "healed", "edited", "regenerated", "deleted", "unchanged",
-    "renamed", "conflicts", "sidecars", "failures",
+    "id",
+    "owner_id",
+    "project",
+    "trigger",
+    "started_at",
+    "finished_at",
+    "adopted",
+    "healed",
+    "edited",
+    "regenerated",
+    "deleted",
+    "unchanged",
+    "renamed",
+    "conflicts",
+    "sidecars",
+    "failures",
 ]
 
 
@@ -188,8 +214,17 @@ def _row_to_collection(row: dict) -> Collection:
 
 
 EXTRACT_JOB_FIELDS = [
-    "id", "owner_id", "project", "harness", "session_id", "covers_through",
-    "status", "attempts", "error", "entries_written", "created_at",
+    "id",
+    "owner_id",
+    "project",
+    "harness",
+    "session_id",
+    "covers_through",
+    "status",
+    "attempts",
+    "error",
+    "entries_written",
+    "created_at",
     "updated_at",
 ]
 
@@ -217,9 +252,21 @@ def _row_to_extract_job(row: dict) -> ExtractJob:
 
 
 INGEST_RUN_FIELDS = [
-    "id", "owner_id", "project", "trigger", "archive", "started_at",
-    "finished_at", "created", "changed", "unchanged", "swept", "embedded",
-    "failures", "twins", "embed_error",
+    "id",
+    "owner_id",
+    "project",
+    "trigger",
+    "archive",
+    "started_at",
+    "finished_at",
+    "created",
+    "changed",
+    "unchanged",
+    "swept",
+    "embedded",
+    "failures",
+    "twins",
+    "embed_error",
 ]
 
 
@@ -477,14 +524,16 @@ class PostgresStore:
             cur.execute(sql, params)
             rows = cur.fetchall()
         return [
-            Hit(entry=_row_to_entry(r), rank=float(r["rank"]),
-                snippet=r["snippet"], match=Match.EXACT)
+            Hit(
+                entry=_row_to_entry(r),
+                rank=float(r["rank"]),
+                snippet=r["snippet"],
+                match=Match.EXACT,
+            )
             for r in rows
         ]
 
-    def fuzzy_search(
-        self, query: Query, owner_id: UUID, threshold: float
-    ) -> list[Hit]:
+    def fuzzy_search(self, query: Query, owner_id: UUID, threshold: float) -> list[Hit]:
         """Typo-tolerant search, for when exact search found nothing.
 
         Two operators, because they behave differently on the two columns:
@@ -502,8 +551,9 @@ class PostgresStore:
         params["text"] = text
         params["threshold"] = threshold
 
-        score = ("greatest(similarity(e.title, %(text)s), "
-                 "word_similarity(%(text)s, e.body))")
+        score = (
+            "greatest(similarity(e.title, %(text)s), word_similarity(%(text)s, e.body))"
+        )
         where.append(f"{score} >= %(threshold)s")
 
         sql = f"""
@@ -529,8 +579,12 @@ class PostgresStore:
         ]
 
     def put_vector(
-        self, entry_id: UUID, model: str, dim: int,
-        vector: list[float], owner_id: UUID,
+        self,
+        entry_id: UUID,
+        model: str,
+        dim: int,
+        vector: list[float],
+        owner_id: UUID,
     ) -> None:
         """Insert or replace one entry's vector for one model.
 
@@ -544,9 +598,7 @@ class PostgresStore:
                 (entry_id, owner_id),
             )
             if cur.fetchone() is None:
-                raise NotOwner(
-                    f"entry {entry_id} does not belong to {owner_id}"
-                )
+                raise NotOwner(f"entry {entry_id} does not belong to {owner_id}")
             cur.execute(
                 """
                 insert into entry_vectors (entry_id, model, dim, vector)
@@ -556,8 +608,12 @@ class PostgresStore:
                        dim = excluded.dim,
                        created_at = clock_timestamp()
                 """,
-                {"entry_id": entry_id, "model": model, "dim": dim,
-                 "vector": _vector_literal(vector)},
+                {
+                    "entry_id": entry_id,
+                    "model": model,
+                    "dim": dim,
+                    "vector": _vector_literal(vector),
+                },
             )
 
     def entries_missing_vectors(
@@ -589,8 +645,12 @@ class PostgresStore:
             return [_row_to_entry(r) for r in cur.fetchall()]
 
     def semantic_search(
-        self, query: Query, owner_id: UUID, vector: list[float],
-        model: str, threshold: float,
+        self,
+        query: Query,
+        owner_id: UUID,
+        vector: list[float],
+        model: str,
+        threshold: float,
     ) -> list[Hit]:
         """Nearest neighbours by cosine similarity, above a floor.
 
@@ -630,8 +690,12 @@ class PostgresStore:
             cur.execute(sql, params)
             rows = cur.fetchall()
         return [
-            Hit(entry=_row_to_entry(r), rank=float(r["rank"]),
-                snippet=r["snippet"], match=Match.SEMANTIC)
+            Hit(
+                entry=_row_to_entry(r),
+                rank=float(r["rank"]),
+                snippet=r["snippet"],
+                match=Match.SEMANTIC,
+            )
             for r in rows
         ]
 
@@ -687,8 +751,12 @@ class PostgresStore:
         return [DuplicateSet(entries=members) for members in groups.values()]
 
     def near_duplicate_pairs(
-        self, query: Query, owner_id: UUID, model: str,
-        threshold: float, limit: int,
+        self,
+        query: Query,
+        owner_id: UUID,
+        model: str,
+        threshold: float,
+        limit: int,
     ) -> tuple[list[NearPair], int]:
         """Entry pairs above a cosine-similarity floor, and how many there are.
 
@@ -878,9 +946,7 @@ class PostgresStore:
 
     # ---------------- recording ----------------
 
-    def set_record_enabled(
-        self, owner_id: UUID, project: str, enabled: bool
-    ) -> None:
+    def set_record_enabled(self, owner_id: UUID, project: str, enabled: bool) -> None:
         with self._cur() as cur:
             cur.execute(
                 """
@@ -903,14 +969,16 @@ class PostgresStore:
         return bool(row["enabled"]) if row else False
 
     def set_memory_collection(
-        self, owner_id: UUID, project: str, slug: str | None,
+        self,
+        owner_id: UUID,
+        project: str,
+        slug: str | None,
         working_dir: str | None = None,
     ) -> None:
         with self._cur() as cur:
             if slug is None:
                 cur.execute(
-                    "delete from memory_settings "
-                    "where owner_id = %s and project = %s",
+                    "delete from memory_settings where owner_id = %s and project = %s",
                     (owner_id, project),
                 )
                 return
@@ -955,7 +1023,10 @@ class PostgresStore:
         return row["collection_slug"] if row else None
 
     def set_ingest_paths(
-        self, owner_id: UUID, project: str, paths: list[str] | None,
+        self,
+        owner_id: UUID,
+        project: str,
+        paths: list[str] | None,
         archive: bool = False,
     ) -> None:
         with self._cur() as cur:
@@ -1001,7 +1072,10 @@ class PostgresStore:
     # ---------------- ingest runs ----------------
 
     def start_ingest_run(
-        self, owner_id: UUID, project: str, trigger: IngestTrigger,
+        self,
+        owner_id: UUID,
+        project: str,
+        trigger: IngestTrigger,
         archive: bool = False,
     ) -> IngestRun:
         run_id = new_id()
@@ -1017,9 +1091,18 @@ class PostgresStore:
             return _row_to_ingest_run(cur.fetchone())
 
     def finish_ingest_run(
-        self, run_id: UUID, owner_id: UUID, *,
-        created: int, changed: int, unchanged: int, swept: int, embedded: int,
-        failures: list[dict], twins: list[dict], embed_error: str | None,
+        self,
+        run_id: UUID,
+        owner_id: UUID,
+        *,
+        created: int,
+        changed: int,
+        unchanged: int,
+        swept: int,
+        embedded: int,
+        failures: list[dict],
+        twins: list[dict],
+        embed_error: str | None,
     ) -> None:
         with self._cur() as cur:
             cur.execute(
@@ -1032,16 +1115,23 @@ class PostgresStore:
                        embed_error = %s
                  where id = %s and owner_id = %s
                 """,
-                (created, changed, unchanged, swept, embedded,
-                 json.dumps(failures), json.dumps(twins), embed_error,
-                 run_id, owner_id),
+                (
+                    created,
+                    changed,
+                    unchanged,
+                    swept,
+                    embedded,
+                    json.dumps(failures),
+                    json.dumps(twins),
+                    embed_error,
+                    run_id,
+                    owner_id,
+                ),
             )
             if cur.rowcount == 0:
                 raise NotOwner(f"ingest run {run_id} is not owned by {owner_id}")
 
-    def latest_ingest_run(
-        self, owner_id: UUID, project: str
-    ) -> IngestRun | None:
+    def latest_ingest_run(self, owner_id: UUID, project: str) -> IngestRun | None:
         with self._cur() as cur:
             cur.execute(
                 f"""
@@ -1077,10 +1167,20 @@ class PostgresStore:
             return _row_to_memory_run(cur.fetchone())
 
     def finish_memory_run(
-        self, run_id: UUID, owner_id: UUID, *,
-        adopted: int, healed: int, edited: int, regenerated: int,
-        deleted: int, unchanged: int, renamed: list[list[str]],
-        conflicts: list[str], sidecars: list[str], failures: list[dict],
+        self,
+        run_id: UUID,
+        owner_id: UUID,
+        *,
+        adopted: int,
+        healed: int,
+        edited: int,
+        regenerated: int,
+        deleted: int,
+        unchanged: int,
+        renamed: list[list[str]],
+        conflicts: list[str],
+        sidecars: list[str],
+        failures: list[dict],
     ) -> None:
         with self._cur() as cur:
             cur.execute(
@@ -1093,19 +1193,25 @@ class PostgresStore:
                        sidecars = %s::jsonb, failures = %s::jsonb
                  where id = %s and owner_id = %s
                 """,
-                (adopted, healed, edited, regenerated, deleted, unchanged,
-                 json.dumps(renamed), json.dumps(conflicts),
-                 json.dumps(sidecars), json.dumps(failures),
-                 run_id, owner_id),
+                (
+                    adopted,
+                    healed,
+                    edited,
+                    regenerated,
+                    deleted,
+                    unchanged,
+                    json.dumps(renamed),
+                    json.dumps(conflicts),
+                    json.dumps(sidecars),
+                    json.dumps(failures),
+                    run_id,
+                    owner_id,
+                ),
             )
             if cur.rowcount == 0:
-                raise NotOwner(
-                    f"memory run {run_id} is not owned by {owner_id}"
-                )
+                raise NotOwner(f"memory run {run_id} is not owned by {owner_id}")
 
-    def latest_memory_run(
-        self, owner_id: UUID, project: str
-    ) -> MemoryRun | None:
+    def latest_memory_run(self, owner_id: UUID, project: str) -> MemoryRun | None:
         with self._cur() as cur:
             cur.execute(
                 f"""
@@ -1366,9 +1472,7 @@ class PostgresStore:
                 (entry_id, owner_id),
             )
             if cur.fetchone() is None:
-                raise NotOwner(
-                    f"entry {entry_id} does not belong to {owner_id}"
-                )
+                raise NotOwner(f"entry {entry_id} does not belong to {owner_id}")
             for event in events:
                 cur.execute(
                     """
@@ -1634,8 +1738,7 @@ class PostgresStore:
                  where owner_id = %s and project = %s and harness = %s
                    and session_id = %s
                 """,
-                (owner_id, session.project, session.harness,
-                 session.session_id),
+                (owner_id, session.project, session.harness, session.session_id),
             )
             row = cur.fetchone()
         return _row_to_extract_job(row) if row else None

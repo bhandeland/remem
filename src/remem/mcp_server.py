@@ -111,17 +111,26 @@ def remember_tool(
     with open_session() as s:
         try:
             entry = write.remember(
-                s.store, s.owner.id, title=title, body=body, summary=summary,
-                kind=parsed_kind, project=project or _default_project(),
-                tags=list(tags or []), agent=AGENT_NAME,
-                session_id=_session_id(), origin=Origin.AGENT,
+                s.store,
+                s.owner.id,
+                title=title,
+                body=body,
+                summary=summary,
+                kind=parsed_kind,
+                project=project or _default_project(),
+                tags=list(tags or []),
+                agent=AGENT_NAME,
+                session_id=_session_id(),
+                origin=Origin.AGENT,
             )
         except write.RuleNeedsSummary:
             # An error dict, not a raise: a raise reaches the model as a
             # stack trace, and this is a correctable mistake it can retry.
-            return {"error": "a rule needs a summary - one line stating the "
-                             "rule, which is what every session's context "
-                             "block renders instead of the body"}
+            return {
+                "error": "a rule needs a summary - one line stating the "
+                "rule, which is what every session's context "
+                "block renders instead of the body"
+            }
         return {"id": str(entry.id), "title": entry.title}
 
 
@@ -174,9 +183,15 @@ def recall_tool(
         # the CLI, because this process is long-lived and would otherwise
         # rebuild the ONNX session on every recall call.
         hits = find(
-            s.store, s.owner.id,
-            Query(text=query, kinds=kinds,
-                  project=project, tags=list(tags or []), limit=limit),
+            s.store,
+            s.owner.id,
+            Query(
+                text=query,
+                kinds=kinds,
+                project=project,
+                tags=list(tags or []),
+                limit=limit,
+            ),
             fuzzy_threshold=s.config.fuzzy_threshold,
             include_handoffs=include_handoffs,
             include_archived=include_archived,
@@ -238,19 +253,25 @@ def supersede_tool(
     with open_session() as s:
         try:
             entry = write.supersede(
-                s.store, s.owner.id, UUID(entry_id), title=title, body=body,
+                s.store,
+                s.owner.id,
+                UUID(entry_id),
+                title=title,
+                body=body,
                 summary=summary,
             )
-        except (write.EntryNotFound, ValueError):
+        except write.EntryNotFound, ValueError:
             return {"error": f"no entry {entry_id}"}
         except write.RuleNeedsSummary:
             # An error dict, not a raise, same as remember_tool: this is a
             # correctable mistake, not a crash. This is the one rule this
             # entry predates a summary being required, and superseding it
             # needs one supplied since there is no old one to carry.
-            return {"error": "this rule has no summary to carry onto the "
-                             "replacement - pass summary with the one line "
-                             "the context block should render"}
+            return {
+                "error": "this rule has no summary to carry onto the "
+                "replacement - pass summary with the one line "
+                "the context block should render"
+            }
         return {"id": str(entry.id), "replaced": entry_id}
 
 
@@ -265,9 +286,7 @@ def kb_context_tool(slug: str, max_chars: int | None = None) -> str:
         try:
             collection = kb.get(s.store, s.owner.id, slug)
             entries = kb.resolve(s.store, s.owner.id, slug)
-            return kb.render(
-                collection, entries, max_chars or s.config.max_chars
-            )
+            return kb.render(collection, entries, max_chars or s.config.max_chars)
         except kb.CollectionNotFound:
             return f"No knowledge base '{slug}'. Call kb_list to see what exists."
         except kb.RulesExceedBudget as exc:
@@ -279,8 +298,12 @@ def kb_list_tool() -> list[dict]:
     """List available knowledge bases and what each covers."""
     with open_session() as s:
         return [
-            {"slug": c.slug, "title": c.title,
-             "description": c.description, "project": c.project}
+            {
+                "slug": c.slug,
+                "title": c.title,
+                "description": c.description,
+                "project": c.project,
+            }
             for c in s.store.list_collections(s.owner.id)
         ]
 
@@ -295,7 +318,7 @@ def kb_pin_tool(slug: str, entry_id: str) -> dict:
     with open_session() as s:
         try:
             kb.pin(s.store, s.owner.id, slug, UUID(entry_id))
-        except (kb.CollectionNotFound, ValueError):
+        except kb.CollectionNotFound, ValueError:
             return {"error": f"could not pin {entry_id} to '{slug}'"}
         except kb.EntryNotFound:
             return {"error": f"no entry {entry_id}"}

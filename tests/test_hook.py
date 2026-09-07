@@ -25,9 +25,7 @@ def test_returns_empty_on_empty_stdin():
 
 def test_main_exits_zero_when_the_database_is_unreachable(monkeypatch, capsys):
     monkeypatch.setenv("REMEM_DSN", "postgresql://nobody@127.0.0.1:1/none")
-    monkeypatch.setattr(
-        "sys.stdin", io.StringIO(json.dumps({"cwd": "/tmp/x"}))
-    )
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps({"cwd": "/tmp/x"})))
     assert main() == 0
     assert capsys.readouterr().out == ""
 
@@ -57,27 +55,42 @@ def test_injects_the_project_knowledge_base(live_dsn, tmp_path, monkeypatch):
     # every path. Pointed at this live test database they outlive the test
     # and race conftest's truncate-cascade for table locks - the same
     # deadlock test_hook_context_cli.py's env fixture stubs against.
-    monkeypatch.setattr("remem.agents.claude_code.hook.spawn_process",
-                         lambda env: False)
-    monkeypatch.setattr("remem.agents.claude_code.hook.spawn_ingest",
-                         lambda env: False)
+    monkeypatch.setattr(
+        "remem.agents.claude_code.hook.spawn_process", lambda env: False
+    )
+    monkeypatch.setattr("remem.agents.claude_code.hook.spawn_ingest", lambda env: False)
 
     project_dir = tmp_path / "myproj"
     project_dir.mkdir()
 
     with open_session() as s:
         from remem.domain import CollectionQuery, Kind
-        kb.create(s.store, s.owner.id, slug="myproj", title="myproj",
-                  query=CollectionQuery(project="myproj"))
-        remember(s.store, s.owner.id, title="Lint rule",
-                 body="always run ruff", summary="Run ruff linter",
-                 kind=Kind.RULE, project="myproj")
+
+        kb.create(
+            s.store,
+            s.owner.id,
+            slug="myproj",
+            title="myproj",
+            query=CollectionQuery(project="myproj"),
+        )
+        remember(
+            s.store,
+            s.owner.id,
+            title="Lint rule",
+            body="always run ruff",
+            summary="Run ruff linter",
+            kind=Kind.RULE,
+            project="myproj",
+        )
         s.conn.commit()
 
     out = session_start(
         json.dumps({"cwd": str(project_dir), "session_id": "s1"}),
-        env={"REMEM_DSN": live_dsn, "REMEM_USER_ID": "brandon",
-             "REMEM_CONFIG": str(tmp_path / "none.toml")},
+        env={
+            "REMEM_DSN": live_dsn,
+            "REMEM_USER_ID": "brandon",
+            "REMEM_CONFIG": str(tmp_path / "none.toml"),
+        },
     )
     assert "Run ruff linter" in out
 
@@ -92,12 +105,15 @@ def test_returns_empty_when_the_project_has_no_knowledge_base(
         migrate(c)
         c.commit()
 
-    monkeypatch.setattr("remem.agents.claude_code.hook.spawn_process",
-                         lambda env: False)
-    monkeypatch.setattr("remem.agents.claude_code.hook.spawn_ingest",
-                         lambda env: False)
-    env = {"REMEM_DSN": live_dsn, "REMEM_USER_ID": "brandon",
-           "REMEM_CONFIG": str(tmp_path / "none.toml")}
+    monkeypatch.setattr(
+        "remem.agents.claude_code.hook.spawn_process", lambda env: False
+    )
+    monkeypatch.setattr("remem.agents.claude_code.hook.spawn_ingest", lambda env: False)
+    env = {
+        "REMEM_DSN": live_dsn,
+        "REMEM_USER_ID": "brandon",
+        "REMEM_CONFIG": str(tmp_path / "none.toml"),
+    }
     out = session_start(json.dumps({"cwd": str(tmp_path / "unknown-proj")}), env=env)
     assert out == ""
 
@@ -127,8 +143,10 @@ def test_debug_explains_an_unreachable_database_on_stderr(capsys):
     payload = json.dumps({"cwd": "/tmp/whatever", "session_id": "s1"})
     out = session_start(
         payload,
-        env={"REMEM_DSN": "postgresql://nobody@127.0.0.1:1/none",
-             "REMEM_HOOK_DEBUG": "1"},
+        env={
+            "REMEM_DSN": "postgresql://nobody@127.0.0.1:1/none",
+            "REMEM_HOOK_DEBUG": "1",
+        },
     )
     captured = capsys.readouterr()
     assert out == ""
@@ -138,6 +156,7 @@ def test_debug_explains_an_unreachable_database_on_stderr(capsys):
 
 def test_debug_never_breaks_fail_soft(capsys):
     """Even if writing the diagnostic blows up, the hook still returns ""."""
+
     class Exploding(dict):
         def get(self, key, default=None):
             raise RuntimeError("boom")
@@ -155,12 +174,16 @@ def test_debug_names_the_missing_knowledge_base(
         migrate(c)
         c.commit()
 
-    monkeypatch.setattr("remem.agents.claude_code.hook.spawn_process",
-                         lambda env: False)
-    monkeypatch.setattr("remem.agents.claude_code.hook.spawn_ingest",
-                         lambda env: False)
-    env = {"REMEM_DSN": live_dsn, "REMEM_USER_ID": "brandon",
-           "REMEM_CONFIG": str(tmp_path / "none.toml"), "REMEM_HOOK_DEBUG": "1"}
+    monkeypatch.setattr(
+        "remem.agents.claude_code.hook.spawn_process", lambda env: False
+    )
+    monkeypatch.setattr("remem.agents.claude_code.hook.spawn_ingest", lambda env: False)
+    env = {
+        "REMEM_DSN": live_dsn,
+        "REMEM_USER_ID": "brandon",
+        "REMEM_CONFIG": str(tmp_path / "none.toml"),
+        "REMEM_HOOK_DEBUG": "1",
+    }
     out = session_start(json.dumps({"cwd": str(tmp_path / "unknown-proj")}), env=env)
     err = capsys.readouterr().err
     assert out == ""

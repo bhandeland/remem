@@ -31,8 +31,13 @@ def owner(store):
 
 
 def test_block_renders_a_knowledge_base(store, owner):
-    kb.create(store, owner.id, slug="demo", title="Demo",
-              query=CollectionQuery(tags=["style"]))
+    kb.create(
+        store,
+        owner.id,
+        slug="demo",
+        title="Demo",
+        query=CollectionQuery(tags=["style"]),
+    )
     remember(store, owner.id, title="A rule", body="Body text", tags=["style"])
 
     block = context.block(store, owner.id, "demo", max_chars=10_000)
@@ -64,8 +69,12 @@ def test_the_reason_names_the_principal_when_the_caller_provides_it(store, owner
     said: list[str] = []
 
     context.block(
-        store, owner.id, "nothing-here", max_chars=10_000,
-        note=said.append, owner_handle="brandon",
+        store,
+        owner.id,
+        "nothing-here",
+        max_chars=10_000,
+        note=said.append,
+        owner_handle="brandon",
     )
 
     assert any("brandon" in line for line in said)
@@ -75,8 +84,13 @@ def test_the_handoff_pointer_is_appended_outside_max_chars(store, owner):
     """The pointer is a fixed ~20 tokens appended after render, so it must
     survive even a max_chars budget too small to hold the knowledge base
     itself - competing with rules for that budget would be absurd."""
-    kb.create(store, owner.id, slug="demo", title="Demo",
-              query=CollectionQuery(tags=["style"]))
+    kb.create(
+        store,
+        owner.id,
+        slug="demo",
+        title="Demo",
+        query=CollectionQuery(tags=["style"]),
+    )
     remember(store, owner.id, title="A rule", body="Body text", tags=["style"])
     handoff.write(store, owner.id, project="demo", topic="ci", body=BODY)
 

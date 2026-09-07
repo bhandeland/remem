@@ -23,8 +23,13 @@ START = datetime(2026, 8, 29, 12, 0, tzinfo=timezone.utc)
 
 def an_event(payload=None, i=0, tool="Bash", kind=EventKind.TOOL_CALL):
     return Event(
-        id=new_id(), owner_id=new_id(), project="remem", harness="claude-code",
-        session_id="s1", kind=kind, tool=tool,
+        id=new_id(),
+        owner_id=new_id(),
+        project="remem",
+        harness="claude-code",
+        session_id="s1",
+        kind=kind,
+        tool=tool,
         payload=payload if payload is not None else {"command": "ls"},
         occurred_at=START + timedelta(seconds=i),
     )
@@ -79,7 +84,8 @@ def test_prompt_permits_returning_nothing():
 def test_extract_parses_the_subprocess_output(monkeypatch):
     def fake_run(cmd, **kwargs):
         return subprocess.CompletedProcess(
-            cmd, 0,
+            cmd,
+            0,
             stdout='[{"title":"T","body":"B","kind":"note"}]',
             stderr="",
         )
@@ -139,8 +145,9 @@ def test_the_events_are_passed_on_stdin_not_as_an_argument(monkeypatch):
 
 
 def test_events_render_one_line_each_oldest_first():
-    text = render_events([an_event({"command": "first"}, i=0),
-                          an_event({"command": "second"}, i=1)])
+    text = render_events(
+        [an_event({"command": "first"}, i=0), an_event({"command": "second"}, i=1)]
+    )
     lines = text.splitlines()
     assert len(lines) == 2
     assert "first" in lines[0]
@@ -164,8 +171,7 @@ def test_a_payload_is_rendered_whole_rather_than_summarised():
 
 
 def test_an_event_with_no_tool_still_renders():
-    line = render_events([an_event({"text": "hi"}, tool=None,
-                                   kind=EventKind.MESSAGE)])
+    line = render_events([an_event({"text": "hi"}, tool=None, kind=EventKind.MESSAGE)])
     assert "message" in line
     assert '"text":"hi"' in line
 
@@ -244,6 +250,7 @@ def test_no_events_renders_to_nothing():
 def test_a_nonzero_exit_with_empty_stderr_still_says_something_useful(monkeypatch):
     """The observed real-world failure: `claude exited 1:` and nothing more.
     Exit code alone is not a diagnosis."""
+
     def fake_run(cmd, **kwargs):
         return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="")
 
@@ -268,6 +275,7 @@ def test_a_nonzero_exit_with_stderr_still_includes_it(monkeypatch):
 
 def test_a_timeout_reports_the_input_size(monkeypatch):
     """Size is the first thing to suspect on a timeout."""
+
     def fake_run(cmd, **kwargs):
         raise subprocess.TimeoutExpired(cmd, 180)
 
@@ -351,8 +359,7 @@ def test_a_key_identical_across_every_event_is_stated_once():
     """112 events repeating one cwd spent ~4KB saying the same thing. The
     budget is bytes, and every repeat is a line of session the model does
     not get to see."""
-    events = [an_event({"cwd": "/repo", "command": f"c{i}"}, i=i)
-              for i in range(5)]
+    events = [an_event({"cwd": "/repo", "command": f"c{i}"}, i=i) for i in range(5)]
     text = render_events(events)
     assert "/repo" in "\n".join(_notes(text))
     assert all("/repo" not in line for line in _lines(text))
@@ -360,8 +367,7 @@ def test_a_key_identical_across_every_event_is_stated_once():
 
 
 def test_a_key_whose_value_varies_stays_on_every_event():
-    events = [an_event({"cwd": f"/repo{i}", "command": "x"}, i=i)
-              for i in range(5)]
+    events = [an_event({"cwd": f"/repo{i}", "command": "x"}, i=i) for i in range(5)]
     text = render_events(events)
     assert all(f"/repo{i}" in "\n".join(_lines(text)) for i in range(5))
 
@@ -388,9 +394,15 @@ def test_hoisting_is_keyed_on_the_batch_not_on_a_table_of_key_names():
     """The renderer serves every harness. A hardcoded list of Claude Code's
     payload keys would silently do nothing for Cursor, whose constants are
     workspace_roots and user_email."""
-    events = [an_event({"workspace_roots": ["/w"], "generation_id": f"g{i}"},
-                       i=i, tool=None, kind=EventKind.MESSAGE)
-              for i in range(5)]
+    events = [
+        an_event(
+            {"workspace_roots": ["/w"], "generation_id": f"g{i}"},
+            i=i,
+            tool=None,
+            kind=EventKind.MESSAGE,
+        )
+        for i in range(5)
+    ]
     text = render_events(events)
     assert "/w" in "\n".join(_notes(text))
     assert all("/w" not in line for line in _lines(text))
@@ -432,8 +444,10 @@ def test_capping_a_value_keeps_every_event(monkeypatch):
     measured at zero entries on a session holding four durable insights,
     where the capped render of the same events returned entries in five
     runs out of five."""
-    events = [an_event({"out": f"{i}-" + "z" * 4000, "marker": f"EVENT-{i}"},
-                       i=i) for i in range(30)]
+    events = [
+        an_event({"out": f"{i}-" + "z" * 4000, "marker": f"EVENT-{i}"}, i=i)
+        for i in range(30)
+    ]
     text = render_events(events, limit=30_000)
     assert all(f"EVENT-{i}" in text for i in range(30))
     assert "truncated" not in text.lower()
@@ -444,10 +458,17 @@ def test_a_whole_working_session_fits_within_the_budget():
     capped render is ~83KB. At the old 40,000 the same session was dropped
     to its last 18 events and returned nothing in three runs, where the
     whole session returned entries in five out of five."""
-    events = [an_event({"tool_response": f"E{i}-" + "z" * 3000,
-                        "tool_input": f"I{i}-" + "q" * 3000,
-                        "cwd": "/repo"}, i=i)
-              for i in range(112)]
+    events = [
+        an_event(
+            {
+                "tool_response": f"E{i}-" + "z" * 3000,
+                "tool_input": f"I{i}-" + "q" * 3000,
+                "cwd": "/repo",
+            },
+            i=i,
+        )
+        for i in range(112)
+    ]
     text = render_events(events)
     assert "truncated" not in text.lower()
     assert all(f"E{i}-" in text for i in range(112))
