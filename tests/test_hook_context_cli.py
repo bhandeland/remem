@@ -33,8 +33,9 @@ def env(live_dsn, monkeypatch, tmp_path):
     monkeypatch.setenv("REMEM_DSN", live_dsn)
     monkeypatch.setenv("REMEM_USER_ID", "brandon")
     monkeypatch.setenv("REMEM_CONFIG", str(tmp_path / "none.toml"))
-    # `hook context` spawns two detached `remem` processes in a `finally`
-    # on every path (extraction and re-ingest). Pointed at this live test
+    # `hook context` spawns three detached `remem` processes in a `finally`
+    # on every path (extraction, re-ingest and the memory sync). Pointed
+    # at this live test
     # database, those processes outlive the test and race conftest's
     # truncate-cascade for locks on the same tables - a deadlock seen twice
     # on this branch. Every test gets the no-op stub by default; the tests
@@ -42,6 +43,7 @@ def env(live_dsn, monkeypatch, tmp_path):
     # wins because monkeypatch applies in call order.
     monkeypatch.setattr("remem.hookio.spawn_process", lambda env: False)
     monkeypatch.setattr("remem.hookio.spawn_ingest", lambda env: False)
+    monkeypatch.setattr("remem.hookio.spawn_memory", lambda env: False)
     return live_dsn
 
 
@@ -328,6 +330,40 @@ def test_context_spawns_the_processor_even_when_no_project_resolves(env, monkeyp
     result = runner.invoke(app, ["hook", "context"], input="not json")
     assert result.exit_code == 0
     assert result.stdout == ""
+    assert len(calls) == 1
+
+
+def test_context_spawns_the_memory_sync(env, repo, monkeypatch):
+    """The third spawn, from the same `finally` and for the same reason.
+
+    A designated project's memory directory goes stale otherwise, and
+    nothing but a session start reliably happens. Whether the spawned
+    refresh has anything to do is its own question - an undesignated
+    project exits 0 having done nothing.
+    """
+    calls: list[dict] = []
+    monkeypatch.setattr(
+        "remem.hookio.spawn_memory", lambda env: calls.append(dict(env)) or True
+    )
+    _seed_kb(env)
+    result = runner.invoke(
+        app,
+        ["hook", "context"],
+        input=json.dumps({"cwd": str(repo), "session_id": "s1"}),
+    )
+    assert result.exit_code == 0
+    assert len(calls) == 1
+
+
+def test_context_spawns_the_memory_sync_even_when_no_project_resolves(env, monkeypatch):
+    """In the `finally`, like its two siblings, so every early return
+    reaches it - unusable stdin included."""
+    calls: list[dict] = []
+    monkeypatch.setattr(
+        "remem.hookio.spawn_memory", lambda env: calls.append(dict(env)) or True
+    )
+    result = runner.invoke(app, ["hook", "context"], input="not json")
+    assert result.exit_code == 0
     assert len(calls) == 1
 
 

@@ -72,6 +72,7 @@ def test_session_start_spawns_the_refresh(monkeypatch):
         lambda env: spawned.append(env) or True,
     )
     monkeypatch.setattr("remem.agents.claude_code.hook.spawn_process", lambda env: True)
+    monkeypatch.setattr("remem.agents.claude_code.hook.spawn_memory", lambda env: True)
     monkeypatch.setattr("sys.stdin", __import__("io").StringIO("{}"))
 
     assert hook.main() == 0
