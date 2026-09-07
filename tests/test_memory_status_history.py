@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Any
 
 from remem.domain import MemoryRun, MemoryTrigger, new_id
 from remem.services.memory import render_run
@@ -10,8 +11,11 @@ from remem.services.memory import render_run
 WHEN = datetime(2026, 9, 5, 12, 0, tzinfo=timezone.utc)
 
 
-def _run(**kw):
-    base = dict(
+def _run(**kw: Any) -> MemoryRun:
+    # dict[str, Any] rather than an inferred type: a defaults table whose
+    # values are deliberately heterogeneous infers as the union of them all,
+    # and every field then fails to match its own parameter.
+    base: dict[str, Any] = dict(
         id=new_id(),
         owner_id=new_id(),
         project="p",

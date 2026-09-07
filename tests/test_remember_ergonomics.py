@@ -29,8 +29,15 @@ def env(live_dsn, monkeypatch, tmp_path):
 
 
 def _entry(query):
+    """The first search hit for `query`, which every caller here expects.
+
+    Asserting rather than returning None: no test in this file checks for a
+    miss, so an empty payload means the write under test did not land, and
+    saying that beats a `NoneType is not subscriptable` on the next line.
+    """
     payload = json.loads(runner.invoke(app, ["search", query, "--json"]).stdout)
-    return payload[0] if payload else None
+    assert payload, f"no entry matched {query!r}"
+    return payload[0]
 
 
 # --- project defaulting -----------------------------------------------------

@@ -22,6 +22,7 @@ from remem.cli import app
 from remem.domain import Event, EventKind, Kind, new_id
 from remem.extract.base import ExtractedEntry
 from remem.services import record
+from tests.conftest import one, scalar
 
 runner = CliRunner()
 
@@ -213,9 +214,9 @@ def test_the_job_flag_retries_one_job_that_gave_up(env, monkeypatch):
 
     assert result.exit_code == 0
     with psycopg.connect(env) as c:
-        status, error = c.execute(
-            "select status, error from extract_jobs where id = %s", (job_id,)
-        ).fetchone()
+        status, error = one(
+            c.execute("select status, error from extract_jobs where id = %s", (job_id,))
+        )
         titles = [r[0] for r in c.execute("select title from entries").fetchall()]
     assert status == "done"
     assert error is None
@@ -263,10 +264,12 @@ def test_a_second_run_says_nothing_while_the_first_holds_the_lock(env, monkeypat
 
     holder = psycopg.connect(env)
     try:
-        held = holder.execute(
-            "select pg_try_advisory_lock(hashtext('events-process'), hashtext(%s))",
-            (str(owner_id),),
-        ).fetchone()[0]
+        held = scalar(
+            holder.execute(
+                "select pg_try_advisory_lock(hashtext('events-process'), hashtext(%s))",
+                (str(owner_id),),
+            )
+        )
         assert held is True
 
         result = runner.invoke(app, ["events", "process"])
@@ -274,7 +277,7 @@ def test_a_second_run_says_nothing_while_the_first_holds_the_lock(env, monkeypat
         assert result.exit_code == 0
         assert result.stdout == ""
         with psycopg.connect(env) as c:
-            assert c.execute("select count(*) from entries").fetchone()[0] == 0
+            assert scalar(c.execute("select count(*) from entries")) == 0
     finally:
         holder.close()
 

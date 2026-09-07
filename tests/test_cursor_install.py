@@ -80,6 +80,7 @@ def test_the_backup_holds_what_was_there_before(tmp_path):
 
     _, backup = install.merge(path, {"sessionStart": "remem hook context"})
 
+    assert backup is not None
     assert json.loads(backup.read_text())["hooks"]["stop"] == [{"command": "x"}]
 
 

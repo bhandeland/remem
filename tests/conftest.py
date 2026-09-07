@@ -9,10 +9,12 @@ from __future__ import annotations
 
 import os
 import uuid
+from typing import Any, TypeVar
 
 import psycopg
 import pytest
 
+from remem.backends.postgres.sqltext import as_sql
 from remem.embed import DEFAULT_EMBED_MODEL
 
 ADMIN_DSN = os.environ.get(
@@ -23,6 +25,46 @@ SKIP_REASON = (
     "Postgres is not reachable at %s. Start it with `docker compose up -d` "
     "(and make sure Docker itself is running)." % ADMIN_DSN
 )
+
+
+T = TypeVar("T")
+
+
+def found(value: T | None) -> T:
+    """The value of an `X | None` the test has just caused to exist.
+
+    The lookups here return None for a real miss - no such entry, no run
+    recorded, recording not enabled - and a test that has just written the
+    thing is asserting it is there. Saying so at the lookup names that
+    failure where it happens, rather than as an AttributeError on the
+    field access after it.
+    """
+    assert value is not None, "expected a value, got None"
+    return value
+
+
+def one(cur: psycopg.Cursor[Any]) -> Any:
+    """The single row of a query the caller has already decided returns one.
+
+    `fetchone()` is typed `Row | None` because a query may match nothing.
+    Asserting here names the real failure - the row this test wrote is not
+    there - instead of a NoneType error at whatever unpacks it.
+    """
+    row = cur.fetchone()
+    assert row is not None, "expected exactly one row, got none"
+    return row
+
+
+def scalar(cur: psycopg.Cursor[Any]) -> Any:
+    """The one value of a one-row, one-column query.
+
+    `fetchone()` is typed `Row | None` because a query may match nothing, and
+    a test writing `.fetchone()[0]` has already decided this one matches.
+    Saying so here makes that an assertion with a message instead of a
+    `NoneType is not subscriptable` twenty lines from whatever actually went
+    wrong - which is the same reason the row is asserted rather than cast.
+    """
+    return one(cur)[0]
 
 
 def _server_is_up() -> bool:
@@ -40,7 +82,7 @@ def db_dsn():
 
     name = f"remem_test_{uuid.uuid4().hex[:12]}"
     with psycopg.connect(ADMIN_DSN, autocommit=True) as admin:
-        admin.execute(f'create database "{name}"')
+        admin.execute(as_sql(f'create database "{name}"'))
     try:
         yield ADMIN_DSN.rsplit("/", 1)[0] + "/" + name
     finally:
@@ -50,7 +92,7 @@ def db_dsn():
                 "where datname = %s",
                 (name,),
             )
-            admin.execute(f'drop database if exists "{name}"')
+            admin.execute(as_sql(f'drop database if exists "{name}"'))
 
 
 @pytest.fixture
@@ -75,7 +117,7 @@ def live_dsn():
 
     name = f"remem_live_{uuid.uuid4().hex[:12]}"
     with psycopg.connect(ADMIN_DSN, autocommit=True) as admin:
-        admin.execute(f'create database "{name}"')
+        admin.execute(as_sql(f'create database "{name}"'))
     try:
         yield ADMIN_DSN.rsplit("/", 1)[0] + "/" + name
     finally:
@@ -85,7 +127,7 @@ def live_dsn():
                 "where datname = %s",
                 (name,),
             )
-            admin.execute(f'drop database if exists "{name}"')
+            admin.execute(as_sql(f'drop database if exists "{name}"'))
 
 
 @pytest.fixture(autouse=True)
@@ -103,7 +145,7 @@ def _reset_live_db(request):
         return
     dsn = request.getfixturevalue("live_dsn")
     with psycopg.connect(dsn, autocommit=True) as c:
-        if c.execute("select to_regclass('public.entries')").fetchone()[0] is not None:
+        if scalar(c.execute("select to_regclass('public.entries')")) is not None:
             c.execute(
                 # entry_events and events go too: they are written by the
                 # record and events tests through the same shared database,

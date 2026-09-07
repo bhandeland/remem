@@ -13,6 +13,7 @@ from pathlib import Path
 
 from remem.agents.base import ExpectedHook, HookState, UnsupportedScope
 from remem.services import doctor
+from tests.conftest import found
 
 
 def hooks(path="/tmp/settings.json", **found):
@@ -161,7 +162,7 @@ def test_an_adapter_that_raises_warns_and_the_rest_still_run():
     broken = next(r for r in reports if r.agent == "broken")
     good = next(r for r in reports if r.agent == "fake")
     assert broken.verdict is doctor.Verdict.UNCHECKED
-    assert "adapter is broken" in broken.warning
+    assert "adapter is broken" in found(broken.warning)
     assert set(verdicts(good).values()) == {doctor.Verdict.OK}
 
 
@@ -233,7 +234,7 @@ def test_an_adapter_that_raises_from_init_warns_and_the_rest_still_run():
     broken = next(r for r in reports if r.agent == "exploding")
     good = next(r for r in reports if r.agent == "fake")
     assert broken.verdict is doctor.Verdict.UNCHECKED
-    assert "blew up on construction" in broken.warning
+    assert "blew up on construction" in found(broken.warning)
     assert set(verdicts(good).values()) == {doctor.Verdict.OK}
 
 
@@ -309,7 +310,7 @@ def test_an_explicit_scope_still_means_exactly_that_scope():
     reports = doctor.check({"fake": FakeAdapter(hooks(**complete()))}, scope="project")
     assert len(reports) == 1
     assert reports[0].verdict is doctor.Verdict.UNCHECKED
-    assert "project" in reports[0].warning
+    assert "project" in found(reports[0].warning)
     text = doctor.render(reports)
     assert "project" in text
     assert not re.search(r"\bok\b", text.lower())

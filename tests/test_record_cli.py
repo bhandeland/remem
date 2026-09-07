@@ -17,6 +17,7 @@ from typer.testing import CliRunner
 from remem.agents.claude_code.adapter import ClaudeCodeAdapter
 from remem.backends.postgres.migrate import migrate
 from remem.cli import app
+from tests.conftest import scalar
 
 runner = CliRunner()
 
@@ -72,7 +73,7 @@ def test_record_event_records_nothing_when_the_project_has_not_opted_in(env, rep
     result = runner.invoke(app, ["record", "event"], input=json.dumps(_payload(repo)))
     assert result.exit_code == 0
     with psycopg.connect(env) as c:
-        count = c.execute("select count(*) from events").fetchone()[0]
+        count = scalar(c.execute("select count(*) from events"))
     assert count == 0
 
 
@@ -129,7 +130,7 @@ def test_record_event_reads_a_named_agent(env, repo):
     )
     assert result.exit_code == 0
     with psycopg.connect(env) as c:
-        count = c.execute("select count(*) from events").fetchone()[0]
+        count = scalar(c.execute("select count(*) from events"))
     assert count == 1
 
 

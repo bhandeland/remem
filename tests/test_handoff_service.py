@@ -6,6 +6,7 @@ from remem.backends.postgres.migrate import migrate
 from remem.backends.postgres.store import PostgresStore
 from remem.domain import Kind, Origin
 from remem.services import handoff
+from tests.conftest import found
 
 pytestmark = pytest.mark.db
 
@@ -52,8 +53,11 @@ def test_writing_a_handoff_supersedes_the_previous_one_for_that_topic(store, own
         store, owner.id, project="remem", topic="ci", body=BODY
     )
     assert superseded is not None and superseded.id == first.id
-    assert store.get_entry(first.id, owner.id).superseded_by == second.id
-    assert handoff.latest(store, owner.id, project="remem", topic="ci").id == second.id
+    assert found(store.get_entry(first.id, owner.id)).superseded_by == second.id
+    assert (
+        found(handoff.latest(store, owner.id, project="remem", topic="ci")).id
+        == second.id
+    )
 
 
 def test_another_topic_is_left_alone(store, owner):
@@ -78,7 +82,7 @@ def test_latest_without_a_topic_returns_the_newest_for_the_project(store, owner)
     newest, _ = handoff.write(
         store, owner.id, project="remem", topic="search", body=BODY
     )
-    assert handoff.latest(store, owner.id, project="remem").id == newest.id
+    assert found(handoff.latest(store, owner.id, project="remem")).id == newest.id
 
 
 def test_latest_is_none_when_nothing_was_handed_off(store, owner):
