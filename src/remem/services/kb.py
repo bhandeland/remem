@@ -98,7 +98,15 @@ def pin(
     collection = get(store, owner_id, slug)
     if store.get_entry(entry_id, owner_id) is None:
         raise EntryNotFound(str(entry_id))
-    store.pin(collection.id, entry_id, position, owner_id)
+    if not store.pin(collection.id, entry_id, position, owner_id):
+        # `get` and `get_entry` above already proved both rows exist under
+        # this owner, so the store's guards should be satisfied by the time
+        # we get here. A False means something changed in between - surface
+        # it rather than reporting a pin that wrote no row, exactly as
+        # `write.supersede` does for `set_superseded`.
+        raise RuntimeError(
+            f"failed to pin {entry_id} into {slug}"
+        )
 
 
 def set_query(
