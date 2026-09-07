@@ -5,11 +5,13 @@ from __future__ import annotations
 import json
 from contextlib import AbstractContextManager
 from datetime import datetime, timezone
+from typing import Any
 from uuid import UUID
 
 import psycopg
 from psycopg.rows import dict_row
 
+from remem.backends.postgres.sqltext import as_sql
 from remem.domain import (
     Collection,
     CollectionQuery,
@@ -42,10 +44,40 @@ from remem.domain import (
 from remem.store import NotOwner
 
 ENTRY_FIELDS = [
-    "id", "kind", "title", "body", "summary", "project", "scope", "owner_id",
-    "tags", "links", "agent", "session_id", "origin", "superseded_by",
-    "created_at", "updated_at",
+    "id",
+    "kind",
+    "title",
+    "body",
+    "summary",
+    "project",
+    "scope",
+    "owner_id",
+    "tags",
+    "links",
+    "agent",
+    "session_id",
+    "origin",
+    "superseded_by",
+    "created_at",
+    "updated_at",
 ]
+
+
+def _one(cur: psycopg.Cursor[dict[str, Any]]) -> dict[str, Any]:
+    """The single row a statement that cannot return zero rows returned.
+
+    `fetchone()` is typed `dict | None` because most statements might match
+    nothing, and most callers here check for that - `get_collection` returns
+    None for an unknown slug on purpose. These sites are the other kind: a
+    `count(*)`, a `returning` on a row this statement just wrote, a
+    `pg_try_advisory_lock`. Saying so once beats a dozen scattered asserts,
+    and it turns "None is not subscriptable" three frames downstream into a
+    named failure at the point where the assumption actually lives.
+    """
+    row = cur.fetchone()
+    if row is None:
+        raise RuntimeError("expected exactly one row, got none")
+    return row
 
 
 def entry_columns(alias: str = "") -> str:
@@ -65,14 +97,27 @@ def _aliased_entry_columns(alias: str, prefix: str) -> str:
 
 def _row_to_entry_prefixed(row: dict, prefix: str) -> Entry:
     return _row_to_entry(
-        {k[len(prefix):]: v for k, v in row.items() if k.startswith(prefix)}
+        {k[len(prefix) :]: v for k, v in row.items() if k.startswith(prefix)}
     )
 
 
 MEMORY_RUN_FIELDS = [
-    "id", "owner_id", "project", "trigger", "started_at", "finished_at",
-    "adopted", "healed", "edited", "regenerated", "deleted", "unchanged",
-    "renamed", "conflicts", "sidecars", "failures",
+    "id",
+    "owner_id",
+    "project",
+    "trigger",
+    "started_at",
+    "finished_at",
+    "adopted",
+    "healed",
+    "edited",
+    "regenerated",
+    "deleted",
+    "unchanged",
+    "renamed",
+    "conflicts",
+    "sidecars",
+    "failures",
 ]
 
 
@@ -188,8 +233,17 @@ def _row_to_collection(row: dict) -> Collection:
 
 
 EXTRACT_JOB_FIELDS = [
-    "id", "owner_id", "project", "harness", "session_id", "covers_through",
-    "status", "attempts", "error", "entries_written", "created_at",
+    "id",
+    "owner_id",
+    "project",
+    "harness",
+    "session_id",
+    "covers_through",
+    "status",
+    "attempts",
+    "error",
+    "entries_written",
+    "created_at",
     "updated_at",
 ]
 
@@ -217,9 +271,21 @@ def _row_to_extract_job(row: dict) -> ExtractJob:
 
 
 INGEST_RUN_FIELDS = [
-    "id", "owner_id", "project", "trigger", "archive", "started_at",
-    "finished_at", "created", "changed", "unchanged", "swept", "embedded",
-    "failures", "twins", "embed_error",
+    "id",
+    "owner_id",
+    "project",
+    "trigger",
+    "archive",
+    "started_at",
+    "finished_at",
+    "created",
+    "changed",
+    "unchanged",
+    "swept",
+    "embedded",
+    "failures",
+    "twins",
+    "embed_error",
 ]
 
 
@@ -347,7 +413,7 @@ class PostgresStore:
                 or previous["body"] != entry.body
             )
             cur.execute(
-                f"""
+                as_sql(f"""
                 insert into entries (
                   id, kind, title, body, summary, project, scope, owner_id,
                   tags, links, agent, session_id, origin, superseded_by
@@ -367,7 +433,7 @@ class PostgresStore:
                   updated_at = clock_timestamp()
                 where entries.owner_id = %(owner_id)s
                 returning {entry_columns()}
-                """,
+                """),
                 {
                     "id": entry.id,
                     "kind": str(entry.kind),
@@ -413,8 +479,10 @@ class PostgresStore:
     def get_entry(self, entry_id: UUID, owner_id: UUID) -> Entry | None:
         with self._cur() as cur:
             cur.execute(
-                f"select {entry_columns()} from entries "
-                "where id = %s and owner_id = %s",
+                as_sql(
+                    f"select {entry_columns()} from entries "
+                    "where id = %s and owner_id = %s"
+                ),
                 (entry_id, owner_id),
             )
             row = cur.fetchone()
@@ -474,17 +542,19 @@ class PostgresStore:
             """
 
         with self._cur() as cur:
-            cur.execute(sql, params)
+            cur.execute(as_sql(sql), params)
             rows = cur.fetchall()
         return [
-            Hit(entry=_row_to_entry(r), rank=float(r["rank"]),
-                snippet=r["snippet"], match=Match.EXACT)
+            Hit(
+                entry=_row_to_entry(r),
+                rank=float(r["rank"]),
+                snippet=r["snippet"],
+                match=Match.EXACT,
+            )
             for r in rows
         ]
 
-    def fuzzy_search(
-        self, query: Query, owner_id: UUID, threshold: float
-    ) -> list[Hit]:
+    def fuzzy_search(self, query: Query, owner_id: UUID, threshold: float) -> list[Hit]:
         """Typo-tolerant search, for when exact search found nothing.
 
         Two operators, because they behave differently on the two columns:
@@ -502,8 +572,9 @@ class PostgresStore:
         params["text"] = text
         params["threshold"] = threshold
 
-        score = ("greatest(similarity(e.title, %(text)s), "
-                 "word_similarity(%(text)s, e.body))")
+        score = (
+            "greatest(similarity(e.title, %(text)s), word_similarity(%(text)s, e.body))"
+        )
         where.append(f"{score} >= %(threshold)s")
 
         sql = f"""
@@ -516,7 +587,7 @@ class PostgresStore:
             limit %(limit)s
         """
         with self._cur() as cur:
-            cur.execute(sql, params)
+            cur.execute(as_sql(sql), params)
             rows = cur.fetchall()
         return [
             Hit(
@@ -529,8 +600,12 @@ class PostgresStore:
         ]
 
     def put_vector(
-        self, entry_id: UUID, model: str, dim: int,
-        vector: list[float], owner_id: UUID,
+        self,
+        entry_id: UUID,
+        model: str,
+        dim: int,
+        vector: list[float],
+        owner_id: UUID,
     ) -> None:
         """Insert or replace one entry's vector for one model.
 
@@ -544,9 +619,7 @@ class PostgresStore:
                 (entry_id, owner_id),
             )
             if cur.fetchone() is None:
-                raise NotOwner(
-                    f"entry {entry_id} does not belong to {owner_id}"
-                )
+                raise NotOwner(f"entry {entry_id} does not belong to {owner_id}")
             cur.execute(
                 """
                 insert into entry_vectors (entry_id, model, dim, vector)
@@ -556,8 +629,12 @@ class PostgresStore:
                        dim = excluded.dim,
                        created_at = clock_timestamp()
                 """,
-                {"entry_id": entry_id, "model": model, "dim": dim,
-                 "vector": _vector_literal(vector)},
+                {
+                    "entry_id": entry_id,
+                    "model": model,
+                    "dim": dim,
+                    "vector": _vector_literal(vector),
+                },
             )
 
     def entries_missing_vectors(
@@ -573,7 +650,7 @@ class PostgresStore:
         """
         with self._cur() as cur:
             cur.execute(
-                f"""
+                as_sql(f"""
                 select {entry_columns("e")}
                 from entries e
                 left join entry_vectors v
@@ -583,14 +660,18 @@ class PostgresStore:
                   and v.entry_id is null
                 order by e.created_at asc
                 limit %(limit)s
-                """,
+                """),
                 {"owner_id": owner_id, "model": model, "limit": limit},
             )
             return [_row_to_entry(r) for r in cur.fetchall()]
 
     def semantic_search(
-        self, query: Query, owner_id: UUID, vector: list[float],
-        model: str, threshold: float,
+        self,
+        query: Query,
+        owner_id: UUID,
+        vector: list[float],
+        model: str,
+        threshold: float,
     ) -> list[Hit]:
         """Nearest neighbours by cosine similarity, above a floor.
 
@@ -627,11 +708,15 @@ class PostgresStore:
             limit %(limit)s
         """
         with self._cur() as cur:
-            cur.execute(sql, params)
+            cur.execute(as_sql(sql), params)
             rows = cur.fetchall()
         return [
-            Hit(entry=_row_to_entry(r), rank=float(r["rank"]),
-                snippet=r["snippet"], match=Match.SEMANTIC)
+            Hit(
+                entry=_row_to_entry(r),
+                rank=float(r["rank"]),
+                snippet=r["snippet"],
+                match=Match.SEMANTIC,
+            )
             for r in rows
         ]
 
@@ -670,7 +755,9 @@ class PostgresStore:
             select * from (
                 select {entry_columns("e")},
                        md5(btrim(e.body, E' \\t\\n\\r')) as body_key,
-                       count(*) over (partition by md5(btrim(e.body, E' \\t\\n\\r'))) as n
+                       count(*) over (
+                           partition by md5(btrim(e.body, E' \\t\\n\\r'))
+                       ) as n
                 from entries e
                 where {" and ".join(where)}
             ) s
@@ -678,7 +765,7 @@ class PostgresStore:
             order by s.body_key, s.created_at asc
         """
         with self._cur() as cur:
-            cur.execute(sql, params)
+            cur.execute(as_sql(sql), params)
             rows = cur.fetchall()
 
         groups: dict[str, list[Entry]] = {}
@@ -687,8 +774,12 @@ class PostgresStore:
         return [DuplicateSet(entries=members) for members in groups.values()]
 
     def near_duplicate_pairs(
-        self, query: Query, owner_id: UUID, model: str,
-        threshold: float, limit: int,
+        self,
+        query: Query,
+        owner_id: UUID,
+        model: str,
+        threshold: float,
+        limit: int,
     ) -> tuple[list[NearPair], int]:
         """Entry pairs above a cosine-similarity floor, and how many there are.
 
@@ -729,19 +820,19 @@ class PostgresStore:
               and {similarity} >= %(threshold)s
         """
         with self._cur() as cur:
-            cur.execute(f"select count(*) as n {joins}", params)
-            total = int(cur.fetchone()["n"])
+            cur.execute(as_sql(f"select count(*) as n {joins}"), params)
+            total = int(_one(cur)["n"])
             if total == 0:
                 return [], 0
             cur.execute(
-                f"""
+                as_sql(f"""
                 select {_aliased_entry_columns("a", "a_")},
                        {_aliased_entry_columns("b", "b_")},
                        {similarity} as similarity
                 {joins}
                 order by similarity desc, a.id, b.id
                 limit %(pair_limit)s
-                """,
+                """),
                 params,
             )
             rows = cur.fetchall()
@@ -766,16 +857,16 @@ class PostgresStore:
         where, params = _entry_filters(query, owner_id)
         with self._cur() as cur:
             cur.execute(
-                f"""
+                as_sql(f"""
                 select count(v.entry_id) as embedded, count(*) as total
                 from entries e
                 left join entry_vectors v
                        on v.entry_id = e.id and v.model = %(model)s
                 where {" and ".join(where)}
-                """,
+                """),
                 {**params, "model": model},
             )
-            row = cur.fetchone()
+            row = _one(cur)
         return int(row["embedded"]), int(row["total"])
 
     # ---------------- collections ----------------
@@ -808,7 +899,7 @@ class PostgresStore:
                     "query": json.dumps(collection.query.to_dict()),
                 },
             )
-            return _row_to_collection(cur.fetchone())
+            return _row_to_collection(_one(cur))
 
     def get_collection(self, slug: str, owner_id: UUID) -> Collection | None:
         with self._cur() as cur:
@@ -865,22 +956,20 @@ class PostgresStore:
     def pinned_entries(self, collection_id: UUID, owner_id: UUID) -> list[Entry]:
         with self._cur() as cur:
             cur.execute(
-                f"""
+                as_sql(f"""
                 select {entry_columns("e")}
                 from collection_members m
                 join entries e on e.id = m.entry_id
                 where m.collection_id = %s and e.owner_id = %s
                 order by m.position, e.created_at
-                """,
+                """),
                 (collection_id, owner_id),
             )
             return [_row_to_entry(r) for r in cur.fetchall()]
 
     # ---------------- recording ----------------
 
-    def set_record_enabled(
-        self, owner_id: UUID, project: str, enabled: bool
-    ) -> None:
+    def set_record_enabled(self, owner_id: UUID, project: str, enabled: bool) -> None:
         with self._cur() as cur:
             cur.execute(
                 """
@@ -903,14 +992,16 @@ class PostgresStore:
         return bool(row["enabled"]) if row else False
 
     def set_memory_collection(
-        self, owner_id: UUID, project: str, slug: str | None,
+        self,
+        owner_id: UUID,
+        project: str,
+        slug: str | None,
         working_dir: str | None = None,
     ) -> None:
         with self._cur() as cur:
             if slug is None:
                 cur.execute(
-                    "delete from memory_settings "
-                    "where owner_id = %s and project = %s",
+                    "delete from memory_settings where owner_id = %s and project = %s",
                     (owner_id, project),
                 )
                 return
@@ -955,7 +1046,10 @@ class PostgresStore:
         return row["collection_slug"] if row else None
 
     def set_ingest_paths(
-        self, owner_id: UUID, project: str, paths: list[str] | None,
+        self,
+        owner_id: UUID,
+        project: str,
+        paths: list[str] | None,
         archive: bool = False,
     ) -> None:
         with self._cur() as cur:
@@ -1001,25 +1095,37 @@ class PostgresStore:
     # ---------------- ingest runs ----------------
 
     def start_ingest_run(
-        self, owner_id: UUID, project: str, trigger: IngestTrigger,
+        self,
+        owner_id: UUID,
+        project: str,
+        trigger: IngestTrigger,
         archive: bool = False,
     ) -> IngestRun:
         run_id = new_id()
         with self._cur() as cur:
             cur.execute(
-                f"""
+                as_sql(f"""
                 insert into ingest_runs (id, owner_id, project, trigger, archive)
                 values (%s, %s, %s, %s, %s)
                 returning {ingest_run_columns()}
-                """,
+                """),
                 (run_id, owner_id, project, str(trigger), archive),
             )
-            return _row_to_ingest_run(cur.fetchone())
+            return _row_to_ingest_run(_one(cur))
 
     def finish_ingest_run(
-        self, run_id: UUID, owner_id: UUID, *,
-        created: int, changed: int, unchanged: int, swept: int, embedded: int,
-        failures: list[dict], twins: list[dict], embed_error: str | None,
+        self,
+        run_id: UUID,
+        owner_id: UUID,
+        *,
+        created: int,
+        changed: int,
+        unchanged: int,
+        swept: int,
+        embedded: int,
+        failures: list[dict],
+        twins: list[dict],
+        embed_error: str | None,
     ) -> None:
         with self._cur() as cur:
             cur.execute(
@@ -1032,24 +1138,31 @@ class PostgresStore:
                        embed_error = %s
                  where id = %s and owner_id = %s
                 """,
-                (created, changed, unchanged, swept, embedded,
-                 json.dumps(failures), json.dumps(twins), embed_error,
-                 run_id, owner_id),
+                (
+                    created,
+                    changed,
+                    unchanged,
+                    swept,
+                    embedded,
+                    json.dumps(failures),
+                    json.dumps(twins),
+                    embed_error,
+                    run_id,
+                    owner_id,
+                ),
             )
             if cur.rowcount == 0:
                 raise NotOwner(f"ingest run {run_id} is not owned by {owner_id}")
 
-    def latest_ingest_run(
-        self, owner_id: UUID, project: str
-    ) -> IngestRun | None:
+    def latest_ingest_run(self, owner_id: UUID, project: str) -> IngestRun | None:
         with self._cur() as cur:
             cur.execute(
-                f"""
+                as_sql(f"""
                 select {ingest_run_columns()} from ingest_runs
                  where owner_id = %s and project = %s
                  order by started_at desc
                  limit 1
-                """,
+                """),
                 (owner_id, project),
             )
             row = cur.fetchone()
@@ -1067,20 +1180,30 @@ class PostgresStore:
         run_id = new_id()
         with self._cur() as cur:
             cur.execute(
-                f"""
+                as_sql(f"""
                 insert into memory_runs (id, owner_id, project, trigger)
                 values (%s, %s, %s, %s)
                 returning {memory_run_columns()}
-                """,
+                """),
                 (run_id, owner_id, project, str(trigger)),
             )
-            return _row_to_memory_run(cur.fetchone())
+            return _row_to_memory_run(_one(cur))
 
     def finish_memory_run(
-        self, run_id: UUID, owner_id: UUID, *,
-        adopted: int, healed: int, edited: int, regenerated: int,
-        deleted: int, unchanged: int, renamed: list[list[str]],
-        conflicts: list[str], sidecars: list[str], failures: list[dict],
+        self,
+        run_id: UUID,
+        owner_id: UUID,
+        *,
+        adopted: int,
+        healed: int,
+        edited: int,
+        regenerated: int,
+        deleted: int,
+        unchanged: int,
+        renamed: list[list[str]],
+        conflicts: list[str],
+        sidecars: list[str],
+        failures: list[dict],
     ) -> None:
         with self._cur() as cur:
             cur.execute(
@@ -1093,27 +1216,33 @@ class PostgresStore:
                        sidecars = %s::jsonb, failures = %s::jsonb
                  where id = %s and owner_id = %s
                 """,
-                (adopted, healed, edited, regenerated, deleted, unchanged,
-                 json.dumps(renamed), json.dumps(conflicts),
-                 json.dumps(sidecars), json.dumps(failures),
-                 run_id, owner_id),
+                (
+                    adopted,
+                    healed,
+                    edited,
+                    regenerated,
+                    deleted,
+                    unchanged,
+                    json.dumps(renamed),
+                    json.dumps(conflicts),
+                    json.dumps(sidecars),
+                    json.dumps(failures),
+                    run_id,
+                    owner_id,
+                ),
             )
             if cur.rowcount == 0:
-                raise NotOwner(
-                    f"memory run {run_id} is not owned by {owner_id}"
-                )
+                raise NotOwner(f"memory run {run_id} is not owned by {owner_id}")
 
-    def latest_memory_run(
-        self, owner_id: UUID, project: str
-    ) -> MemoryRun | None:
+    def latest_memory_run(self, owner_id: UUID, project: str) -> MemoryRun | None:
         with self._cur() as cur:
             cur.execute(
-                f"""
+                as_sql(f"""
                 select {memory_run_columns()} from memory_runs
                  where owner_id = %s and project = %s
                  order by started_at desc
                  limit 1
-                """,
+                """),
                 (owner_id, project),
             )
             row = cur.fetchone()
@@ -1124,7 +1253,7 @@ class PostgresStore:
         # literal percent has to be doubled for psycopg's formatter.
         with self._cur() as cur:
             cur.execute(
-                f"""
+                as_sql(f"""
                 select {entry_columns("e")} from entries e
                  where e.owner_id = %s
                    and e.project = %s
@@ -1133,7 +1262,7 @@ class PostgresStore:
                    and exists (select 1 from unnest(e.tags) t where t like 'src:%%')
                    and not exists (select 1 from unnest(e.tags) t where t like 'sec:%%')
                  order by e.created_at desc
-                """,
+                """),
                 (owner_id, project),
             )
             return [_row_to_entry(r) for r in cur.fetchall()]
@@ -1152,7 +1281,7 @@ class PostgresStore:
                 "where owner_id = %s and status = 'pending'",
                 (owner_id,),
             )
-            return int(cur.fetchone()["n"])
+            return int(_one(cur)["n"])
 
     def enabled_record_projects(self, owner_id: UUID) -> list[str]:
         """Projects with recording switched on, for the status commands."""
@@ -1295,7 +1424,7 @@ class PostgresStore:
             # The row actually stored, which on a duplicate is the earlier
             # one - so every caller gets a usable Event either way, and the
             # id it carries is the id that is really in the table.
-            row = cur.fetchone()
+            row = _one(cur)
             event.id = row["id"]
             event.recorded_at = row["recorded_at"]
         return event
@@ -1366,9 +1495,7 @@ class PostgresStore:
                 (entry_id, owner_id),
             )
             if cur.fetchone() is None:
-                raise NotOwner(
-                    f"entry {entry_id} does not belong to {owner_id}"
-                )
+                raise NotOwner(f"entry {entry_id} does not belong to {owner_id}")
             for event in events:
                 cur.execute(
                     """
@@ -1421,8 +1548,9 @@ class PostgresStore:
         "Extracted" uses the same watermark rule as
         `sessions_awaiting_extraction` - the newest `covers_through` recorded
         for a session, whatever its job's current status - so prune and
-        process can never disagree about what has already been extracted. `--force` (the `force` argument)
-        drops that condition entirely rather than widening it: an unextracted
+        process can never disagree about what has already been extracted.
+        `--force` (the `force` argument) drops that condition entirely
+        rather than widening it: an unextracted
         event is raw that produced nothing, and losing it is the outcome the
         whole pipeline exists to prevent, so overriding that is a deliberate
         act, not a wider window.
@@ -1500,7 +1628,7 @@ class PostgresStore:
                     "project": project,
                 },
             )
-            row = cur.fetchone()
+            row = _one(cur)
             return (row["deleted"], row["dangling"], row["kept_unextracted"])
 
     # ---------------- extraction spool ----------------
@@ -1508,8 +1636,10 @@ class PostgresStore:
     def get_extract_job(self, job_id: UUID, owner_id: UUID) -> ExtractJob | None:
         with self._cur() as cur:
             cur.execute(
-                f"select {extract_job_columns()} from extract_jobs "
-                "where id = %s and owner_id = %s",
+                as_sql(
+                    f"select {extract_job_columns()} from extract_jobs "
+                    "where id = %s and owner_id = %s"
+                ),
                 (job_id, owner_id),
             )
             row = cur.fetchone()
@@ -1529,12 +1659,12 @@ class PostgresStore:
     ) -> list[ExtractJob]:
         with self._cur() as cur:
             cur.execute(
-                f"""
+                as_sql(f"""
                 select {extract_job_columns()} from extract_jobs
                  where owner_id = %s and status = 'failed'
                  order by updated_at desc
                  limit %s
-                """,
+                """),
                 (owner_id, limit),
             )
             return [_row_to_extract_job(r) for r in cur.fetchall()]
@@ -1610,9 +1740,9 @@ class PostgresStore:
                 "select pg_try_advisory_lock(hashtext(%s), hashtext(%s))",
                 (name, str(owner_id)),
             )
-            return bool(cur.fetchone()["pg_try_advisory_lock"])
+            return bool(_one(cur)["pg_try_advisory_lock"])
 
-    def transaction(self) -> AbstractContextManager[None]:
+    def transaction(self) -> AbstractContextManager[Any]:
         # psycopg's own transaction() already does exactly what the
         # Protocol promises: a real transaction under autocommit, a
         # savepoint inside one already open. No wrapping needed.
@@ -1629,13 +1759,12 @@ class PostgresStore:
         """
         with self._cur() as cur:
             cur.execute(
-                f"""
+                as_sql(f"""
                 select {extract_job_columns()} from extract_jobs
                  where owner_id = %s and project = %s and harness = %s
                    and session_id = %s
-                """,
-                (owner_id, session.project, session.harness,
-                 session.session_id),
+                """),
+                (owner_id, session.project, session.harness, session.session_id),
             )
             row = cur.fetchone()
         return _row_to_extract_job(row) if row else None
@@ -1645,7 +1774,7 @@ class PostgresStore:
         and its attempt count instead of accumulating one row per attempt."""
         with self._cur() as cur:
             cur.execute(
-                f"""
+                as_sql(f"""
                 insert into extract_jobs (
                   id, owner_id, project, harness, session_id, status, attempts
                 ) values (%(id)s, %(owner_id)s, %(project)s, %(harness)s,
@@ -1655,7 +1784,7 @@ class PostgresStore:
                                 attempts = extract_jobs.attempts + 1,
                                 updated_at = clock_timestamp()
                 returning {extract_job_columns()}
-                """,
+                """),
                 {
                     "id": new_id(),
                     "owner_id": owner_id,
@@ -1664,7 +1793,7 @@ class PostgresStore:
                     "session_id": session.session_id,
                 },
             )
-            return _row_to_extract_job(cur.fetchone())
+            return _row_to_extract_job(_one(cur))
 
     def claim_extract_job_by_id(
         self, job_id: UUID, owner_id: UUID
@@ -1677,7 +1806,7 @@ class PostgresStore:
         """
         with self._cur() as cur:
             cur.execute(
-                f"""
+                as_sql(f"""
                 with claimed as (
                   select id from extract_jobs
                    where id = %(id)s and owner_id = %(owner_id)s
@@ -1690,7 +1819,7 @@ class PostgresStore:
                   from claimed
                  where j.id = claimed.id
                 returning {extract_job_columns("j")}
-                """,
+                """),
                 {"id": job_id, "owner_id": owner_id},
             )
             row = cur.fetchone()
@@ -1704,8 +1833,9 @@ class PostgresStore:
         The `watermarks` CTE gives the newest covers_through per session -
         the newest, not any, because a session can be extracted more than
         once across its life and only the latest watermark matters. It keys
-        on covers_through rather than on job status; see the CTE's comment. Events at or before that mark already produced
-        whatever they were going to produce; event_count and the idle check
+        on covers_through rather than on job status; see the CTE's comment.
+        Events at or before that mark already produced whatever they were
+        going to produce; event_count and the idle check
         both look only at what is left after it, which is what makes
         event_count mean "work outstanding" rather than "events that exist".
         """

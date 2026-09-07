@@ -16,7 +16,6 @@ written to ask: does the wheel match the source?
 from __future__ import annotations
 
 import subprocess
-import sys
 import zipfile
 from pathlib import Path
 
@@ -48,8 +47,9 @@ def wheel_names(tmp_path_factory) -> set[str]:
 
 @pytest.mark.slow
 def test_the_wheel_ships_every_migration(wheel_names):
-    expected = {f"remem/backends/postgres/migrations/{p.name}"
-                for p in MIGRATIONS.glob("*.sql")}
+    expected = {
+        f"remem/backends/postgres/migrations/{p.name}" for p in MIGRATIONS.glob("*.sql")
+    }
     assert expected, "no migrations found in the source tree - test is broken"
     assert expected <= wheel_names
 

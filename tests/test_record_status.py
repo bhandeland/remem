@@ -60,13 +60,14 @@ def _mark_done(store, owner, session_id, covers_through, harness="claude-code"):
     job = store.claim_extract_job(
         owner.id,
         SessionRef(
-            project="remem", harness=harness, session_id=session_id,
-            event_count=0, last_event_at=covers_through,
+            project="remem",
+            harness=harness,
+            session_id=session_id,
+            event_count=0,
+            last_event_at=covers_through,
         ),
     )
-    store.finish_extract_job(
-        job.id, owner.id, JobStatus.DONE, None, 0, covers_through
-    )
+    store.finish_extract_job(job.id, owner.id, JobStatus.DONE, None, 0, covers_through)
 
 
 def test_status_reports_a_harness_that_has_recorded_nothing(store, owner):
@@ -105,9 +106,7 @@ def test_status_counts_events_in_the_last_day_per_harness(store, owner):
 def test_status_names_sessions_still_awaiting_extraction(store, owner):
     """A quiet session with no done extract job is outstanding work, and it
     is counted against its harness."""
-    store.put_event(
-        an_event(owner, at=NOW - timedelta(hours=2), session="s1")
-    )
+    store.put_event(an_event(owner, at=NOW - timedelta(hours=2), session="s1"))
 
     report = events.status(store, owner.id, idle_seconds=IDLE)
 
@@ -148,7 +147,9 @@ def test_status_excludes_a_session_whose_extraction_has_given_up(store, owner):
     assert report.harnesses[0].sessions_awaiting == 0
 
 
-def test_status_mentions_a_stranded_legacy_capture_job_once(live_dsn, monkeypatch, tmp_path):
+def test_status_mentions_a_stranded_legacy_capture_job_once(
+    live_dsn, monkeypatch, tmp_path
+):
     """The dead spool must be visible rather than mysterious."""
     import psycopg
 
@@ -173,7 +174,7 @@ def test_status_mentions_a_stranded_legacy_capture_job_once(live_dsn, monkeypatc
 
 
 def test_events_show_says_pruned_rather_than_not_found(store, owner):
-    """"We recorded where this came from and then deleted the raw" and "we
+    """ "We recorded where this came from and then deleted the raw" and "we
     never recorded anything" are different answers, and a user who cannot
     tell them apart concludes provenance was never recorded at all."""
     entry = write.remember(store, owner.id, title="t", body="b")
@@ -219,7 +220,9 @@ def test_events_show_on_an_entry_with_no_provenance(store, owner):
 # output rather than an event.
 
 
-def an_unkeyed_event(owner, *, harness="claude-code", session="s1", payload=None, at=NOW):
+def an_unkeyed_event(
+    owner, *, harness="claude-code", session="s1", payload=None, at=NOW
+):
     """A SessionEnd, the shape 011 deliberately cannot deduplicate."""
     return Event(
         id=new_id(),
@@ -229,8 +232,12 @@ def an_unkeyed_event(owner, *, harness="claude-code", session="s1", payload=None
         session_id=session,
         kind=EventKind.SESSION_END,
         tool=None,
-        payload=payload if payload is not None else {
-            "hook_event_name": "SessionEnd", "reason": "clear", "session_id": session,
+        payload=payload
+        if payload is not None
+        else {
+            "hook_event_name": "SessionEnd",
+            "reason": "clear",
+            "session_id": session,
         },
         occurred_at=at,
     )
@@ -268,7 +275,11 @@ def test_two_different_unkeyed_events_are_not_a_duplicate(store, owner):
     `prompt_input_exit`. Different payloads, not a duplicate."""
     store.put_event(an_unkeyed_event(owner, payload={"reason": "clear"}))
     store.put_event(
-        an_unkeyed_event(owner, payload={"reason": "prompt_input_exit"}, at=NOW + timedelta(seconds=1))
+        an_unkeyed_event(
+            owner,
+            payload={"reason": "prompt_input_exit"},
+            at=NOW + timedelta(seconds=1),
+        )
     )
 
     report = events.status(store, owner.id, idle_seconds=IDLE)
@@ -346,10 +357,14 @@ def test_the_status_report_carries_hook_advisories(store, owner):
     place that can reach a harness which has recorded nothing ever and so
     appears nowhere in event_stats."""
     report = events.status(
-        store, owner.id, idle_seconds=IDLE,
-        hook_advisories=["claude-code is installed but its hooks are "
-                         "incomplete: PostToolUse (missing) - run "
-                         "`remem doctor claude-code`"],
+        store,
+        owner.id,
+        idle_seconds=IDLE,
+        hook_advisories=[
+            "claude-code is installed but its hooks are "
+            "incomplete: PostToolUse (missing) - run "
+            "`remem doctor claude-code`"
+        ],
     )
     text = events.render(report)
     assert "PostToolUse" in text
@@ -367,14 +382,20 @@ def test_status_carries_an_ingest_advisory(store, owner):
     ingest.designate(store, owner.id, "remem", ["docs/specs"])
     run = store.start_ingest_run(owner.id, "remem", IngestTrigger.AUTO)
     store.finish_ingest_run(
-        run.id, owner.id, created=0, changed=0, unchanged=0, swept=0,
-        embedded=0, twins=[], embed_error=None,
+        run.id,
+        owner.id,
+        created=0,
+        changed=0,
+        unchanged=0,
+        swept=0,
+        embedded=0,
+        twins=[],
+        embed_error=None,
         failures=[{"path": "docs/specs", "reason": "gone"}],
     )
     lines = ingest.advisories(store, owner.id, current_project=None, root=None)
 
-    report = events.status(store, owner.id, idle_seconds=IDLE,
-                           ingest_advisories=lines)
+    report = events.status(store, owner.id, idle_seconds=IDLE, ingest_advisories=lines)
 
     assert "! remem: last auto ingest" in events.render(report)
     assert events.to_dict(report)["ingest_advisories"] == lines

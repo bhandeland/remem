@@ -40,14 +40,27 @@ class CursorHook:
 #: message hooks records tool calls with every prompt and answer cut out -
 #: which is that fragment.
 HOOK_ENTRIES: tuple[CursorHook, ...] = (
-    CursorHook("sessionStart", "remem hook context --agent cursor", True,
-               "context injection, and the only extraction trigger Cursor has"),
-    CursorHook("postToolUse", "remem record event --agent cursor", True,
-               "every tool call"),
-    CursorHook("beforeSubmitPrompt", "remem record event --agent cursor", True,
-               "the user's prompts, as extraction input"),
-    CursorHook("afterAgentResponse", "remem record event --agent cursor", True,
-               "the agent's responses, as extraction input"),
+    CursorHook(
+        "sessionStart",
+        "remem hook context --agent cursor",
+        True,
+        "context injection, and the only extraction trigger Cursor has",
+    ),
+    CursorHook(
+        "postToolUse", "remem record event --agent cursor", True, "every tool call"
+    ),
+    CursorHook(
+        "beforeSubmitPrompt",
+        "remem record event --agent cursor",
+        True,
+        "the user's prompts, as extraction input",
+    ),
+    CursorHook(
+        "afterAgentResponse",
+        "remem record event --agent cursor",
+        True,
+        "the agent's responses, as extraction input",
+    ),
 )
 
 #: hook name to command, the shape `merge()` and `install()` take.

@@ -5,9 +5,8 @@ import pytest
 from remem import memory_file
 from remem.backends.postgres.migrate import migrate
 from remem.backends.postgres.store import PostgresStore
-from remem.domain import CollectionQuery, Entry, new_id
+from remem.domain import CollectionQuery, Entry, Kind, Origin, new_id
 from remem.services import kb, memory
-from remem.domain import Kind, Origin
 from remem.services.write import remember, supersede
 
 pytestmark = pytest.mark.db
@@ -46,8 +45,12 @@ def _write_file(directory, name, description, body, type_="project", extra=None)
     (directory / f"{name}.md").write_text(
         memory_file.render(
             memory_file.MemoryFile(
-                name=name, title=name, description=description,
-                type=type_, body=body, extra=dict(extra or {}),
+                name=name,
+                title=name,
+                description=description,
+                type=type_,
+                body=body,
+                extra=dict(extra or {}),
             )
         )
     )
@@ -72,9 +75,7 @@ def test_case_1_a_stray_file_is_adopted(store, owner, tmp_path):
     assert "mem:a-fact" in entries[0].tags
 
 
-def test_case_2_a_lost_watermark_heals_when_bodies_match(
-    store, owner, tmp_path
-):
+def test_case_2_a_lost_watermark_heals_when_bodies_match(store, owner, tmp_path):
     _designated(store, owner)
     _write_file(tmp_path, "a-fact", "a hook", "the body\n")
     memory.sync(store, owner.id, project="proj", directory=tmp_path)
@@ -84,9 +85,7 @@ def test_case_2_a_lost_watermark_heals_when_bodies_match(
     assert report.conflicts == []
 
 
-def test_case_2_a_lost_watermark_conflicts_when_bodies_differ(
-    store, owner, tmp_path
-):
+def test_case_2_a_lost_watermark_conflicts_when_bodies_differ(store, owner, tmp_path):
     _designated(store, owner)
     _write_file(tmp_path, "a-fact", "a hook", "the body\n")
     memory.sync(store, owner.id, project="proj", directory=tmp_path)
@@ -121,9 +120,7 @@ def test_case_4_an_edited_entry_regenerates_the_file(store, owner, tmp_path):
     assert "from remem" in (tmp_path / "a-fact.md").read_text()
 
 
-def test_syncing_an_edited_summary_less_rule_does_not_raise(
-    store, owner, tmp_path
-):
+def test_syncing_an_edited_summary_less_rule_does_not_raise(store, owner, tmp_path):
     """A Kind.RULE entry that never had a summary - written directly, the
     way the 17 pre-existing rules on this machine got that way, since
     write.remember no longer produces one for a human- or agent-origin
@@ -136,16 +133,23 @@ def test_syncing_an_edited_summary_less_rule_does_not_raise(
     dropped - on the next sync, once `remem update --summary` gives the
     entry something to carry."""
     slug = _designated(store, owner)
-    entry = store.put_entry(Entry(
-        id=new_id(), kind=Kind.RULE, title="Old rule", body="the old case",
-        owner_id=owner.id, project="proj", origin=Origin.HUMAN,
-    ))
+    entry = store.put_entry(
+        Entry(
+            id=new_id(),
+            kind=Kind.RULE,
+            title="Old rule",
+            body="the old case",
+            owner_id=owner.id,
+            project="proj",
+            origin=Origin.HUMAN,
+        )
+    )
 
     memory.sync(store, owner.id, project="proj", directory=tmp_path)
     resolved = {e.title: e for e in kb.resolve(store, owner.id, slug)}
-    name = next(
-        t for t in resolved[entry.title].tags if t.startswith("mem:")
-    )[len("mem:"):]
+    name = next(t for t in resolved[entry.title].tags if t.startswith("mem:"))[
+        len("mem:") :
+    ]
     _write_file(tmp_path, name, "", "the edited case\n", type_="project")
 
     report = memory.sync(store, owner.id, project="proj", directory=tmp_path)
@@ -172,15 +176,22 @@ def test_syncing_a_rule_with_its_description_line_deleted_carries_the_old_summar
     RuleNeedsSummary mid-sync, since `""` fails the same blank check `None`
     would carry past."""
     slug = _designated(store, owner)
-    entry = remember(store, owner.id, title="A real rule", body="the case",
-                     summary="do the thing", kind=Kind.RULE, project="proj",
-                     origin=Origin.HUMAN)
+    entry = remember(
+        store,
+        owner.id,
+        title="A real rule",
+        body="the case",
+        summary="do the thing",
+        kind=Kind.RULE,
+        project="proj",
+        origin=Origin.HUMAN,
+    )
 
     memory.sync(store, owner.id, project="proj", directory=tmp_path)
     resolved = {e.title: e for e in kb.resolve(store, owner.id, slug)}
-    name = next(
-        t for t in resolved[entry.title].tags if t.startswith("mem:")
-    )[len("mem:"):]
+    name = next(t for t in resolved[entry.title].tags if t.startswith("mem:"))[
+        len("mem:") :
+    ]
     # The edit drops the description line entirely, same as a user deleting
     # it by hand - and changes the body too, since classify() only compares
     # bodies and a description-only edit would not even reach ADOPT_EDIT.
@@ -196,15 +207,16 @@ def test_syncing_a_rule_with_its_description_line_deleted_carries_the_old_summar
     assert rule.summary == "do the thing"
 
 
-def test_regenerating_preserves_metadata_remem_does_not_own(
-    store, owner, tmp_path
-):
+def test_regenerating_preserves_metadata_remem_does_not_own(store, owner, tmp_path):
     # Claude Code's own bookkeeping lives in these files and an Entry has
     # nowhere to put it, so a regenerate that rendered the entry alone would
     # destroy provenance on every file remem did not write.
     _designated(store, owner)
     _write_file(
-        tmp_path, "a-fact", "a hook", "the body\n",
+        tmp_path,
+        "a-fact",
+        "a hook",
+        "the body\n",
         extra={"originSessionId": "abc123"},
     )
     memory.sync(store, owner.id, project="proj", directory=tmp_path)
@@ -236,9 +248,7 @@ def test_case_5_both_sides_moved_is_a_conflict_and_writes_nothing(
     assert "from remem" in (tmp_path / "a-fact.remem-conflict.md").read_text()
 
 
-def test_a_conflict_sidecar_is_never_adopted_as_a_memory(
-    store, owner, tmp_path
-):
+def test_a_conflict_sidecar_is_never_adopted_as_a_memory(store, owner, tmp_path):
     # The sidecar is remem's report of a conflict, not a memory. Adopting it
     # would create a second entry from the same knowledge on the next sync,
     # and then regenerate a file for it forever.
@@ -262,14 +272,14 @@ def test_a_conflict_sidecar_is_never_adopted_as_a_memory(
     assert names == {"mem:a-fact"}
 
 
-def test_case_6_an_entry_out_of_the_collection_deletes_its_file(
-    store, owner, tmp_path
-):
+def test_case_6_an_entry_out_of_the_collection_deletes_its_file(store, owner, tmp_path):
     _designated(store, owner)
     _write_file(tmp_path, "a-fact", "a hook", "the body\n")
     memory.sync(store, owner.id, project="proj", directory=tmp_path)
     kb.set_query(
-        store, owner.id, "proj-memory",
+        store,
+        owner.id,
+        "proj-memory",
         CollectionQuery(tags=["nothing-matches-this"]),
     )
 
@@ -284,7 +294,9 @@ def test_a_file_that_moved_is_never_deleted(store, owner, tmp_path):
     _write_file(tmp_path, "a-fact", "a hook", "the body\n")
     memory.sync(store, owner.id, project="proj", directory=tmp_path)
     kb.set_query(
-        store, owner.id, "proj-memory",
+        store,
+        owner.id,
+        "proj-memory",
         CollectionQuery(tags=["nothing-matches-this"]),
     )
     _write_file(tmp_path, "a-fact", "a hook", "hand edited\n")
@@ -302,24 +314,30 @@ def test_a_second_sync_writes_nothing_at_all(store, owner, tmp_path):
     _designated(store, owner)
     _write_file(tmp_path, "a-fact", "a hook", "the body\n")
     memory.sync(store, owner.id, project="proj", directory=tmp_path)
-    before = {
-        p.name: p.read_bytes() for p in tmp_path.iterdir() if p.is_file()
-    }
+    before = {p.name: p.read_bytes() for p in tmp_path.iterdir() if p.is_file()}
 
     report = memory.sync(store, owner.id, project="proj", directory=tmp_path)
 
     after = {p.name: p.read_bytes() for p in tmp_path.iterdir() if p.is_file()}
     assert after == before
     assert report.unchanged == 1
-    assert (report.adopted, report.edited, report.regenerated,
-            report.deleted) == (0, 0, 0, 0)
+    assert (report.adopted, report.edited, report.regenerated, report.deleted) == (
+        0,
+        0,
+        0,
+        0,
+    )
 
 
 def test_dry_run_reports_without_writing(store, owner, tmp_path):
     _designated(store, owner)
     _write_file(tmp_path, "a-fact", "a hook", "the body\n")
     report = memory.sync(
-        store, owner.id, project="proj", directory=tmp_path, dry_run=True,
+        store,
+        owner.id,
+        project="proj",
+        directory=tmp_path,
+        dry_run=True,
     )
     assert report.adopted == 1
     assert kb.resolve(store, owner.id, "proj-memory") == []
@@ -355,9 +373,7 @@ def test_a_malformed_file_with_a_live_entry_is_never_overwritten(
     assert [name for name, _ in report.failures] == ["a-fact"]
 
 
-def test_a_malformed_file_is_reported_and_costs_nothing_else(
-    store, owner, tmp_path
-):
+def test_a_malformed_file_is_reported_and_costs_nothing_else(store, owner, tmp_path):
     _designated(store, owner)
     _write_file(tmp_path, "good", "a hook", "fine\n")
     tmp_path.mkdir(parents=True, exist_ok=True)
@@ -386,9 +402,7 @@ def test_an_unparseable_file_keeps_its_memory_md_line(store, owner, tmp_path):
     assert (tmp_path / "MEMORY.md").read_text().strip() == line
 
 
-def test_regenerating_keeps_the_frontmatter_name_the_user_wrote(
-    store, owner, tmp_path
-):
+def test_regenerating_keeps_the_frontmatter_name_the_user_wrote(store, owner, tmp_path):
     # Identity is the filename stem; the frontmatter `name:` is the user's
     # and remem does not own it, so a regenerate must not rewrite it.
     _designated(store, owner)
@@ -396,8 +410,12 @@ def test_regenerating_keeps_the_frontmatter_name_the_user_wrote(
     (tmp_path / "a-fact.md").write_text(
         memory_file.render(
             memory_file.MemoryFile(
-                name="a-different-slug", title="A fact", description="a hook",
-                type="project", body="the body\n", extra={},
+                name="a-different-slug",
+                title="A fact",
+                description="a hook",
+                type="project",
+                body="the body\n",
+                extra={},
             )
         )
     )
@@ -422,7 +440,9 @@ def test_a_conflict_that_writes_no_sidecar_says_so(store, owner, tmp_path):
     _write_file(tmp_path, "a-fact", "a hook", "the body\n")
     memory.sync(store, owner.id, project="proj", directory=tmp_path)
     kb.set_query(
-        store, owner.id, "proj-memory",
+        store,
+        owner.id,
+        "proj-memory",
         CollectionQuery(tags=["nothing-matches-this"]),
     )
     _write_file(tmp_path, "a-fact", "a hook", "hand edited\n")
@@ -434,9 +454,7 @@ def test_a_conflict_that_writes_no_sidecar_says_so(store, owner, tmp_path):
     assert not (tmp_path / f"a-fact{memory.CONFLICT_SUFFIX}").exists()
 
 
-def test_a_dry_run_conflict_writes_no_sidecar_and_says_so(
-    store, owner, tmp_path
-):
+def test_a_dry_run_conflict_writes_no_sidecar_and_says_so(store, owner, tmp_path):
     _designated(store, owner)
     _write_file(tmp_path, "a-fact", "a hook", "the body\n")
     memory.sync(store, owner.id, project="proj", directory=tmp_path)
@@ -445,7 +463,11 @@ def test_a_dry_run_conflict_writes_no_sidecar_and_says_so(
     _write_file(tmp_path, "a-fact", "a hook", "from claude\n")
 
     report = memory.sync(
-        store, owner.id, project="proj", directory=tmp_path, dry_run=True,
+        store,
+        owner.id,
+        project="proj",
+        directory=tmp_path,
+        dry_run=True,
     )
 
     assert report.conflicts == ["a-fact"]
@@ -453,17 +475,19 @@ def test_a_dry_run_conflict_writes_no_sidecar_and_says_so(
     assert not (tmp_path / f"a-fact{memory.CONFLICT_SUFFIX}").exists()
 
 
-def test_a_collection_at_the_resolve_limit_refuses_to_sync(
-    store, owner, tmp_path
-):
+def test_a_collection_at_the_resolve_limit_refuses_to_sync(store, owner, tmp_path):
     # Past kb.RESOLVE_LIMIT an entry remem cannot see is indistinguishable
     # from one that left the collection, and its file would be deleted.
     _designated(store, owner)
     for n in range(kb.RESOLVE_LIMIT):
         remember(
-            store, owner.id,
-            title=f"Fact {n}", body=f"body {n}\n",
-            kind=Kind.NOTE, project="proj", origin=Origin.HUMAN,
+            store,
+            owner.id,
+            title=f"Fact {n}",
+            body=f"body {n}\n",
+            kind=Kind.NOTE,
+            project="proj",
+            origin=Origin.HUMAN,
         )
 
     with pytest.raises(memory.CollectionTooLarge):
@@ -486,32 +510,36 @@ def test_an_entry_with_no_mem_tag_is_exported(store, owner, tmp_path):
     # export nothing at all from a collection full of real rules and notes.
     _designated(store, owner)
     remember(
-        store, owner.id,
-        title="Deploys need HTTPS", body="use https\n",
-        summary="Deploys need HTTPS, not SSH", kind=Kind.RULE,
-        project="proj", origin=Origin.HUMAN,
+        store,
+        owner.id,
+        title="Deploys need HTTPS",
+        body="use https\n",
+        summary="Deploys need HTTPS, not SSH",
+        kind=Kind.RULE,
+        project="proj",
+        origin=Origin.HUMAN,
     )
 
     report = memory.sync(store, owner.id, project="proj", directory=tmp_path)
 
     assert report.regenerated == 1
-    assert (tmp_path / "deploys-need-https.md").read_text().endswith(
-        "use https\n"
-    )
+    assert (tmp_path / "deploys-need-https.md").read_text().endswith("use https\n")
     assert "deploys-need-https.md" in (tmp_path / "MEMORY.md").read_text()
 
 
-def test_the_minted_name_persists_so_the_next_sync_is_a_no_op(
-    store, owner, tmp_path
-):
+def test_the_minted_name_persists_so_the_next_sync_is_a_no_op(store, owner, tmp_path):
     # Load-bearing: if the tag were not written back, every sync would mint a
     # fresh name, and a name that moved is a file deleted and rewritten.
     _designated(store, owner)
     remember(
-        store, owner.id,
-        title="Deploys need HTTPS", body="use https\n",
-        summary="Deploys need HTTPS, not SSH", kind=Kind.RULE,
-        project="proj", origin=Origin.HUMAN,
+        store,
+        owner.id,
+        title="Deploys need HTTPS",
+        body="use https\n",
+        summary="Deploys need HTTPS, not SSH",
+        kind=Kind.RULE,
+        project="proj",
+        origin=Origin.HUMAN,
     )
     memory.sync(store, owner.id, project="proj", directory=tmp_path)
     before = {p.name: p.read_bytes() for p in tmp_path.iterdir() if p.is_file()}
@@ -520,9 +548,7 @@ def test_the_minted_name_persists_so_the_next_sync_is_a_no_op(
 
     assert report.unchanged == 1
     assert report.regenerated == 0
-    assert {
-        p.name: p.read_bytes() for p in tmp_path.iterdir() if p.is_file()
-    } == before
+    assert {p.name: p.read_bytes() for p in tmp_path.iterdir() if p.is_file()} == before
     tags = [
         t
         for e in kb.resolve(store, owner.id, "proj-memory")
@@ -536,17 +562,19 @@ def test_two_titles_that_slugify_alike_get_two_files(store, owner, tmp_path):
     _designated(store, owner)
     for body in ("first\n", "second\n"):
         remember(
-            store, owner.id,
-            title="Same Title!", body=body,
-            kind=Kind.NOTE, project="proj", origin=Origin.HUMAN,
+            store,
+            owner.id,
+            title="Same Title!",
+            body=body,
+            kind=Kind.NOTE,
+            project="proj",
+            origin=Origin.HUMAN,
         )
 
     report = memory.sync(store, owner.id, project="proj", directory=tmp_path)
 
     assert report.regenerated == 2
-    written = sorted(
-        p.name for p in tmp_path.glob("*.md") if p.name != "MEMORY.md"
-    )
+    written = sorted(p.name for p in tmp_path.glob("*.md") if p.name != "MEMORY.md")
     assert len(written) == 2
     bodies = {(tmp_path / n).read_text().rsplit("---\n", 1)[1] for n in written}
     assert bodies == {"first\n", "second\n"}
@@ -562,17 +590,29 @@ def test_a_tagged_entry_with_no_file_keeps_its_name_against_a_minting_collision(
     # whose title slugifies to the same string can mint it out from under
     # them. The tagged entry is then refused, every run, permanently.
     tagged = remember(
-        store, owner.id, title="Already tagged", body="tagged\n",
-        project="proj", tags=[f"{memory.MEM_TAG_PREFIX}foo"],
+        store,
+        owner.id,
+        title="Already tagged",
+        body="tagged\n",
+        project="proj",
+        tags=[f"{memory.MEM_TAG_PREFIX}foo"],
     )
     untagged = remember(
-        store, owner.id, title="Foo", body="untagged\n", project="proj",
+        store,
+        owner.id,
+        title="Foo",
+        body="untagged\n",
+        project="proj",
     )
 
     # Untagged first, which is the order that triggers it.
     named = memory._adopt_names(
-        store, owner.id, [untagged, tagged],
-        taken=set(), report=memory.Report(), dry_run=False,
+        store,
+        owner.id,
+        [untagged, tagged],
+        taken=set(),
+        report=memory.Report(),
+        dry_run=False,
     )
 
     assert named["foo"].id == tagged.id, "the tagged entry must keep its name"
@@ -596,7 +636,11 @@ def test_sync_all_syncs_every_designation_that_records_a_directory(
     for p in ("a", "b"):
         _designated(store, owner, project=p, slug=f"{p}-memory")
         memory.designate(
-            store, owner.id, p, f"{p}-memory", working_dir=str(tmp_path / p),
+            store,
+            owner.id,
+            p,
+            f"{p}-memory",
+            working_dir=str(tmp_path / p),
         )
         _write_file(tmp_path / p / "memory", f"{p}-note", "d", "body\n")
 
@@ -621,25 +665,29 @@ def test_sync_all_skips_a_designation_with_no_recorded_directory(store, owner):
     assert "designate" in out.skipped
 
 
-def test_sync_all_reports_a_working_directory_that_is_gone(
-    store, owner, tmp_path
-):
+def test_sync_all_reports_a_working_directory_that_is_gone(store, owner, tmp_path):
     _designated(store, owner, project="a", slug="a-memory")
     memory.designate(
-        store, owner.id, "a", "a-memory", working_dir=str(tmp_path / "gone"),
+        store,
+        owner.id,
+        "a",
+        "a-memory",
+        working_dir=str(tmp_path / "gone"),
     )
     [out] = memory.sync_all(store, owner.id, resolve_directory=_dir_for)
     assert out.report is None
     assert "gone" in out.skipped or "exist" in out.skipped
 
 
-def test_one_project_failing_does_not_stop_the_others(
-    store, owner, tmp_path, conn
-):
+def test_one_project_failing_does_not_stop_the_others(store, owner, tmp_path, conn):
     for p in ("a", "b"):
         _designated(store, owner, project=p, slug=f"{p}-memory")
         memory.designate(
-            store, owner.id, p, f"{p}-memory", working_dir=str(tmp_path / p),
+            store,
+            owner.id,
+            p,
+            f"{p}-memory",
+            working_dir=str(tmp_path / p),
         )
         _write_file(tmp_path / p / "memory", f"{p}-note", "d", "body\n")
     # A collection dropped out from under its designation - migration 014
@@ -647,9 +695,14 @@ def test_one_project_failing_does_not_stop_the_others(
     with conn.cursor() as cur:
         cur.execute("delete from collections where slug = 'a-memory'")
 
-    out = {o.project: o for o in memory.sync_all(
-        store, owner.id, resolve_directory=_dir_for,
-    )}
+    out = {
+        o.project: o
+        for o in memory.sync_all(
+            store,
+            owner.id,
+            resolve_directory=_dir_for,
+        )
+    }
 
     assert out["a"].report is None and out["a"].skipped is not None
     assert out["b"].report is not None and out["b"].report.adopted == 1
@@ -680,9 +733,7 @@ def test_a_renamed_file_moves_its_entry_instead_of_duplicating_it(
     assert (tmp_path / "new-name.md").exists()
 
 
-def test_a_renamed_file_leaves_a_watermark_under_its_new_name(
-    store, owner, tmp_path
-):
+def test_a_renamed_file_leaves_a_watermark_under_its_new_name(store, owner, tmp_path):
     # Without moving the watermark the next sync sees a file with no mark,
     # which is ADOPT_EDIT or CONFLICT depending on the body - so the rename
     # would cost the very gate that makes "which side moved" answerable.
@@ -796,6 +847,8 @@ def test_an_unparseable_file_is_never_read_as_a_rename_away_from_itself(
     # The copy is adopted on its own merits - that is ADOPT_NEW and not this
     # guard's business. What must not happen is the original entry following
     # a rename away from the file still sitting on disk under its own name.
-    names = {e.id: memory._name_of(e) for e in kb.resolve(store, owner.id, "proj-memory")}
+    names = {
+        e.id: memory._name_of(e) for e in kb.resolve(store, owner.id, "proj-memory")
+    }
     assert names[original] == "old-name"
     assert (tmp_path / "old-name.md").read_text() == "---\nnot: [valid\n"

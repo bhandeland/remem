@@ -86,7 +86,7 @@ def read_document(path: Path) -> dict:
         return {}
     try:
         loaded = json.loads(path.read_text())
-    except (OSError, json.JSONDecodeError):
+    except OSError, json.JSONDecodeError:
         return {}
     return loaded if isinstance(loaded, dict) else {}
 

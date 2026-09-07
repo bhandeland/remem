@@ -21,8 +21,9 @@ def store(conn):
 
 
 def _entry(store, owner_id, title, body):
-    return store.put_entry(Entry(id=new_id(), kind=Kind.NOTE, title=title,
-                                 body=body, owner_id=owner_id))
+    return store.put_entry(
+        Entry(id=new_id(), kind=Kind.NOTE, title=title, body=body, owner_id=owner_id)
+    )
 
 
 def test_an_exact_group_is_not_also_reported_as_a_near_pair(store):

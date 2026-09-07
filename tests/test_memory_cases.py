@@ -7,9 +7,7 @@ MARK = memory.Watermark(entry_id="e", body_sha="A", exported_at="t")
 
 
 def test_a_stray_file_is_adopted_as_new():
-    assert memory.classify(file_sha="A", entry_sha=None, mark=None) == (
-        Case.ADOPT_NEW
-    )
+    assert memory.classify(file_sha="A", entry_sha=None, mark=None) == (Case.ADOPT_NEW)
 
 
 def test_file_and_entry_with_no_watermark_and_equal_bodies_heals():
@@ -17,27 +15,19 @@ def test_file_and_entry_with_no_watermark_and_equal_bodies_heals():
 
 
 def test_file_and_entry_with_no_watermark_and_different_bodies_conflicts():
-    assert memory.classify(file_sha="A", entry_sha="B", mark=None) == (
-        Case.CONFLICT
-    )
+    assert memory.classify(file_sha="A", entry_sha="B", mark=None) == (Case.CONFLICT)
 
 
 def test_file_moved_alone_is_adopted_as_an_edit():
-    assert memory.classify(file_sha="B", entry_sha="A", mark=MARK) == (
-        Case.ADOPT_EDIT
-    )
+    assert memory.classify(file_sha="B", entry_sha="A", mark=MARK) == (Case.ADOPT_EDIT)
 
 
 def test_entry_moved_alone_regenerates_the_file():
-    assert memory.classify(file_sha="A", entry_sha="B", mark=MARK) == (
-        Case.REGENERATE
-    )
+    assert memory.classify(file_sha="A", entry_sha="B", mark=MARK) == (Case.REGENERATE)
 
 
 def test_both_moved_is_a_conflict():
-    assert memory.classify(file_sha="B", entry_sha="C", mark=MARK) == (
-        Case.CONFLICT
-    )
+    assert memory.classify(file_sha="B", entry_sha="C", mark=MARK) == (Case.CONFLICT)
 
 
 def test_both_moved_to_the_same_content_is_not_a_conflict():
@@ -47,28 +37,20 @@ def test_both_moved_to_the_same_content_is_not_a_conflict():
 
 
 def test_neither_moved_is_unchanged():
-    assert memory.classify(file_sha="A", entry_sha="A", mark=MARK) == (
-        Case.UNCHANGED
-    )
+    assert memory.classify(file_sha="A", entry_sha="A", mark=MARK) == (Case.UNCHANGED)
 
 
 def test_an_entry_with_no_file_is_regenerated():
-    assert memory.classify(file_sha=None, entry_sha="A", mark=None) == (
-        Case.REGENERATE
-    )
+    assert memory.classify(file_sha=None, entry_sha="A", mark=None) == (Case.REGENERATE)
 
 
 def test_an_entry_gone_from_the_collection_deletes_its_file():
-    assert memory.classify(file_sha="A", entry_sha=None, mark=MARK) == (
-        Case.DELETE
-    )
+    assert memory.classify(file_sha="A", entry_sha=None, mark=MARK) == (Case.DELETE)
 
 
 def test_a_file_that_moved_since_export_is_never_deleted():
     # The gate: remem removes only what it wrote and knows to be untouched.
-    assert memory.classify(file_sha="B", entry_sha=None, mark=MARK) == (
-        Case.ADOPT_EDIT
-    )
+    assert memory.classify(file_sha="B", entry_sha=None, mark=MARK) == (Case.ADOPT_EDIT)
 
 
 def test_watermarks_round_trip(tmp_path):
@@ -96,23 +78,37 @@ def test_a_corrupt_watermark_file_is_an_empty_mapping(tmp_path):
 # same footing whenever the entry has nothing to say about it.
 def _entry(tags):
     from remem.domain import Entry, Kind, Origin, new_id
+
     return Entry(
-        id=new_id(), owner_id=new_id(), title="T", body="B",
-        kind=Kind.NOTE, origin=Origin.AGENT, tags=list(tags), summary="S",
+        id=new_id(),
+        owner_id=new_id(),
+        title="T",
+        body="B",
+        kind=Kind.NOTE,
+        origin=Origin.AGENT,
+        tags=list(tags),
+        summary="S",
     )
 
 
 def _source(type_):
     from remem import memory_file
+
     return memory_file.MemoryFile(
-        name="n", title="T", description="S", type=type_, body="B",
+        name="n",
+        title="T",
+        description="S",
+        type=type_,
+        body="B",
         extra={"originSessionId": "x"},
     )
 
 
 def test_the_entry_tag_decides_the_type_when_it_has_one():
     mf = memory._as_file(
-        _entry(["type:project"]), "n", source=_source("reference"),
+        _entry(["type:project"]),
+        "n",
+        source=_source("reference"),
     )
     assert mf.type == "project"
 

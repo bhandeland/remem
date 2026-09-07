@@ -48,7 +48,7 @@ def test_parsing_a_hooks_interface(tmp_path):
     d = tmp_path / "@opencode-ai" / "plugin" / "dist"
     d.mkdir(parents=True)
     (d / "index.d.ts").write_text(
-        'export type Plugin = () => Promise<Hooks>;\n'
+        "export type Plugin = () => Promise<Hooks>;\n"
         "export interface Hooks {\n"
         "    event?: (input: { event: Event }) => Promise<void>;\n"
         "    config?: (input: Config) => Promise<void>;\n"
@@ -96,9 +96,7 @@ def test_the_vendored_list_still_matches_the_installed_types():
 def _plugin_source() -> str:
     from importlib import resources
 
-    return (
-        resources.files("remem.agents.opencode").joinpath("plugin.js").read_text()
-    )
+    return resources.files("remem.agents.opencode").joinpath("plugin.js").read_text()
 
 
 #: Keys of the object plugin.js returns from `server`: a QUOTED property at
@@ -219,5 +217,6 @@ def test_plugin_serializes_inside_try_catch():
     callremem_text = "\n".join(lines[callremem_start : callremem_end + 1])
     assert "JSON.stringify" in callremem_text, (
         "JSON.stringify(...) found outside callRemem function. "
-        "This breaks the fail-soft contract - exceptions from stringify will escape uncaught."
+        "This breaks the fail-soft contract - exceptions from stringify "
+        "will escape uncaught."
     )

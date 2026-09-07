@@ -31,9 +31,17 @@ def test_finishing_records_every_count_and_list(store):
     run = store.start_memory_run(owner.id, "p", MemoryTrigger.MANUAL)
 
     store.finish_memory_run(
-        run.id, owner.id, adopted=1, healed=2, edited=3, regenerated=4,
-        deleted=5, unchanged=6, renamed=[["old", "new"]],
-        conflicts=["c"], sidecars=["c"],
+        run.id,
+        owner.id,
+        adopted=1,
+        healed=2,
+        edited=3,
+        regenerated=4,
+        deleted=5,
+        unchanged=6,
+        renamed=[["old", "new"]],
+        conflicts=["c"],
+        sidecars=["c"],
         failures=[{"name": "bad", "reason": "boom"}],
     )
 
@@ -82,8 +90,17 @@ def test_finishing_another_principals_run_is_refused(store):
 
     with pytest.raises(NotOwner):
         store.finish_memory_run(
-            run.id, mine.id, adopted=0, healed=0, edited=0, regenerated=0,
-            deleted=0, unchanged=0, renamed=[], conflicts=[], sidecars=[],
+            run.id,
+            mine.id,
+            adopted=0,
+            healed=0,
+            edited=0,
+            regenerated=0,
+            deleted=0,
+            unchanged=0,
+            renamed=[],
+            conflicts=[],
+            sidecars=[],
             failures=[],
         )
 

@@ -2,7 +2,7 @@ import pytest
 
 from remem.backends.postgres.migrate import migrate
 from remem.backends.postgres.store import PostgresStore
-from remem.domain import Hit, Query
+from remem.domain import Entry, Hit, Kind, Match, Query, new_id
 from remem.embed import EmbedderUnavailable
 from remem.services.search import find
 from remem.services.write import remember
@@ -41,8 +41,6 @@ def test_find_rejects_a_nonpositive_limit(store, owner):
 
 # Three tiers, tried in order, never blended.
 
-from remem.domain import Entry, Kind, Match, new_id
-
 
 class StubStore:
     """Records which tiers were called, and answers with what it was told to.
@@ -80,8 +78,7 @@ class StubEmbedder:
 
 
 def _hit(match=Match.EXACT):
-    e = Entry(id=new_id(), kind=Kind.NOTE, title="t", body="b",
-              owner_id=new_id())
+    e = Entry(id=new_id(), kind=Kind.NOTE, title="t", body="b", owner_id=new_id())
     return Hit(entry=e, rank=1.0, snippet="s", match=match)
 
 

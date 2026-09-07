@@ -154,6 +154,4 @@ def parse_entries(raw: str) -> list[ExtractedEntry]:
 
     if saw_empty:
         return []
-    raise ExtractionFailed(
-        "no candidate array contained a valid entry", raw
-    )
+    raise ExtractionFailed("no candidate array contained a valid entry", raw)

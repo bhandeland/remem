@@ -70,5 +70,5 @@ def installed_hook_names(root: Path) -> frozenset[str]:
         return frozenset()
     # The interface body ends at the first line that closes it at column 0.
     end = text.find("\n}", start)
-    body = text[start:end if end != -1 else len(text)]
+    body = text[start : end if end != -1 else len(text)]
     return frozenset(_MEMBER.findall(body))

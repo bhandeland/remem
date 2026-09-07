@@ -26,7 +26,11 @@ BODY = "## Done\nshipped it\n\n## In flight\n\n## Next steps\n\n## Gotchas\n"
 
 def test_a_handoff_is_a_doc_entry_tagged_with_its_topic(store, owner):
     entry, superseded = handoff.write(
-        store, owner.id, project="remem", topic="gitlab-ci", body=BODY,
+        store,
+        owner.id,
+        project="remem",
+        topic="gitlab-ci",
+        body=BODY,
         today=datetime(2026, 8, 27, tzinfo=UTC).date(),
     )
     assert entry.kind == Kind.DOC
@@ -43,34 +47,37 @@ def test_the_topic_defaults_to_the_project(store, owner):
 
 
 def test_writing_a_handoff_supersedes_the_previous_one_for_that_topic(store, owner):
-    first, _ = handoff.write(store, owner.id, project="remem",
-                             topic="ci", body=BODY)
-    second, superseded = handoff.write(store, owner.id, project="remem",
-                                       topic="ci", body=BODY)
+    first, _ = handoff.write(store, owner.id, project="remem", topic="ci", body=BODY)
+    second, superseded = handoff.write(
+        store, owner.id, project="remem", topic="ci", body=BODY
+    )
     assert superseded is not None and superseded.id == first.id
     assert store.get_entry(first.id, owner.id).superseded_by == second.id
     assert handoff.latest(store, owner.id, project="remem", topic="ci").id == second.id
 
 
 def test_another_topic_is_left_alone(store, owner):
-    other, _ = handoff.write(store, owner.id, project="remem",
-                             topic="search", body=BODY)
+    other, _ = handoff.write(
+        store, owner.id, project="remem", topic="search", body=BODY
+    )
     handoff.write(store, owner.id, project="remem", topic="ci", body=BODY)
     handoff.write(store, owner.id, project="remem", topic="ci", body=BODY)
     assert store.get_entry(other.id, owner.id).superseded_by is None
 
 
 def test_another_project_is_left_alone(store, owner):
-    other, _ = handoff.write(store, owner.id, project="elsewhere",
-                             topic="ci", body=BODY)
+    other, _ = handoff.write(
+        store, owner.id, project="elsewhere", topic="ci", body=BODY
+    )
     handoff.write(store, owner.id, project="remem", topic="ci", body=BODY)
     assert store.get_entry(other.id, owner.id).superseded_by is None
 
 
 def test_latest_without_a_topic_returns_the_newest_for_the_project(store, owner):
     handoff.write(store, owner.id, project="remem", topic="ci", body=BODY)
-    newest, _ = handoff.write(store, owner.id, project="remem",
-                              topic="search", body=BODY)
+    newest, _ = handoff.write(
+        store, owner.id, project="remem", topic="search", body=BODY
+    )
     assert handoff.latest(store, owner.id, project="remem").id == newest.id
 
 
@@ -106,8 +113,7 @@ def test_rejecting_an_unslugable_topic_leaves_another_topics_handoff_untouched(
 ):
     """The test that would have caught the silent-data-loss bug: a rejected
     write for one topic must never fall through to superseding another."""
-    live, _ = handoff.write(store, owner.id, project="remem",
-                            topic="ci", body=BODY)
+    live, _ = handoff.write(store, owner.id, project="remem", topic="ci", body=BODY)
     with pytest.raises(ValueError):
         handoff.write(store, owner.id, project="remem", topic="!!!", body=BODY)
     assert store.get_entry(live.id, owner.id).superseded_by is None
@@ -127,8 +133,7 @@ def test_slugify_makes_a_tag_safe_topic():
 
 
 def test_topic_of_reads_the_tag_back(store, owner):
-    entry, _ = handoff.write(store, owner.id, project="remem",
-                             topic="ci", body=BODY)
+    entry, _ = handoff.write(store, owner.id, project="remem", topic="ci", body=BODY)
     assert handoff.topic_of(entry) == "ci"
 
 

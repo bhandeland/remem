@@ -20,8 +20,7 @@ def _isolated_state(tmp_path, monkeypatch):
 
 
 def _payload(transcript, session_id="sess-1"):
-    return json.dumps({"transcript_path": str(transcript),
-                       "session_id": session_id})
+    return json.dumps({"transcript_path": str(transcript), "session_id": session_id})
 
 
 def _transcript(tmp_path, turns):
@@ -31,8 +30,11 @@ def _transcript(tmp_path, turns):
 
 
 def _env(tmp_path, **extra):
-    env = {"REMEM_TURN_WARN_AT": "10", "REMEM_TURN_WARN_EVERY": "5",
-           "REMEM_CONFIG": str(tmp_path / "none.toml")}
+    env = {
+        "REMEM_TURN_WARN_AT": "10",
+        "REMEM_TURN_WARN_EVERY": "5",
+        "REMEM_CONFIG": str(tmp_path / "none.toml"),
+    }
     env.update(extra)
     return env
 
@@ -63,8 +65,7 @@ def test_malformed_stdin_is_silent(tmp_path):
 
 
 def test_a_missing_transcript_path_is_silent(tmp_path):
-    assert hook.session_size(json.dumps({"session_id": "x"}),
-                             env=_env(tmp_path)) == ""
+    assert hook.session_size(json.dumps({"session_id": "x"}), env=_env(tmp_path)) == ""
 
 
 def test_a_capture_child_is_never_warned(tmp_path):

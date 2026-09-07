@@ -12,8 +12,8 @@ from remem.domain import Hit, Match
 
 def _hit(**kw):
     from remem.domain import Entry, Kind, new_id
-    entry = Entry(id=new_id(), kind=Kind.NOTE, title="t", body="b",
-                  owner_id=new_id())
+
+    entry = Entry(id=new_id(), kind=Kind.NOTE, title="t", body="b", owner_id=new_id())
     return Hit(entry=entry, rank=1.0, snippet="s", **kw)
 
 

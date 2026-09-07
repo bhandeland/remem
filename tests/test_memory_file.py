@@ -35,7 +35,9 @@ def _parse_fixture(path: Path) -> memory_file.MemoryFile:
     text = path.read_text()
     index = memory_file.parse_index((FIXTURES / "MEMORY.md").read_text())
     return memory_file.parse(
-        text, name=path.stem, title=index.get(path.name, ""),
+        text,
+        name=path.stem,
+        title=index.get(path.name, ""),
     )
 
 
@@ -57,9 +59,7 @@ def test_render_is_idempotent(path):
     # that - otherwise every sync run would see a "change" forever.
     mf = _parse_fixture(path)
     once = memory_file.render(mf)
-    twice = memory_file.render(
-        memory_file.parse(once, name=mf.name, title=mf.title)
-    )
+    twice = memory_file.render(memory_file.parse(once, name=mf.name, title=mf.title))
     assert once == twice
 
 
@@ -83,7 +83,9 @@ def test_no_metadata_key_is_lost(path):
 def test_parse_reads_every_field():
     text = (FIXTURES / "cursor-runs-claude-code-hooks.md").read_text()
     mf = memory_file.parse(
-        text, name="cursor-runs-claude-code-hooks", title="Cursor runs hooks",
+        text,
+        name="cursor-runs-claude-code-hooks",
+        title="Cursor runs hooks",
     )
     assert mf.name == "cursor-runs-claude-code-hooks"
     assert mf.title == "Cursor runs hooks"
@@ -107,15 +109,22 @@ def test_parse_index_maps_filename_to_link_text():
 def test_render_index_is_sorted_by_name_and_uses_the_em_dash():
     files = [
         memory_file.MemoryFile(
-            name="b", title="B", description="second", type=None, body="x",
+            name="b",
+            title="B",
+            description="second",
+            type=None,
+            body="x",
         ),
         memory_file.MemoryFile(
-            name="a", title="A", description="first", type=None, body="x",
+            name="a",
+            title="A",
+            description="first",
+            type=None,
+            body="x",
         ),
     ]
     assert memory_file.render_index(files) == (
-        "- [A](a.md) — first\n"
-        "- [B](b.md) — second\n"
+        "- [A](a.md) — first\n- [B](b.md) — second\n"
     )
 
 
@@ -145,9 +154,7 @@ def test_a_top_level_type_is_the_type():
 
 def test_a_top_level_bookkeeping_key_survives_a_render():
     mf = _parse_fixture(FIXTURES / "flat-frontmatter-dialect.md")
-    assert mf.extra.get("originSessionId") == (
-        "00000000-0000-0000-0000-000000000000"
-    )
+    assert mf.extra.get("originSessionId") == ("00000000-0000-0000-0000-000000000000")
     assert "originSessionId:" in memory_file.render(mf)
 
 
@@ -156,8 +163,12 @@ def test_the_two_dialects_parse_to_the_same_shape():
     # must not be observable downstream of parse().
     flat = _parse_fixture(FIXTURES / "flat-frontmatter-dialect.md")
     nested = memory_file.parse(
-        memory_file.render(flat), name=flat.name, title=flat.title,
+        memory_file.render(flat),
+        name=flat.name,
+        title=flat.title,
     )
     assert (nested.type, nested.extra, nested.body) == (
-        flat.type, flat.extra, flat.body,
+        flat.type,
+        flat.extra,
+        flat.body,
     )

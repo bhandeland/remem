@@ -27,7 +27,8 @@ def test_two_checkouts_of_one_repo_share_a_project_name_but_not_a_slug():
 
 def test_memory_dir_sits_under_the_claude_home():
     got = cc_memory.memory_dir(
-        Path("/w/proj"), env={"CLAUDE_CONFIG_DIR": "/cfg"},
+        Path("/w/proj"),
+        env={"CLAUDE_CONFIG_DIR": "/cfg"},
     )
     assert got == Path("/cfg/projects/-w-proj/memory")
 
@@ -57,7 +58,8 @@ def test_the_adapter_exposes_the_capability():
     adapter = get("claude-code")()
     assert getattr(adapter, "memory_dir", None) is not None
     assert adapter.memory_dir(
-        Path("/w/proj"), env={"CLAUDE_CONFIG_DIR": "/cfg"},
+        Path("/w/proj"),
+        env={"CLAUDE_CONFIG_DIR": "/cfg"},
     ) == Path("/cfg/projects/-w-proj/memory")
 
 

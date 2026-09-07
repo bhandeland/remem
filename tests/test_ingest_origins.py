@@ -36,34 +36,81 @@ def test_ingested_is_in_the_default_origins_and_archived_is_not():
 
 
 def test_default_search_finds_ingested_and_hides_archived(store, owner):
-    remember(store, owner.id, title="Sweep design", body="the sweep supersedes orphans",
-             kind=Kind.DOC, project="remem", origin=Origin.INGESTED)
-    remember(store, owner.id, title="Task 9 sweep", body="the sweep supersedes orphans",
-             kind=Kind.DOC, project="remem", origin=Origin.ARCHIVED)
+    remember(
+        store,
+        owner.id,
+        title="Sweep design",
+        body="the sweep supersedes orphans",
+        kind=Kind.DOC,
+        project="remem",
+        origin=Origin.INGESTED,
+    )
+    remember(
+        store,
+        owner.id,
+        title="Task 9 sweep",
+        body="the sweep supersedes orphans",
+        kind=Kind.DOC,
+        project="remem",
+        origin=Origin.ARCHIVED,
+    )
 
     titles = [h.entry.title for h in search.find(store, owner.id, Query(text="sweep"))]
     assert titles == ["Sweep design"]
 
 
 def test_include_archived_surfaces_both(store, owner):
-    remember(store, owner.id, title="Sweep design", body="the sweep supersedes orphans",
-             kind=Kind.DOC, project="remem", origin=Origin.INGESTED)
-    remember(store, owner.id, title="Task 9 sweep", body="the sweep supersedes orphans",
-             kind=Kind.DOC, project="remem", origin=Origin.ARCHIVED)
+    remember(
+        store,
+        owner.id,
+        title="Sweep design",
+        body="the sweep supersedes orphans",
+        kind=Kind.DOC,
+        project="remem",
+        origin=Origin.INGESTED,
+    )
+    remember(
+        store,
+        owner.id,
+        title="Task 9 sweep",
+        body="the sweep supersedes orphans",
+        kind=Kind.DOC,
+        project="remem",
+        origin=Origin.ARCHIVED,
+    )
 
     hits = search.find(store, owner.id, Query(text="sweep"), include_archived=True)
     assert {h.entry.title for h in hits} == {"Sweep design", "Task 9 sweep"}
 
 
 def test_neither_origin_reaches_a_context_block(store, owner):
-    remember(store, owner.id, title="Ingested rule", body="never in context",
-             summary="Ingested docs stay out of every session's context",
-             kind=Kind.RULE, project="remem", origin=Origin.INGESTED)
-    remember(store, owner.id, title="Archived rule", body="never in context",
-             summary="Archived plans stay out of every session's context",
-             kind=Kind.RULE, project="remem", origin=Origin.ARCHIVED)
-    kb.create(store, owner.id, slug="remem", title="remem",
-              query=CollectionQuery(project="remem"))
+    remember(
+        store,
+        owner.id,
+        title="Ingested rule",
+        body="never in context",
+        summary="Ingested docs stay out of every session's context",
+        kind=Kind.RULE,
+        project="remem",
+        origin=Origin.INGESTED,
+    )
+    remember(
+        store,
+        owner.id,
+        title="Archived rule",
+        body="never in context",
+        summary="Archived plans stay out of every session's context",
+        kind=Kind.RULE,
+        project="remem",
+        origin=Origin.ARCHIVED,
+    )
+    kb.create(
+        store,
+        owner.id,
+        slug="remem",
+        title="remem",
+        query=CollectionQuery(project="remem"),
+    )
 
     # kb.resolve takes the collection's SLUG, not the object.
     entries = kb.resolve(store, owner.id, "remem")

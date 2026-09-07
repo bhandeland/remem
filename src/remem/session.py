@@ -36,9 +36,7 @@ def ensure_database(dsn: str) -> bool:
             return False
         # Postgres cannot parameterise an identifier, so quote it properly
         # rather than interpolating the raw string into the statement.
-        admin.execute(
-            sql.SQL("create database {}").format(sql.Identifier(dbname))
-        )
+        admin.execute(sql.SQL("create database {}").format(sql.Identifier(dbname)))
         return True
 
 

@@ -29,8 +29,9 @@ def now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def put_event(store, owner, *, at, session="s1", project="remem",
-              harness="claude-code"):
+def put_event(
+    store, owner, *, at, session="s1", project="remem", harness="claude-code"
+):
     """A minimal tool_call event, timestamped by the caller.
 
     The watermark tests care only about `occurred_at`; everything else is
@@ -59,8 +60,9 @@ def test_a_session_with_recent_events_is_not_awaiting_extraction(store, owner):
     do with the other half.
     """
     put_event(store, owner, at=now_utc())
-    assert store.sessions_awaiting_extraction(owner.id, idle_seconds=1200,
-                                              limit=10) == []
+    assert (
+        store.sessions_awaiting_extraction(owner.id, idle_seconds=1200, limit=10) == []
+    )
 
 
 def test_a_quiet_session_is_awaiting_extraction(store, owner):
@@ -83,8 +85,9 @@ def test_a_resumed_session_comes_back_with_a_watermark(store, owner):
     put_event(store, owner, at=first)
     session = store.sessions_awaiting_extraction(owner.id, 1200, 10)[0]
     job = store.claim_extract_job(owner.id, session)
-    store.finish_extract_job(job.id, owner.id, JobStatus.DONE, None, 2,
-                             covers_through=first)
+    store.finish_extract_job(
+        job.id, owner.id, JobStatus.DONE, None, 2, covers_through=first
+    )
 
     assert store.sessions_awaiting_extraction(owner.id, 1200, 10) == []
 
@@ -120,8 +123,9 @@ def test_claim_extract_job_by_id_reclaims_a_named_job(store, owner):
     put_event(store, owner, at=now_utc() - timedelta(hours=2))
     session = store.sessions_awaiting_extraction(owner.id, 1200, 10)[0]
     job = store.claim_extract_job(owner.id, session)
-    store.finish_extract_job(job.id, owner.id, JobStatus.FAILED,
-                             "boom", 0, covers_through=None)
+    store.finish_extract_job(
+        job.id, owner.id, JobStatus.FAILED, "boom", 0, covers_through=None
+    )
 
     reclaimed = store.claim_extract_job_by_id(job.id, owner.id)
     assert reclaimed is not None
@@ -144,10 +148,12 @@ def test_extract_job_counts_groups_by_status(store, owner):
     put_event(store, owner, at=now_utc() - timedelta(hours=2), session="b")
     sessions = store.sessions_awaiting_extraction(owner.id, 1200, 10)
     jobs = [store.claim_extract_job(owner.id, s) for s in sessions]
-    store.finish_extract_job(jobs[0].id, owner.id, JobStatus.DONE, None, 1,
-                             covers_through=now_utc())
-    store.finish_extract_job(jobs[1].id, owner.id, JobStatus.FAILED, "boom",
-                             0, covers_through=None)
+    store.finish_extract_job(
+        jobs[0].id, owner.id, JobStatus.DONE, None, 1, covers_through=now_utc()
+    )
+    store.finish_extract_job(
+        jobs[1].id, owner.id, JobStatus.FAILED, "boom", 0, covers_through=None
+    )
 
     counts = store.extract_job_counts(owner.id)
     assert counts["done"] == 1
@@ -159,10 +165,12 @@ def test_recent_failed_extract_jobs_orders_newest_first(store, owner):
     put_event(store, owner, at=now_utc() - timedelta(hours=2), session="b")
     sessions = store.sessions_awaiting_extraction(owner.id, 1200, 10)
     jobs = [store.claim_extract_job(owner.id, s) for s in sessions]
-    store.finish_extract_job(jobs[0].id, owner.id, JobStatus.FAILED,
-                             "first failure", 0, covers_through=None)
-    store.finish_extract_job(jobs[1].id, owner.id, JobStatus.FAILED,
-                             "second failure", 0, covers_through=None)
+    store.finish_extract_job(
+        jobs[0].id, owner.id, JobStatus.FAILED, "first failure", 0, covers_through=None
+    )
+    store.finish_extract_job(
+        jobs[1].id, owner.id, JobStatus.FAILED, "second failure", 0, covers_through=None
+    )
 
     [newest, oldest] = store.recent_failed_extract_jobs(owner.id, limit=5)
     assert newest.error == "second failure"

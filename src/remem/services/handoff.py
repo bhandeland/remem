@@ -43,7 +43,7 @@ def topic_tag(topic: str) -> str:
 def topic_of(entry: Entry) -> str | None:
     for tag in entry.tags:
         if tag.startswith(TOPIC_PREFIX):
-            return tag[len(TOPIC_PREFIX):]
+            return tag[len(TOPIC_PREFIX) :]
     return None
 
 

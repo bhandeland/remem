@@ -14,6 +14,7 @@ runner = CliRunner()
 @pytest.fixture
 def env(live_dsn, monkeypatch, tmp_path):
     import psycopg
+
     with psycopg.connect(live_dsn) as c:
         migrate(c)
         c.commit()
@@ -30,8 +31,17 @@ def test_whoami_reports_the_handle(env):
 
 
 def test_remember_then_search_finds_it(env):
-    r = runner.invoke(app, ["remember", "Postgres tuning",
-                            "--body", "raise work_mem", "--project", "remem"])
+    r = runner.invoke(
+        app,
+        [
+            "remember",
+            "Postgres tuning",
+            "--body",
+            "raise work_mem",
+            "--project",
+            "remem",
+        ],
+    )
     assert r.exit_code == 0, r.stdout
 
     s = runner.invoke(app, ["search", "work_mem", "--json"])
@@ -42,8 +52,9 @@ def test_remember_then_search_finds_it(env):
 
 
 def test_remember_reads_the_body_from_stdin(env):
-    r = runner.invoke(app, ["remember", "From stdin", "--body", "-"],
-                      input="piped body text")
+    r = runner.invoke(
+        app, ["remember", "From stdin", "--body", "-"], input="piped body text"
+    )
     assert r.exit_code == 0
     s = runner.invoke(app, ["search", "piped", "--json"])
     assert json.loads(s.stdout)[0]["title"] == "From stdin"
@@ -56,7 +67,7 @@ def test_search_json_is_a_list_even_when_empty(env):
 
 
 def test_get_prints_the_full_body(env):
-    r = runner.invoke(app, ["remember", "T", "--body", "the whole body"])
+    runner.invoke(app, ["remember", "T", "--body", "the whole body"])
     s = runner.invoke(app, ["search", "whole", "--json"])
     entry_id = json.loads(s.stdout)[0]["id"]
     g = runner.invoke(app, ["get", entry_id])
@@ -65,6 +76,7 @@ def test_get_prints_the_full_body(env):
 
 def test_get_with_an_unknown_id_exits_nonzero(env):
     from remem.domain import new_id
+
     g = runner.invoke(app, ["get", str(new_id())])
     assert g.exit_code != 0
 
@@ -74,16 +86,28 @@ def test_supersede_replaces_and_hides_the_old_entry(env):
     s = runner.invoke(app, ["search", "fridays", "--json"])
     old_id = json.loads(s.stdout)[0]["id"]
 
-    runner.invoke(app, ["supersede", old_id, "--title", "Tuesdays",
-                        "--body", "deploy tuesdays"])
+    runner.invoke(
+        app, ["supersede", old_id, "--title", "Tuesdays", "--body", "deploy tuesdays"]
+    )
     again = runner.invoke(app, ["search", "deploy", "--json"])
     titles = [x["title"] for x in json.loads(again.stdout)]
     assert titles == ["Tuesdays"]
 
 
 def test_kb_new_list_pin_and_show(env):
-    runner.invoke(app, ["remember", "A rule", "--body", "always lint",
-                        "--summary", "Run lint", "--kind", "rule"])
+    runner.invoke(
+        app,
+        [
+            "remember",
+            "A rule",
+            "--body",
+            "always lint",
+            "--summary",
+            "Run lint",
+            "--kind",
+            "rule",
+        ],
+    )
     s = runner.invoke(app, ["search", "lint", "--json"])
     entry_id = json.loads(s.stdout)[0]["id"]
 
@@ -108,8 +132,19 @@ def test_db_status_reports_applied_migrations(env):
 
 
 def test_search_filters_by_kind(env):
-    runner.invoke(app, ["remember", "R", "--body", "shared",
-                        "--summary", "R is shared", "--kind", "rule"])
+    runner.invoke(
+        app,
+        [
+            "remember",
+            "R",
+            "--body",
+            "shared",
+            "--summary",
+            "R is shared",
+            "--kind",
+            "rule",
+        ],
+    )
     runner.invoke(app, ["remember", "M", "--body", "shared"])
     s = runner.invoke(app, ["search", "shared", "--kind", "rule", "--json"])
     assert [x["title"] for x in json.loads(s.stdout)] == ["R"]
@@ -243,8 +278,7 @@ def test_kb_new_without_a_query_warns(env):
 
 
 def test_kb_new_with_a_project_does_not_warn(env):
-    r = runner.invoke(app, ["kb", "new", "proj", "--title", "P",
-                            "--project", "myapp"])
+    r = runner.invoke(app, ["kb", "new", "proj", "--title", "P", "--project", "myapp"])
     assert r.exit_code == 0
     assert r.stderr.strip() == ""
 
@@ -257,6 +291,7 @@ def _summary_of(dsn, entry_id):
     tests what was written rather than what some formatter chose to show.
     """
     import psycopg
+
     with psycopg.connect(dsn) as c:
         row = c.execute(
             "select summary from entries where id = %s", (entry_id,)
@@ -265,27 +300,49 @@ def _summary_of(dsn, entry_id):
 
 
 def test_remember_stores_a_summary(env):
-    r = runner.invoke(app, ["remember", "Has a summary", "--body", "b",
-                            "--summary", "one line about it"])
+    r = runner.invoke(
+        app,
+        ["remember", "Has a summary", "--body", "b", "--summary", "one line about it"],
+    )
     assert r.exit_code == 0, r.stdout
     assert _summary_of(env, r.stdout.strip()) == "one line about it"
 
 
 def test_rule_stores_a_summary(env):
-    r = runner.invoke(app, ["rule", "A rule with a summary", "--body", "b",
-                            "--summary", "why the rule exists"])
+    r = runner.invoke(
+        app,
+        [
+            "rule",
+            "A rule with a summary",
+            "--body",
+            "b",
+            "--summary",
+            "why the rule exists",
+        ],
+    )
     assert r.exit_code == 0, r.stdout
     assert _summary_of(env, r.stdout.strip()) == "why the rule exists"
 
 
 def test_supersede_can_correct_a_summary(env):
-    first = runner.invoke(app, ["remember", "Original", "--body", "b",
-                                "--summary", "the old one"])
+    first = runner.invoke(
+        app, ["remember", "Original", "--body", "b", "--summary", "the old one"]
+    )
     assert first.exit_code == 0, first.stdout
 
-    second = runner.invoke(app, ["supersede", first.stdout.strip(),
-                                 "--title", "Corrected", "--body", "b2",
-                                 "--summary", "the new one"])
+    second = runner.invoke(
+        app,
+        [
+            "supersede",
+            first.stdout.strip(),
+            "--title",
+            "Corrected",
+            "--body",
+            "b2",
+            "--summary",
+            "the new one",
+        ],
+    )
     assert second.exit_code == 0, second.stdout
     assert _summary_of(env, second.stdout.strip()) == "the new one"
 
@@ -295,27 +352,47 @@ def test_supersede_without_a_summary_carries_the_old_one(env):
     # caller did not restate. Adding the flag must not turn "omitted" into
     # "clear it" - that would silently empty the frontmatter description of
     # any memory file whose entry was ever corrected.
-    first = runner.invoke(app, ["remember", "Original", "--body", "b",
-                                "--summary", "kept across the correction"])
+    first = runner.invoke(
+        app,
+        [
+            "remember",
+            "Original",
+            "--body",
+            "b",
+            "--summary",
+            "kept across the correction",
+        ],
+    )
     assert first.exit_code == 0, first.stdout
 
-    second = runner.invoke(app, ["supersede", first.stdout.strip(),
-                                 "--title", "Corrected", "--body", "b2"])
+    second = runner.invoke(
+        app, ["supersede", first.stdout.strip(), "--title", "Corrected", "--body", "b2"]
+    )
     assert second.exit_code == 0, second.stdout
     assert _summary_of(env, second.stdout.strip()) == "kept across the correction"
 
 
 def test_search_json_carries_the_summary(env):
-    r = runner.invoke(app, ["remember", "Summarised", "--body", "long body here",
-                            "--summary", "the one-line version"])
+    r = runner.invoke(
+        app,
+        [
+            "remember",
+            "Summarised",
+            "--body",
+            "long body here",
+            "--summary",
+            "the one-line version",
+        ],
+    )
     assert r.exit_code == 0, r.stdout
     s = runner.invoke(app, ["search", "Summarised", "--json"])
     assert json.loads(s.stdout)[0]["summary"] == "the one-line version"
 
 
 def test_get_json_carries_the_summary(env):
-    runner.invoke(app, ["remember", "Gettable", "--body", "body",
-                        "--summary", "read me back"])
+    runner.invoke(
+        app, ["remember", "Gettable", "--body", "body", "--summary", "read me back"]
+    )
     s = runner.invoke(app, ["search", "Gettable", "--json"])
     entry_id = json.loads(s.stdout)[0]["id"]
     g = runner.invoke(app, ["get", entry_id, "--json"])
@@ -331,8 +408,9 @@ def test_the_summary_key_is_present_and_null_when_there_is_none(env):
 
 
 def test_get_shows_the_summary_above_the_body(env):
-    runner.invoke(app, ["remember", "Printable", "--body", "the body",
-                        "--summary", "the gist"])
+    runner.invoke(
+        app, ["remember", "Printable", "--body", "the body", "--summary", "the gist"]
+    )
     s = runner.invoke(app, ["search", "Printable", "--json"])
     entry_id = json.loads(s.stdout)[0]["id"]
     g = runner.invoke(app, ["get", entry_id])
@@ -358,30 +436,49 @@ def _legacy_rule(dsn, title):
 
     from remem.backends.postgres.store import PostgresStore
     from remem.domain import Entry, Kind, Origin, new_id
+
     with psycopg.connect(dsn) as c:
         store = PostgresStore(c)
         owner = store.ensure_principal("brandon")
-        entry = store.put_entry(Entry(
-            id=new_id(), kind=Kind.RULE, title=title, body="the case",
-            owner_id=owner.id, origin=Origin.HUMAN,
-        ))
+        entry = store.put_entry(
+            Entry(
+                id=new_id(),
+                kind=Kind.RULE,
+                title=title,
+                body="the case",
+                owner_id=owner.id,
+                origin=Origin.HUMAN,
+            )
+        )
         c.commit()
     return str(entry.id)
 
 
 def test_supersede_a_legacy_rule_without_a_summary_names_the_flag(env):
     entry_id = _legacy_rule(env, "A legacy rule")
-    r = runner.invoke(app, ["supersede", entry_id, "--title", "Corrected",
-                            "--body", "the corrected case"])
+    r = runner.invoke(
+        app,
+        ["supersede", entry_id, "--title", "Corrected", "--body", "the corrected case"],
+    )
     assert r.exit_code == 1
     assert "--summary" in r.stderr
 
 
 def test_supersede_a_legacy_rule_with_a_summary_succeeds(env):
     entry_id = _legacy_rule(env, "Another legacy rule")
-    r = runner.invoke(app, ["supersede", entry_id, "--title", "Corrected",
-                            "--body", "the corrected case",
-                            "--summary", "state the rule in one line"])
+    r = runner.invoke(
+        app,
+        [
+            "supersede",
+            entry_id,
+            "--title",
+            "Corrected",
+            "--body",
+            "the corrected case",
+            "--summary",
+            "state the rule in one line",
+        ],
+    )
     assert r.exit_code == 0
     assert _summary_of(env, r.stdout.strip()) == "state the rule in one line"
 
@@ -391,15 +488,17 @@ def test_remember_kind_rule_without_a_summary_names_the_flag(env):
     and nothing on stdout or stderr - `remem rule` (the shorthand) already
     caught this and named --summary, so the two commands gave the same
     mistake two different experiences."""
-    r = runner.invoke(app, ["remember", "A rule", "--body", "the case",
-                            "--kind", "rule"])
+    r = runner.invoke(
+        app, ["remember", "A rule", "--body", "the case", "--kind", "rule"]
+    )
     assert r.exit_code == 1
     assert "--summary" in r.stderr
 
 
 def test_update_summary_empty_on_a_rule_names_the_flag(env):
-    r = runner.invoke(app, ["rule", "A rule", "--body", "the case",
-                            "--summary", "do the thing"])
+    r = runner.invoke(
+        app, ["rule", "A rule", "--body", "the case", "--summary", "do the thing"]
+    )
     entry_id = r.stdout.strip()
     r = runner.invoke(app, ["update", entry_id, "--summary", ""])
     assert r.exit_code == 1

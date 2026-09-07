@@ -17,9 +17,7 @@ TABLE = CLAUDE_CODE_ENV_VARS
 def test_write_agent_creates_the_env_block(tmp_path):
     path = tmp_path / "settings.json"
     write_agent(path, "BASH_DEFAULT_TIMEOUT_MS", "600000")
-    assert json.loads(path.read_text())["env"] == {
-        "BASH_DEFAULT_TIMEOUT_MS": "600000"
-    }
+    assert json.loads(path.read_text())["env"] == {"BASH_DEFAULT_TIMEOUT_MS": "600000"}
 
 
 def test_write_agent_preserves_unrelated_settings(tmp_path):

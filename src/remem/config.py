@@ -63,6 +63,32 @@ class Config:
     semantic_threshold: float
 
 
+def _as_int(value: object, default: int) -> int:
+    """A config value as an int, or the default.
+
+    `pick` hands back whatever the TOML file holds - a list, a table, a
+    None - so the bare `int()` this replaces was relying on TypeError to
+    do an isinstance check. Same outcome, said directly, and the range
+    checks at the call sites still get a real int to test.
+    """
+    if isinstance(value, (int, float, str)):
+        try:
+            return int(value)
+        except ValueError:
+            return default
+    return default
+
+
+def _as_float(value: object, default: float) -> float:
+    """A config value as a float, or the default. See `_as_int`."""
+    if isinstance(value, (int, float, str)):
+        try:
+            return float(value)
+        except ValueError:
+            return default
+    return default
+
+
 def default_config_path() -> Path:
     return user_config_path("remem") / "config.toml"
 
@@ -71,7 +97,7 @@ def _read_file(path: Path) -> dict:
     try:
         with path.open("rb") as fh:
             return tomllib.load(fh)
-    except (OSError, tomllib.TOMLDecodeError):
+    except OSError, tomllib.TOMLDecodeError:
         # A broken or missing config file must never stop remem from running.
         return {}
 
@@ -81,8 +107,10 @@ def load(
     config_path: Path | None = None,
 ) -> Config:
     env = os.environ if env is None else env
-    path = config_path if config_path is not None else Path(
-        env.get("REMEM_CONFIG", default_config_path())
+    path = (
+        config_path
+        if config_path is not None
+        else Path(env.get("REMEM_CONFIG", default_config_path()))
     )
     data = _read_file(path)
 
@@ -91,18 +119,15 @@ def load(
             return env[env_key]
         return data.get(file_key, default)
 
-    max_chars = pick("REMEM_MAX_CHARS", "max_chars", DEFAULT_MAX_CHARS)
-    try:
-        max_chars = int(max_chars)
-    except (TypeError, ValueError):
-        max_chars = DEFAULT_MAX_CHARS
+    max_chars = _as_int(
+        pick("REMEM_MAX_CHARS", "max_chars", DEFAULT_MAX_CHARS),
+        DEFAULT_MAX_CHARS,
+    )
 
-    threshold = pick("REMEM_FUZZY_THRESHOLD", "fuzzy_threshold",
-                     DEFAULT_FUZZY_THRESHOLD)
-    try:
-        threshold = float(threshold)
-    except (TypeError, ValueError):
-        threshold = DEFAULT_FUZZY_THRESHOLD
+    threshold = _as_float(
+        pick("REMEM_FUZZY_THRESHOLD", "fuzzy_threshold", DEFAULT_FUZZY_THRESHOLD),
+        DEFAULT_FUZZY_THRESHOLD,
+    )
     if not 0.0 < threshold <= 1.0:
         # Outside this range the setting is meaningless: 0 matches everything,
         # above 1 matches nothing. Fall back rather than silently disable search.
@@ -116,19 +141,17 @@ def load(
     if "REMEM_EXTRACT_MODEL" in env:
         extract_model = str(env["REMEM_EXTRACT_MODEL"])
     elif "REMEM_CAPTURE_MODEL" in env:
-        print(
+        sys.stderr.write(
             "REMEM_CAPTURE_MODEL is renamed to REMEM_EXTRACT_MODEL; "
-            "set REMEM_EXTRACT_MODEL instead.",
-            file=sys.stderr,
+            "set REMEM_EXTRACT_MODEL instead.\n"
         )
         extract_model = str(env["REMEM_CAPTURE_MODEL"])
     elif "extract_model" in data:
         extract_model = str(data["extract_model"])
     elif "capture_model" in data:
-        print(
+        sys.stderr.write(
             "capture_model in config.toml is renamed to extract_model; "
-            "set extract_model instead.",
-            file=sys.stderr,
+            "set extract_model instead.\n"
         )
         extract_model = str(data["capture_model"])
     else:
@@ -139,25 +162,24 @@ def load(
         extract_model = DEFAULT_EXTRACT_MODEL
 
     def positive_int(env_key: str, file_key: str, default: int) -> int:
-        value = pick(env_key, file_key, default)
-        try:
-            value = int(value)
-        except (TypeError, ValueError):
-            return default
+        value = _as_int(pick(env_key, file_key, default), default)
         # A non-positive threshold would warn on every prompt forever, which
         # is how a warning gets ignored.
         return value if value > 0 else default
 
-    turn_warn_at = positive_int("REMEM_TURN_WARN_AT", "turn_warn_at",
-                                DEFAULT_TURN_WARN_AT)
-    turn_warn_every = positive_int("REMEM_TURN_WARN_EVERY", "turn_warn_every",
-                                   DEFAULT_TURN_WARN_EVERY)
+    turn_warn_at = positive_int(
+        "REMEM_TURN_WARN_AT", "turn_warn_at", DEFAULT_TURN_WARN_AT
+    )
+    turn_warn_every = positive_int(
+        "REMEM_TURN_WARN_EVERY", "turn_warn_every", DEFAULT_TURN_WARN_EVERY
+    )
 
     # positive_int, not int: a zero window makes every session extractable
     # the instant its first event lands, which is extraction racing a
     # session that is still being worked in.
-    idle_minutes = positive_int("REMEM_IDLE_MINUTES", "idle_minutes",
-                                DEFAULT_IDLE_MINUTES)
+    idle_minutes = positive_int(
+        "REMEM_IDLE_MINUTES", "idle_minutes", DEFAULT_IDLE_MINUTES
+    )
 
     embed_model = str(
         pick("REMEM_EMBED_MODEL", "embed_model", DEFAULT_EMBED_MODEL)
@@ -165,12 +187,10 @@ def load(
     if not embed_model:
         embed_model = DEFAULT_EMBED_MODEL
 
-    semantic = pick("REMEM_SEMANTIC_THRESHOLD", "semantic_threshold",
-                    DEFAULT_SEMANTIC_THRESHOLD)
-    try:
-        semantic = float(semantic)
-    except (TypeError, ValueError):
-        semantic = DEFAULT_SEMANTIC_THRESHOLD
+    semantic = pick(
+        "REMEM_SEMANTIC_THRESHOLD", "semantic_threshold", DEFAULT_SEMANTIC_THRESHOLD
+    )
+    semantic = _as_float(semantic, DEFAULT_SEMANTIC_THRESHOLD)
     if not 0.0 < semantic <= 1.0:
         # Same reasoning as fuzzy_threshold: outside this range the setting is
         # meaningless, and falling back beats silently disabling the tier.

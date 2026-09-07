@@ -22,7 +22,11 @@ def owner(store):
 
 def test_summary_round_trips_through_the_store(store, owner):
     entry = remember(
-        store, owner.id, title="T", body="B", summary="one line",
+        store,
+        owner.id,
+        title="T",
+        body="B",
+        summary="one line",
     )
     read_back = store.get_entry(entry.id, owner.id)
     assert read_back.summary == "one line"
@@ -42,6 +46,11 @@ def test_supersede_carries_the_summary_when_none_is_given(store, owner):
 def test_supersede_replaces_the_summary_when_one_is_given(store, owner):
     old = remember(store, owner.id, title="T", body="B", summary="kept")
     new = supersede(
-        store, owner.id, old.id, title="T2", body="B2", summary="replaced",
+        store,
+        owner.id,
+        old.id,
+        title="T2",
+        body="B2",
+        summary="replaced",
     )
     assert new.summary == "replaced"

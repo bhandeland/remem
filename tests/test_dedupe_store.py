@@ -24,8 +24,11 @@ def store(conn):
 
 
 def _entry(store, owner_id, title, body="shared body", **kw):
-    return store.put_entry(Entry(id=new_id(), kind=Kind.NOTE, title=title,
-                                 body=body, owner_id=owner_id, **kw))
+    return store.put_entry(
+        Entry(
+            id=new_id(), kind=Kind.NOTE, title=title, body=body, owner_id=owner_id, **kw
+        )
+    )
 
 
 def test_identical_bodies_group(store):
@@ -101,8 +104,7 @@ def test_filters_narrow_the_population(store):
     _entry(store, owner.id, "b", project="two")
 
     assert store.exact_duplicate_groups(Query(limit=50), owner.id) != []
-    assert store.exact_duplicate_groups(
-        Query(project="one", limit=50), owner.id) == []
+    assert store.exact_duplicate_groups(Query(project="one", limit=50), owner.id) == []
 
 
 def test_origins_are_not_filtered_by_default(store):
@@ -128,7 +130,8 @@ def test_near_pairs_are_returned_once_with_their_similarity(store):
     _vec(store, b, (1.0, 0.0), owner.id)
 
     pairs, total = store.near_duplicate_pairs(
-        Query(limit=50), owner.id, MODEL, threshold=0.9, limit=10)
+        Query(limit=50), owner.id, MODEL, threshold=0.9, limit=10
+    )
 
     assert total == 1
     assert len(pairs) == 1
@@ -144,7 +147,8 @@ def test_a_pair_below_the_threshold_is_absent(store):
     _vec(store, b, (0.0, 1.0), owner.id)
 
     pairs, total = store.near_duplicate_pairs(
-        Query(limit=50), owner.id, MODEL, threshold=0.5, limit=10)
+        Query(limit=50), owner.id, MODEL, threshold=0.5, limit=10
+    )
 
     assert (pairs, total) == ([], 0)
 
@@ -156,7 +160,8 @@ def test_an_entry_with_no_vector_is_absent_rather_than_an_error(store):
     _vec(store, a, (1.0, 0.0), owner.id)
 
     pairs, total = store.near_duplicate_pairs(
-        Query(limit=50), owner.id, MODEL, threshold=0.1, limit=10)
+        Query(limit=50), owner.id, MODEL, threshold=0.1, limit=10
+    )
 
     assert (pairs, total) == ([], 0)
     assert b.id is not None  # b simply never joins
@@ -170,7 +175,8 @@ def test_the_total_counts_past_the_limit(store):
         _vec(store, e, (1.0, 0.0), owner.id)
 
     pairs, total = store.near_duplicate_pairs(
-        Query(limit=50), owner.id, MODEL, threshold=0.9, limit=2)
+        Query(limit=50), owner.id, MODEL, threshold=0.9, limit=2
+    )
 
     assert total == 6  # 4 choose 2
     assert len(pairs) == 2
@@ -185,7 +191,8 @@ def test_near_pairs_never_cross_owners(store):
     _vec(store, t, (1.0, 0.0), theirs.id)
 
     pairs, total = store.near_duplicate_pairs(
-        Query(limit=50), mine.id, MODEL, threshold=0.1, limit=10)
+        Query(limit=50), mine.id, MODEL, threshold=0.1, limit=10
+    )
 
     assert (pairs, total) == ([], 0)
 
@@ -199,7 +206,8 @@ def test_a_superseded_entry_is_not_a_near_duplicate(store):
     store.set_superseded(a.id, b.id, owner.id)
 
     pairs, total = store.near_duplicate_pairs(
-        Query(limit=50), owner.id, MODEL, threshold=0.9, limit=10)
+        Query(limit=50), owner.id, MODEL, threshold=0.9, limit=10
+    )
 
     assert (pairs, total) == ([], 0)
 

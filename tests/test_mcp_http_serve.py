@@ -92,7 +92,9 @@ def test_main_still_serves_stdio(monkeypatch):
     from remem import mcp_server
 
     seen = {}
-    monkeypatch.setattr(mcp_server.mcp, "run", lambda *a, **k: seen.update(args=a, kwargs=k))
+    monkeypatch.setattr(
+        mcp_server.mcp, "run", lambda *a, **k: seen.update(args=a, kwargs=k)
+    )
     mcp_server.main()
 
     assert seen["args"] == ()
@@ -113,7 +115,9 @@ def test_bare_serve_runs_stdio(monkeypatch):
 
     called = {}
     monkeypatch.setattr(mcp_server, "main", lambda: called.setdefault("stdio", True))
-    monkeypatch.setattr(mcp_server, "serve_http", lambda *a: called.setdefault("http", a))
+    monkeypatch.setattr(
+        mcp_server, "serve_http", lambda *a: called.setdefault("http", a)
+    )
 
     result = _invoke(monkeypatch, ["serve"])
     assert result.exit_code == 0
@@ -125,12 +129,22 @@ def test_serve_http_passes_host_port_and_project(monkeypatch):
 
     called = {}
     monkeypatch.setattr(mcp_server, "main", lambda: called.setdefault("stdio", True))
-    monkeypatch.setattr(mcp_server, "serve_http", lambda *a: called.setdefault("http", a))
+    monkeypatch.setattr(
+        mcp_server, "serve_http", lambda *a: called.setdefault("http", a)
+    )
 
     result = _invoke(
         monkeypatch,
-        ["serve", "--http", "--host", "192.168.64.3", "--port", "9100",
-         "--project", "saddle"],
+        [
+            "serve",
+            "--http",
+            "--host",
+            "192.168.64.3",
+            "--port",
+            "9100",
+            "--project",
+            "saddle",
+        ],
     )
     assert result.exit_code == 0
     assert called == {"http": ("192.168.64.3", 9100, "saddle")}
@@ -140,7 +154,9 @@ def test_serve_http_defaults_to_loopback_and_9100(monkeypatch):
     from remem import mcp_server
 
     called = {}
-    monkeypatch.setattr(mcp_server, "serve_http", lambda *a: called.setdefault("http", a))
+    monkeypatch.setattr(
+        mcp_server, "serve_http", lambda *a: called.setdefault("http", a)
+    )
 
     result = _invoke(monkeypatch, ["serve", "--http"])
     assert result.exit_code == 0

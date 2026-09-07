@@ -5,10 +5,10 @@ from __future__ import annotations
 from uuid import UUID
 
 from remem.domain import (
+    INJECTED_ORIGINS,
     Collection,
     CollectionQuery,
     Entry,
-    INJECTED_ORIGINS,
     Kind,
     Query,
     new_id,
@@ -98,7 +98,13 @@ def pin(
     collection = get(store, owner_id, slug)
     if store.get_entry(entry_id, owner_id) is None:
         raise EntryNotFound(str(entry_id))
-    store.pin(collection.id, entry_id, position, owner_id)
+    if not store.pin(collection.id, entry_id, position, owner_id):
+        # `get` and `get_entry` above already proved both rows exist under
+        # this owner, so the store's guards should be satisfied by the time
+        # we get here. A False means something changed in between - surface
+        # it rather than reporting a pin that wrote no row, exactly as
+        # `write.supersede` does for `set_superseded`.
+        raise RuntimeError(f"failed to pin {entry_id} into {slug}")
 
 
 def set_query(
@@ -233,7 +239,10 @@ def render(collection: Collection, entries: list[Entry], max_chars: int) -> str:
 
     # The notice is part of the block, so it has to fit inside the budget too.
     # Drop further entries until it does, rather than overshooting by its length.
-    while included < len(others) and used + len(_notice(len(others) - included)) > max_chars:
+    while (
+        included < len(others)
+        and used + len(_notice(len(others) - included)) > max_chars
+    ):
         if not body_parts:
             break
         used -= len(body_parts.pop())

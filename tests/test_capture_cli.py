@@ -55,7 +55,9 @@ def env(live_dsn, monkeypatch, tmp_path):
 
 @pytest.mark.db
 def test_enable_then_status_reports_the_project(env):
-    assert runner.invoke(app, ["capture", "enable", "--project", "remem"]).exit_code == 0
+    assert (
+        runner.invoke(app, ["capture", "enable", "--project", "remem"]).exit_code == 0
+    )
     result = runner.invoke(app, ["capture", "status"])
     assert result.exit_code == 0
     assert "remem" in result.stdout
@@ -75,9 +77,7 @@ def test_status_json_is_valid_when_nothing_has_happened(env):
 def test_disable_removes_the_project_from_status(env):
     runner.invoke(app, ["capture", "enable", "--project", "remem"])
     runner.invoke(app, ["capture", "disable", "--project", "remem"])
-    payload = json.loads(
-        runner.invoke(app, ["capture", "status", "--json"]).stdout
-    )
+    payload = json.loads(runner.invoke(app, ["capture", "status", "--json"]).stdout)
     assert payload["enabled_projects"] == []
 
 
@@ -94,7 +94,5 @@ def test_enable_states_the_model_and_cost(env):
 
 @pytest.mark.db
 def test_status_reports_the_configured_model(env):
-    payload = json.loads(
-        runner.invoke(app, ["capture", "status", "--json"]).stdout
-    )
+    payload = json.loads(runner.invoke(app, ["capture", "status", "--json"]).stdout)
     assert payload["model"] == "sonnet"

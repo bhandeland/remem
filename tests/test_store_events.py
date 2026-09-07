@@ -65,18 +65,14 @@ def test_since_excludes_events_at_or_before_the_watermark(store, owner):
     store.put_event(an_event(owner, at=NOW))
     after = store.put_event(an_event(owner, at=NOW + timedelta(minutes=5)))
 
-    got = store.events_for_session(
-        owner.id, "remem", "claude-code", "s1", since=NOW
-    )
+    got = store.events_for_session(owner.id, "remem", "claude-code", "s1", since=NOW)
     assert [e.id for e in got] == [after.id]
 
 
 def test_another_principals_events_are_invisible(store, owner):
     store.put_event(an_event(owner))
     other = store.ensure_principal("someone-else")
-    assert store.events_for_session(
-        other.id, "remem", "claude-code", "s1"
-    ) == []
+    assert store.events_for_session(other.id, "remem", "claude-code", "s1") == []
 
 
 def test_delete_session_events_is_scoped_to_all_four_keys(store, owner):
@@ -84,7 +80,7 @@ def test_delete_session_events_is_scoped_to_all_four_keys(store, owner):
     `prune_events` deletes by owner and a time window, and reaching for that
     to clean up one known event would take every other event this owner has
     recorded with it. Every dimension it does not name must survive."""
-    target = store.put_event(an_event(owner, session="s1"))
+    store.put_event(an_event(owner, session="s1"))
     other_session = store.put_event(an_event(owner, session="s2"))
     other_project = store.put_event(
         Event(
@@ -221,7 +217,9 @@ def test_a_prompt_and_its_response_share_a_generation_id_and_both_survive(store,
     written. The hook name is what separates them.
     """
     prompt = store.put_event(a_cursor_event(owner, hook="beforeSubmitPrompt", gen="g1"))
-    response = store.put_event(a_cursor_event(owner, hook="afterAgentResponse", gen="g1"))
+    response = store.put_event(
+        a_cursor_event(owner, hook="afterAgentResponse", gen="g1")
+    )
 
     got = store.events_for_session(owner.id, "remem", "cursor", "s1")
     assert {e.id for e in got} == {prompt.id, response.id}
@@ -240,10 +238,22 @@ def test_tool_use_id_wins_over_the_generation_it_belongs_to(store, owner):
     """Two tool calls in one generation share generation_id and differ only
     by tool_use_id - so the tool id has to be preferred, not appended to."""
     a = store.put_event(
-        a_cursor_event(owner, hook="postToolUse", gen="g1", kind=EventKind.TOOL_CALL, tool_use_id="tu_a")
+        a_cursor_event(
+            owner,
+            hook="postToolUse",
+            gen="g1",
+            kind=EventKind.TOOL_CALL,
+            tool_use_id="tu_a",
+        )
     )
     b = store.put_event(
-        a_cursor_event(owner, hook="postToolUse", gen="g1", kind=EventKind.TOOL_CALL, tool_use_id="tu_b")
+        a_cursor_event(
+            owner,
+            hook="postToolUse",
+            gen="g1",
+            kind=EventKind.TOOL_CALL,
+            tool_use_id="tu_b",
+        )
     )
 
     got = store.events_for_session(owner.id, "remem", "cursor", "s1")

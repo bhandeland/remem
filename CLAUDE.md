@@ -61,6 +61,16 @@ domain:     domain.py (pure dataclasses/enums, no I/O)
 - **Frontends parse and format; they never decide.** A rule enforced in a service is one
   every frontend gets for free (query clamping, the search tier chain, record opt-in checks). If
   you find yourself adding a policy branch in `cli.py`, it belongs in `services/`.
+- **`backends/postgres/sqltext.as_sql()` is the only place SQL text is
+  asserted to be SQL.** psycopg types `execute`'s query as `LiteralString`
+  so a string built from user data can never arrive as SQL; this backend
+  does build queries with f-strings, but every interpolation is one of its
+  own constants (`entry_columns()`, a `where` fragment) and every value
+  goes through a parameter. `as_sql` is a named function rather than an
+  inline cast so the exemption is greppable - interpolating anything that
+  is not a module constant means calling it, deliberately. It lives in its
+  own module because `store.py` and `migrate.py` both need it and two
+  copies would drift.
 - **`store.py` is the portability seam** - a `Protocol`, with Postgres as the only
   implementation. Ownership is enforced *inside* the store (`NotOwner`), not by callers.
 - **`session.open_session()` is the only way to reach the database.** It connects,
@@ -779,6 +789,39 @@ independent as the seam suggests. And a `kb.RulesExceedBudget` failure is
 Code included, with a 0 exit and no output. Fail-soft is still the right
 contract, but the budget is the one failure it hides that a user would want to
 know about.
+
+## Verification
+
+`make check` is the only verification command. It runs, in order,
+`ruff format` -> `ruff check --fix` -> `pyrefly check` -> `pytest`, and
+**stops at the first stage that fails**, so a lint error never arrives
+buried under a wall of type errors and test output. Run it; read the one
+failure; run it again.
+
+- **Never hand-edit anything ruff fixes.** `make check` runs
+  `ruff format` and `ruff check --fix` before it runs anything else, so
+  import order, spacing, quotes and the rest are already correct by the
+  time you see output. Editing them by hand is work the gate has
+  already done, and it fights the formatter on the next run.
+- **The output is the interface.** pytest runs `-q --no-header --tb=line
+  -x --lf`, ruff uses `output-format = "concise"`, and pyrefly uses
+  `--output-format=min-text` - one line per diagnostic, everywhere, and
+  a failing loop reruns only what failed. Do not add flags that make it
+  chattier; CI is where the full picture belongs, and `.gitlab-ci.yml`
+  overrides `-x` with `--maxfail=0` for exactly that reason.
+- Coverage is **CI-only**, on purpose. It roughly doubles the local run
+  for a number nobody reads mid-loop.
+- **stdout belongs to the MCP protocol.** Under the stdio transport the
+  server speaks JSON-RPC on stdout, so one stray `print()` corrupts the
+  stream for the whole session. `T20` is selected as an error for that
+  reason and there are no exemptions - `config.py`'s deprecation notices
+  use `sys.stderr.write`, as `hookio.debug` always has. The CLI's own
+  output goes through `typer.echo`, which the rule does not touch. The
+  same discipline is why every hook prints its diagnostics to stderr
+  behind `REMEM_HOOK_DEBUG`.
+- Line width is 88 and the **formatter owns it**. The prose comments
+  keep their older, narrower hand-wrapping; ruff does not reflow
+  comments and neither should you, for a diff's sake.
 
 ## Conventions
 

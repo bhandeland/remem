@@ -20,17 +20,33 @@ def store(conn):
 
 
 def _designate(store, owner_id, project, directory):
-    kb.create(store, owner_id, slug="mem", title="Memory", project=project,
-              query=CollectionQuery(project=project))
-    memory_service.designate(store, owner_id, project, "mem",
-                             working_dir=str(directory))
+    kb.create(
+        store,
+        owner_id,
+        slug="mem",
+        title="Memory",
+        project=project,
+        query=CollectionQuery(project=project),
+    )
+    memory_service.designate(
+        store, owner_id, project, "mem", working_dir=str(directory)
+    )
 
 
 def _finished(store, owner_id, project, **kw):
     run = store.start_memory_run(owner_id, project, MemoryTrigger.MANUAL)
-    base = dict(adopted=0, healed=0, edited=0, regenerated=0, deleted=0,
-                unchanged=0, renamed=[], conflicts=[], sidecars=[],
-                failures=[])
+    base = dict(
+        adopted=0,
+        healed=0,
+        edited=0,
+        regenerated=0,
+        deleted=0,
+        unchanged=0,
+        renamed=[],
+        conflicts=[],
+        sidecars=[],
+        failures=[],
+    )
     store.finish_memory_run(run.id, owner_id, **{**base, **kw})
     return run
 
@@ -65,8 +81,7 @@ def test_an_unfinished_run_is_named(store, tmp_path):
 def test_failures_are_named(store, tmp_path):
     owner = store.ensure_principal("adv-failures")
     _designate(store, owner.id, "p", tmp_path)
-    _finished(store, owner.id, "p",
-              failures=[{"name": "bad", "reason": "boom"}])
+    _finished(store, owner.id, "p", failures=[{"name": "bad", "reason": "boom"}])
 
     assert "1 failure" in memory_service.advisories(store, owner.id)[0]
 

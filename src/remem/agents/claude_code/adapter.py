@@ -53,7 +53,8 @@ __all__ = ["ClaudeCodeAdapter", "VERIFY_PROJECT"]
 
 SLUG_CONVENTION = (
     "The SessionStart hook injects the knowledge base whose slug matches the "
-    "session's repository name - create one with `remem kb new <repo-name>`. A subdirectory or a worktree resolves to the same name."
+    "session's repository name - create one with `remem kb new <repo-name>`. "
+    "A subdirectory or a worktree resolves to the same name."
 )
 
 HANDOFF_NOTE = (
@@ -144,7 +145,10 @@ class ClaudeHook:
 #: place the attempt-cap rule is evaluated.
 HOOK_ENTRIES: tuple[ClaudeHook, ...] = (
     ClaudeHook(
-        "SessionStart", HOOK_COMMAND, 10, True,
+        "SessionStart",
+        HOOK_COMMAND,
+        10,
+        True,
         "context injection, and the spawn that drains the extraction backlog",
     ),
     # A hint, not a requirement: extraction runs on an idle timer now, so a
@@ -152,19 +156,28 @@ HOOK_ENTRIES: tuple[ClaudeHook, ...] = (
     # promptness of the timer. It records through the same command and the
     # same event() mapping as PostToolUse.
     ClaudeHook(
-        "SessionEnd", RECORD_EVENT_COMMAND, 10, False,
+        "SessionEnd",
+        RECORD_EVENT_COMMAND,
+        10,
+        False,
         "a prompt end-of-session record; the idle timer covers it either way",
     ),
     # Runs once per tool call and does one INSERT, so it gets the short
     # budget UserPromptSubmit has, not the 10s SessionStart needs.
     ClaudeHook(
-        "PostToolUse", RECORD_EVENT_COMMAND, 5, True,
+        "PostToolUse",
+        RECORD_EVENT_COMMAND,
+        5,
+        True,
         "every tool call - without it nothing is recorded at all",
     ),
     # Runs on every prompt, so it gets the shortest timeout of the four; it
     # reads one file and never opens Postgres.
     ClaudeHook(
-        "UserPromptSubmit", SESSION_SIZE_COMMAND, 5, False,
+        "UserPromptSubmit",
+        SESSION_SIZE_COMMAND,
+        5,
+        False,
         "the handoff size warning on long sessions",
     ),
 )
@@ -326,7 +339,13 @@ class ClaudeCodeAdapter:
             if not skill_dir.is_dir():
                 continue
             target = root / skill_dir.name
-            shutil.copytree(skill_dir, target, dirs_exist_ok=True)
+            # `files()` gives a Traversable, which copytree cannot take.
+            # For any normal installation it is already a filesystem path,
+            # so this conversion is exact; a zipimported remem would need
+            # `resources.as_file`, and has other problems first (the
+            # entry-point adapters and the .sql migrations both read off
+            # disk).
+            shutil.copytree(Path(str(skill_dir)), target, dirs_exist_ok=True)
             report.actions.append(f"Installed the {skill_dir.name} skill in {target}")
 
     def identity(self, env: Mapping[str, str], payload: dict) -> Identity:

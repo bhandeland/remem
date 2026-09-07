@@ -11,9 +11,14 @@ WHEN = datetime(2026, 9, 5, 12, 0, tzinfo=timezone.utc)
 
 
 def _run(**kw):
-    base = dict(id=new_id(), owner_id=new_id(), project="p",
-                trigger=MemoryTrigger.MANUAL, started_at=WHEN,
-                finished_at=WHEN)
+    base = dict(
+        id=new_id(),
+        owner_id=new_id(),
+        project="p",
+        trigger=MemoryTrigger.MANUAL,
+        started_at=WHEN,
+        finished_at=WHEN,
+    )
     return MemoryRun(**{**base, **kw})
 
 

@@ -4,8 +4,8 @@ import pytest
 
 from remem.agents.claude_code.env_vars import CLAUDE_CODE_ENV_VARS
 from remem.services.settings import (
-    InvalidValue,
     REMEM_VARS,
+    InvalidValue,
     Target,
     coerce,
     parse_duration,

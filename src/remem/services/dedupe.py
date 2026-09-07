@@ -65,9 +65,7 @@ def survivor(entries: list[Entry]) -> Entry:
     )
 
 
-def suppress(
-    near: list[NearPair], exact: list[DuplicateSet]
-) -> list[NearPair]:
+def suppress(near: list[NearPair], exact: list[DuplicateSet]) -> list[NearPair]:
     """Drop near pairs whose members already share an exact group.
 
     Both tiers always run - this is a report, not a lookup, so suppressing
@@ -76,10 +74,7 @@ def suppress(
     identical body is not reported a second time with a score.
     """
     grouped = {frozenset(e.id for e in s.entries) for s in exact}
-    return [
-        p for p in near
-        if not any({p.a.id, p.b.id} <= ids for ids in grouped)
-    ]
+    return [p for p in near if not any({p.a.id, p.b.id} <= ids for ids in grouped)]
 
 
 def report(
@@ -124,15 +119,15 @@ def report(
 
 def _line(entry: Entry) -> str:
     when = entry.updated_at.date().isoformat() if entry.updated_at else "-"
-    return (f"    {entry.id}  [{entry.kind}] {entry.title}"
-            f"  {entry.origin}  {when}")
+    return f"    {entry.id}  [{entry.kind}] {entry.title}  {entry.origin}  {when}"
 
 
 def _resolve_lines(members: list[Entry]) -> list[str]:
     keep = survivor(members)
     return [
         f"    remem dedupe resolve {e.id} --keep {keep.id}"
-        for e in members if e.id != keep.id
+        for e in members
+        if e.id != keep.id
     ]
 
 
@@ -142,8 +137,7 @@ def render(report: DedupeReport) -> str:
 
     if report.exact:
         entries = sum(len(s.entries) for s in report.exact)
-        out.append(f"Exact duplicates: {len(report.exact)} groups, "
-                   f"{entries} entries")
+        out.append(f"Exact duplicates: {len(report.exact)} groups, {entries} entries")
         for group in report.exact:
             out.append("")
             out.append(f"  identical body, {len(group.entries)} entries")
@@ -163,17 +157,22 @@ def render(report: DedupeReport) -> str:
             f"{report.model}.\n  Run `remem embed` to enable this tier."
         )
     elif report.near:
-        out.append(f"Near-duplicates: {len(report.near)} pairs at "
-                   f">= {report.threshold}")
+        out.append(
+            f"Near-duplicates: {len(report.near)} pairs at >= {report.threshold}"
+        )
         # Suppressed and truncated are separate sentences. A single
         # "showing N of M" covering both tells a reader whose list was
         # merely deduplicated that their output was cut short.
         if report.near_suppressed:
-            out.append(f"  {report.near_suppressed} further pairs are listed "
-                       f"above as identical bodies.")
+            out.append(
+                f"  {report.near_suppressed} further pairs are listed "
+                f"above as identical bodies."
+            )
         if report.near_truncated:
-            out.append(f"  {report.near_total} pairs are above the "
-                       f"threshold - raise --limit to see more.")
+            out.append(
+                f"  {report.near_total} pairs are above the "
+                f"threshold - raise --limit to see more."
+            )
         for pair in report.near:
             out.append("")
             out.append(f"  {pair.similarity:.3f}")
@@ -183,12 +182,13 @@ def render(report: DedupeReport) -> str:
         out.append(f"No near-duplicates at >= {report.threshold}.")
 
     out.append("")
-    out.append(f"Vector coverage: {report.embedded} of {report.total} "
-               f"entries embedded for {report.model}.")
+    out.append(
+        f"Vector coverage: {report.embedded} of {report.total} "
+        f"entries embedded for {report.model}."
+    )
     missing = report.total - report.embedded
     if missing:
-        out.append(f"  {missing} entries were not compared - "
-                   f"run `remem embed`.")
+        out.append(f"  {missing} entries were not compared - run `remem embed`.")
     return "\n".join(out)
 
 
@@ -223,9 +223,7 @@ def resolve(
         raise CannotResolve(f"no entry {keep_id}")
 
     if drop.superseded_by is not None:
-        raise CannotResolve(
-            f"{drop_id} is already superseded by {drop.superseded_by}"
-        )
+        raise CannotResolve(f"{drop_id} is already superseded by {drop.superseded_by}")
     if keep.superseded_by is not None:
         raise CannotResolve(
             f"{keep_id} is itself superseded by {keep.superseded_by} - "

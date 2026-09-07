@@ -21,8 +21,14 @@ SHOWN = AT.astimezone().strftime("%Y-%m-%d %H:%M")
 
 
 def _run(**kw) -> IngestRun:
-    base = dict(id=uuid4(), owner_id=uuid4(), project="remem",
-                trigger=IngestTrigger.AUTO, started_at=AT, finished_at=AT)
+    base = dict(
+        id=uuid4(),
+        owner_id=uuid4(),
+        project="remem",
+        trigger=IngestTrigger.AUTO,
+        started_at=AT,
+        finished_at=AT,
+    )
     base.update(kw)
     return IngestRun(**base)
 
@@ -31,7 +37,9 @@ def _status(**kw) -> ingest.ProjectIngestStatus:
     base = dict(
         project="remem",
         designations=[IngestDesignation("remem", ("docs/specs", "docs/notes"))],
-        last_run=None, checked_against=None, missing=[],
+        last_run=None,
+        checked_against=None,
+        missing=[],
     )
     base.update(kw)
     return ingest.ProjectIngestStatus(**base)
@@ -48,10 +56,17 @@ def test_render_lists_designations_and_never_run():
 
 def test_render_a_clean_finished_run():
     out = ingest.render_status(
-        [_status(last_run=_run(created=3, changed=1, unchanged=40, swept=0, embedded=4))],
+        [
+            _status(
+                last_run=_run(created=3, changed=1, unchanged=40, swept=0, embedded=4)
+            )
+        ],
         "remem",
     )
-    assert f"last run: auto, {SHOWN}, 3 new, 1 changed, 40 unchanged, 0 swept, 4 embedded" in out
+    assert (
+        f"last run: auto, {SHOWN}, 3 new, 1 changed, 40 unchanged, 0 swept, 4 embedded"
+        in out
+    )
     assert "failed:" not in out
 
 
@@ -74,7 +89,8 @@ def test_render_an_unfinished_run():
 
 def test_render_names_where_the_disk_check_looked():
     out = ingest.render_status(
-        [_status(checked_against=Path("/repo"), missing=["docs/notes"])], "remem",
+        [_status(checked_against=Path("/repo"), missing=["docs/notes"])],
+        "remem",
     )
     assert "missing on disk: docs/notes  (checked against /repo)" in out
 
@@ -101,15 +117,19 @@ def test_render_an_undesignated_projects_manual_run_has_no_check_line():
     both describe a check that never ran, and would read as a clean pass
     over an empty one."""
     out = ingest.render_status(
-        [_status(
-            designations=[],
-            last_run=_run(trigger=IngestTrigger.MANUAL),
-            checked_against=None,
-        )],
+        [
+            _status(
+                designations=[],
+                last_run=_run(trigger=IngestTrigger.MANUAL),
+                checked_against=None,
+            )
+        ],
         "remem",
     )
-    assert ("remem is not designated for automatic re-ingest. Designate it "
-            "with `remem reingest designate <paths>`.") in out
+    assert (
+        "remem is not designated for automatic re-ingest. Designate it "
+        "with `remem reingest designate <paths>`."
+    ) in out
     assert "last run: manual" in out
     assert "all designated paths present" not in out
     assert "paths not checked" not in out
@@ -117,10 +137,16 @@ def test_render_an_undesignated_projects_manual_run_has_no_check_line():
 
 def test_status_to_dict_carries_the_run_and_the_check():
     [d] = ingest.status_to_dict(
-        [_status(last_run=_run(created=1), checked_against=Path("/repo"), missing=["x"])]
+        [
+            _status(
+                last_run=_run(created=1), checked_against=Path("/repo"), missing=["x"]
+            )
+        ]
     )
     assert d["project"] == "remem"
-    assert d["designations"] == [{"archive": False, "paths": ["docs/specs", "docs/notes"]}]
+    assert d["designations"] == [
+        {"archive": False, "paths": ["docs/specs", "docs/notes"]}
+    ]
     assert d["last_run"]["trigger"] == "auto"
     assert d["last_run"]["created"] == 1
     assert d["last_run"]["started_at"] == AT.isoformat()
@@ -134,6 +160,7 @@ def test_status_to_dict_carries_the_run_and_the_check():
 def store(conn):
     from remem.backends.postgres.migrate import migrate
     from remem.backends.postgres.store import PostgresStore
+
     migrate(conn)
     return PostgresStore(conn)
 
@@ -155,8 +182,10 @@ def test_status_checks_disk_only_for_the_current_project(store, owner, root):
     ingest.designate(store, owner.id, "here", ["docs/specs", "docs/gone"])
     ingest.designate(store, owner.id, "there", ["docs/gone"])
 
-    found = {s.project: s for s in ingest.status(
-        store, owner.id, None, current_project="here", root=root)}
+    found = {
+        s.project: s
+        for s in ingest.status(store, owner.id, None, current_project="here", root=root)
+    }
 
     assert found["here"].checked_against == root
     assert found["here"].missing == ["docs/gone"]
@@ -184,8 +213,15 @@ def test_advisories_name_only_the_unhealthy_projects(store, owner, root):
     for project in ("clean", "failed"):
         run = store.start_ingest_run(owner.id, project, IngestTrigger.AUTO)
         store.finish_ingest_run(
-            run.id, owner.id, created=0, changed=0, unchanged=0, swept=0,
-            embedded=0, twins=[], embed_error=None,
+            run.id,
+            owner.id,
+            created=0,
+            changed=0,
+            unchanged=0,
+            swept=0,
+            embedded=0,
+            twins=[],
+            embed_error=None,
             failures=[] if project == "clean" else [{"path": "x", "reason": "boom"}],
         )
     store.start_ingest_run(owner.id, "stuck", IngestTrigger.AUTO)
@@ -193,11 +229,15 @@ def test_advisories_name_only_the_unhealthy_projects(store, owner, root):
     lines = ingest.advisories(store, owner.id, current_project="renamed", root=root)
 
     assert len(lines) == 3
-    assert any(l.startswith("failed:") and "1 failure(s)" in l
-               and l.endswith("see: remem reingest status --project failed") for l in lines)
-    assert any(l.startswith("stuck:") and "did not finish" in l for l in lines)
-    assert any(l.startswith("renamed:") and "docs/gone" in l for l in lines)
-    assert not any(l.startswith("clean:") for l in lines)
+    assert any(
+        ln.startswith("failed:")
+        and "1 failure(s)" in ln
+        and ln.endswith("see: remem reingest status --project failed")
+        for ln in lines
+    )
+    assert any(ln.startswith("stuck:") and "did not finish" in ln for ln in lines)
+    assert any(ln.startswith("renamed:") and "docs/gone" in ln for ln in lines)
+    assert not any(ln.startswith("clean:") for ln in lines)
 
 
 @pytest.mark.db
@@ -221,13 +261,18 @@ def test_advisories_ignore_an_undesignated_projects_failed_manual_run(
     """
     run = store.start_ingest_run(owner.id, "solo", IngestTrigger.MANUAL)
     store.finish_ingest_run(
-        run.id, owner.id, created=0, changed=0, unchanged=0, swept=0,
-        embedded=0, twins=[], embed_error=None,
+        run.id,
+        owner.id,
+        created=0,
+        changed=0,
+        unchanged=0,
+        swept=0,
+        embedded=0,
+        twins=[],
+        embed_error=None,
         failures=[{"path": "x", "reason": "boom"}],
     )
 
-    lines = ingest.advisories(
-        store, owner.id, current_project="solo", root=root
-    )
+    lines = ingest.advisories(store, owner.id, current_project="solo", root=root)
 
     assert lines == []

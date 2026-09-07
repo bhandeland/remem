@@ -75,25 +75,31 @@ def verdicts(report):
 
 
 def test_a_registered_hook_is_ok():
-    state = hooks(SessionStart=["remem hook session-start"],
-                  PostToolUse=["remem hook record-event"],
-                  SessionEnd=["remem hook record-event"])
+    state = hooks(
+        SessionStart=["remem hook session-start"],
+        PostToolUse=["remem hook record-event"],
+        SessionEnd=["remem hook record-event"],
+    )
     report = doctor.check({"fake": FakeAdapter(state)})[0]
     assert set(verdicts(report).values()) == {doctor.Verdict.OK}
     assert not doctor.failed([report])
 
 
 def test_a_missing_required_hook_fails_the_check():
-    state = hooks(SessionStart=["remem hook session-start"],
-                  SessionEnd=["remem hook record-event"])
+    state = hooks(
+        SessionStart=["remem hook session-start"],
+        SessionEnd=["remem hook record-event"],
+    )
     report = doctor.check({"fake": FakeAdapter(state)})[0]
     assert verdicts(report)["PostToolUse"] is doctor.Verdict.MISSING
     assert doctor.failed([report])
 
 
 def test_a_missing_optional_hook_is_reported_but_does_not_fail():
-    state = hooks(SessionStart=["remem hook session-start"],
-                  PostToolUse=["remem hook record-event"])
+    state = hooks(
+        SessionStart=["remem hook session-start"],
+        PostToolUse=["remem hook record-event"],
+    )
     report = doctor.check({"fake": FakeAdapter(state)})[0]
     assert verdicts(report)["SessionEnd"] is doctor.Verdict.MISSING
     assert not doctor.failed([report])
@@ -102,16 +108,20 @@ def test_a_missing_optional_hook_is_reported_but_does_not_fail():
 def test_a_hook_registered_twice_is_duplicated_and_does_not_fail():
     """It fires twice and doubles every row it records, which is worth
     saying loudly - but the hook does fire, so the exit code stays 0."""
-    state = hooks(SessionStart=["remem hook session-start"],
-                  PostToolUse=["remem hook record-event"] * 2)
+    state = hooks(
+        SessionStart=["remem hook session-start"],
+        PostToolUse=["remem hook record-event"] * 2,
+    )
     report = doctor.check({"fake": FakeAdapter(state)})[0]
     assert verdicts(report)["PostToolUse"] is doctor.Verdict.DUPLICATED
     assert not doctor.failed([report])
 
 
 def test_a_superseded_command_is_stale_not_missing():
-    state = hooks(SessionStart=["remem hook session-start"],
-                  PostToolUse=["remem hook post-tool-use-old"])
+    state = hooks(
+        SessionStart=["remem hook session-start"],
+        PostToolUse=["remem hook post-tool-use-old"],
+    )
     report = doctor.check({"fake": FakeAdapter(state)})[0]
     assert verdicts(report)["PostToolUse"] is doctor.Verdict.STALE
     assert not doctor.failed([report])
@@ -137,13 +147,17 @@ def test_an_adapter_without_the_capability_is_unchecked_never_ok():
 def test_an_adapter_that_raises_warns_and_the_rest_still_run():
     """The registry contract: a broken third-party adapter must never be
     why remem will not run."""
-    state = hooks(SessionStart=["remem hook session-start"],
-                  PostToolUse=["remem hook record-event"],
-                  SessionEnd=["remem hook record-event"])
-    reports = doctor.check({
-        "broken": FakeAdapter(raises=True),
-        "fake": FakeAdapter(state),
-    })
+    state = hooks(
+        SessionStart=["remem hook session-start"],
+        PostToolUse=["remem hook record-event"],
+        SessionEnd=["remem hook record-event"],
+    )
+    reports = doctor.check(
+        {
+            "broken": FakeAdapter(raises=True),
+            "fake": FakeAdapter(state),
+        }
+    )
     broken = next(r for r in reports if r.agent == "broken")
     good = next(r for r in reports if r.agent == "fake")
     assert broken.verdict is doctor.Verdict.UNCHECKED
@@ -162,8 +176,10 @@ def test_unchecked_never_renders_as_ok():
 
 
 def test_the_advisory_names_the_hook_and_the_fix():
-    state = hooks(SessionStart=["remem hook session-start"],
-                  SessionEnd=["remem hook record-event"])
+    state = hooks(
+        SessionStart=["remem hook session-start"],
+        SessionEnd=["remem hook record-event"],
+    )
     lines = doctor.advisories(doctor.check({"fake": FakeAdapter(state)}))
     assert len(lines) == 1
     assert "PostToolUse" in lines[0]
@@ -171,9 +187,11 @@ def test_the_advisory_names_the_hook_and_the_fix():
 
 
 def test_a_complete_install_produces_no_advisory():
-    state = hooks(SessionStart=["remem hook session-start"],
-                  PostToolUse=["remem hook record-event"],
-                  SessionEnd=["remem hook record-event"])
+    state = hooks(
+        SessionStart=["remem hook session-start"],
+        PostToolUse=["remem hook record-event"],
+        SessionEnd=["remem hook record-event"],
+    )
     assert doctor.advisories(doctor.check({"fake": FakeAdapter(state)})) == []
 
 
@@ -201,13 +219,17 @@ class RaisesOnConstruction:
 
 
 def test_an_adapter_that_raises_from_init_warns_and_the_rest_still_run():
-    state = hooks(SessionStart=["remem hook session-start"],
-                  PostToolUse=["remem hook record-event"],
-                  SessionEnd=["remem hook record-event"])
-    reports = doctor.check({
-        "exploding": RaisesOnConstruction,
-        "fake": FakeAdapter(state),
-    })
+    state = hooks(
+        SessionStart=["remem hook session-start"],
+        PostToolUse=["remem hook record-event"],
+        SessionEnd=["remem hook record-event"],
+    )
+    reports = doctor.check(
+        {
+            "exploding": RaisesOnConstruction,
+            "fake": FakeAdapter(state),
+        }
+    )
     broken = next(r for r in reports if r.agent == "exploding")
     good = next(r for r in reports if r.agent == "fake")
     assert broken.verdict is doctor.Verdict.UNCHECKED
@@ -231,12 +253,14 @@ def test_a_sweep_reports_each_installed_scope_separately():
     exact failure this whole command exists to catch."""
     adapter = TwoScopeAdapter(
         user=hooks("/home/u/.cursor/hooks.json", **complete()),
-        project=hooks("/repo/.cursor/hooks.json",
-                      SessionStart=["remem hook session-start"]),
+        project=hooks(
+            "/repo/.cursor/hooks.json", SessionStart=["remem hook session-start"]
+        ),
     )
     reports = doctor.check({"two": adapter})
     assert [(r.agent, r.scope) for r in reports] == [
-        ("two", "user"), ("two", "project"),
+        ("two", "user"),
+        ("two", "project"),
     ]
     assert str(reports[0].path) == "/home/u/.cursor/hooks.json"
     assert verdicts(reports[1])["PostToolUse"] is doctor.Verdict.MISSING
@@ -248,8 +272,9 @@ def test_a_required_hook_missing_in_any_installed_scope_fails():
     merges them, and the cost of staying quiet is unrecorded sessions."""
     adapter = TwoScopeAdapter(
         user=hooks("/home/u/.cursor/hooks.json", **complete()),
-        project=hooks("/repo/.cursor/hooks.json",
-                      SessionStart=["remem hook session-start"]),
+        project=hooks(
+            "/repo/.cursor/hooks.json", SessionStart=["remem hook session-start"]
+        ),
     )
     assert doctor.failed(doctor.check({"two": adapter}))
 
@@ -281,8 +306,7 @@ def test_an_explicit_scope_still_means_exactly_that_scope():
     """R1: naming a scope asks a specific question, and an adapter that
     cannot answer it must say so rather than render nothing. Sweeping here
     would print an empty report and exit 0 - this feature's cardinal sin."""
-    reports = doctor.check({"fake": FakeAdapter(hooks(**complete()))},
-                           scope="project")
+    reports = doctor.check({"fake": FakeAdapter(hooks(**complete()))}, scope="project")
     assert len(reports) == 1
     assert reports[0].verdict is doctor.Verdict.UNCHECKED
     assert "project" in reports[0].warning
@@ -296,8 +320,9 @@ def test_the_advisory_and_the_fix_line_both_carry_the_scope():
     the user the advisory lies, and record status's credibility is the
     whole asset."""
     adapter = TwoScopeAdapter(
-        project=hooks("/repo/.cursor/hooks.json",
-                      SessionStart=["remem hook session-start"]),
+        project=hooks(
+            "/repo/.cursor/hooks.json", SessionStart=["remem hook session-start"]
+        ),
     )
     reports = doctor.check({"two": adapter})
     lines = doctor.advisories(reports)

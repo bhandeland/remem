@@ -23,6 +23,7 @@ runner = CliRunner()
 @pytest.fixture
 def env(live_dsn, monkeypatch, tmp_path):
     import psycopg
+
     with psycopg.connect(live_dsn) as c:
         migrate(c)
         c.commit()
@@ -56,6 +57,7 @@ def _no_real_embedder(monkeypatch):
 def repo(tmp_path, monkeypatch):
     """A real git repository, because the paths resolve against its root."""
     import subprocess
+
     root = tmp_path / "repo"
     (root / "docs" / "specs").mkdir(parents=True)
     (root / "docs" / "specs" / "alpha.md").write_text("# Alpha\n\nbody\n")
@@ -162,7 +164,9 @@ def test_status_reports_a_designated_path_missing_on_disk(env, repo):
 
 
 def test_status_for_another_project_says_paths_were_not_checked(env, repo):
-    runner.invoke(app, ["reingest", "designate", "docs/specs", "--project", "elsewhere"])
+    runner.invoke(
+        app, ["reingest", "designate", "docs/specs", "--project", "elsewhere"]
+    )
 
     result = runner.invoke(app, ["reingest", "status", "--project", "elsewhere"])
 

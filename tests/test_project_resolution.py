@@ -14,8 +14,7 @@ from remem.project import resolve_project
 
 
 def _git(path, *args):
-    subprocess.run(["git", "-C", str(path), *args], check=True,
-                   capture_output=True)
+    subprocess.run(["git", "-C", str(path), *args], check=True, capture_output=True)
 
 
 @pytest.fixture
@@ -59,6 +58,7 @@ def test_outside_a_repository_it_falls_back_to_the_directory_name(tmp_path):
 def test_a_missing_git_binary_falls_back_rather_than_raising(tmp_path, monkeypatch):
     """remem must work without git installed; project is a convenience, not a
     dependency."""
+
     def boom(*args, **kwargs):
         raise FileNotFoundError("git")
 

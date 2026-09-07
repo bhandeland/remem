@@ -62,7 +62,10 @@ def test_the_semantic_tier_cannot_return_the_stale_wording(store, owner):
     write.update(store, owner.id, entry.id, body="different")
 
     hits = store.semantic_search(
-        Query(text="original", limit=10), owner.id,
-        [1.0, 0.0, 0.0], "m", 0.5,
+        Query(text="original", limit=10),
+        owner.id,
+        [1.0, 0.0, 0.0],
+        "m",
+        0.5,
     )
     assert hits == []

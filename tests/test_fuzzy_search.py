@@ -39,9 +39,10 @@ def _indexdef(conn, name):
 
 
 def test_pg_trgm_is_installed(store, conn):
-    assert conn.execute(
-        "select 1 from pg_extension where extname = 'pg_trgm'"
-    ).fetchone() is not None
+    assert (
+        conn.execute("select 1 from pg_extension where extname = 'pg_trgm'").fetchone()
+        is not None
+    )
 
 
 def test_trigram_indexes_exist_and_exclude_superseded(store, conn):
@@ -63,16 +64,24 @@ def test_exact_matches_are_never_fuzzy(store, owner):
 
 
 def test_a_typo_in_the_title_still_finds_the_entry(store, owner):
-    remember(store, owner.id, title="Postgres connection pooling",
-             body="the pool saturates under sustained load")
+    remember(
+        store,
+        owner.id,
+        title="Postgres connection pooling",
+        body="the pool saturates under sustained load",
+    )
     hits = find(store, owner.id, Query(text="postgres conection pooling"))
     assert [h.entry.title for h in hits] == ["Postgres connection pooling"]
     assert hits[0].match is Match.FUZZY
 
 
 def test_a_typo_in_a_body_word_still_finds_the_entry(store, owner):
-    remember(store, owner.id, title="Deploy checklist",
-             body="always run migrations before restarting the workers")
+    remember(
+        store,
+        owner.id,
+        title="Deploy checklist",
+        body="always run migrations before restarting the workers",
+    )
     hits = find(store, owner.id, Query(text="migratoins"))
     assert [h.entry.title for h in hits] == ["Deploy checklist"]
     assert hits[0].match is Match.FUZZY
@@ -101,36 +110,50 @@ def test_fuzzy_respects_owner_scoping(store, owner):
 def test_fuzzy_excludes_superseded_entries(store, owner):
     from remem.services.write import supersede
 
-    old = remember(store, owner.id, title="Postgres connection pooling",
-                   body="the old truth")
-    supersede(store, owner.id, old.id, title="Pgbouncer pooling",
-              body="the new truth")
+    old = remember(
+        store, owner.id, title="Postgres connection pooling", body="the old truth"
+    )
+    supersede(store, owner.id, old.id, title="Pgbouncer pooling", body="the new truth")
     hits = find(store, owner.id, Query(text="postgres conection pooling"))
     assert "Postgres connection pooling" not in [h.entry.title for h in hits]
 
 
 def test_fuzzy_respects_other_filters(store, owner):
-    remember(store, owner.id, title="Postgres connection pooling",
-             body="x", summary="Pool postgres connections through pgbouncer",
-             project="alpha", kind=Kind.RULE)
-    assert find(store, owner.id,
-                Query(text="postgres conection pooling", project="beta")) == []
-    hits = find(store, owner.id,
-                Query(text="postgres conection pooling", kinds=[Kind.RULE]))
+    remember(
+        store,
+        owner.id,
+        title="Postgres connection pooling",
+        body="x",
+        summary="Pool postgres connections through pgbouncer",
+        project="alpha",
+        kind=Kind.RULE,
+    )
+    assert (
+        find(store, owner.id, Query(text="postgres conection pooling", project="beta"))
+        == []
+    )
+    hits = find(
+        store, owner.id, Query(text="postgres conection pooling", kinds=[Kind.RULE])
+    )
     assert len(hits) == 1
 
 
 def test_fuzzy_respects_the_limit(store, owner):
     for i in range(5):
-        remember(store, owner.id, title=f"Postgres connection pooling {i}",
-                 body="x")
-    assert len(find(store, owner.id,
-                    Query(text="postgres conection pooling", limit=2))) == 2
+        remember(store, owner.id, title=f"Postgres connection pooling {i}", body="x")
+    assert (
+        len(find(store, owner.id, Query(text="postgres conection pooling", limit=2)))
+        == 2
+    )
 
 
 def test_a_fuzzy_hit_carries_a_snippet(store, owner):
-    remember(store, owner.id, title="Postgres connection pooling",
-             body="the pool saturates under sustained load")
+    remember(
+        store,
+        owner.id,
+        title="Postgres connection pooling",
+        body="the pool saturates under sustained load",
+    )
     hits = find(store, owner.id, Query(text="postgres conection pooling"))
     assert hits[0].snippet
 
@@ -156,8 +179,15 @@ def test_cli_marks_fuzzy_results_and_says_so(live_dsn, monkeypatch, tmp_path):
     monkeypatch.setenv("REMEM_CONFIG", str(tmp_path / "none.toml"))
 
     runner = CliRunner()
-    runner.invoke(app, ["remember", "Postgres connection pooling",
-                        "--body", "the pool saturates under load"])
+    runner.invoke(
+        app,
+        [
+            "remember",
+            "Postgres connection pooling",
+            "--body",
+            "the pool saturates under load",
+        ],
+    )
 
     exact = runner.invoke(app, ["search", "saturates", "--json"])
     assert _json.loads(exact.stdout)[0]["match"] == "exact"
@@ -184,8 +214,9 @@ def test_mcp_recall_labels_fuzzy_results(live_dsn, monkeypatch, tmp_path):
 
     from remem.mcp_server import recall_tool, remember_tool
 
-    remember_tool(title="Postgres connection pooling",
-                  body="the pool saturates under load")
+    remember_tool(
+        title="Postgres connection pooling", body="the pool saturates under load"
+    )
 
     assert recall_tool(query="saturates")[0]["match"] == "exact"
     assert recall_tool(query="postgres conection pooling")[0]["match"] == "fuzzy"

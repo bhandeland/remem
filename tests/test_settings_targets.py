@@ -16,7 +16,6 @@ import pytest
 from remem.agents.base import EnvVar, Kind
 from remem.services.settings import list_settings, resolve_targets
 
-
 TABLE: Mapping[str, EnvVar] = {
     "FAKE_TIMEOUT_MS": EnvVar("FAKE_TIMEOUT_MS", Kind.INT, "A fake.", minimum=1)
 }
@@ -139,16 +138,12 @@ def test_a_broken_adapter_still_leaves_remem_settings_usable(tmp_path):
 
 def test_remem_config_honours_an_injected_remem_config_var(tmp_path):
     elsewhere = tmp_path / "somewhere" / "config.toml"
-    targets = resolve_targets(
-        BareAdapter(), tmp_path, {"REMEM_CONFIG": str(elsewhere)}
-    )
+    targets = resolve_targets(BareAdapter(), tmp_path, {"REMEM_CONFIG": str(elsewhere)})
     assert targets.remem_path == elsewhere
 
 
 def test_listing_an_agent_with_no_settings_file_still_lists_remem(tmp_path):
     targets = resolve_targets(BareAdapter(), tmp_path, {})
-    rows = list_settings(
-        targets.remem_path, targets.agent_path, targets.table, {}
-    )
+    rows = list_settings(targets.remem_path, targets.agent_path, targets.table, {})
     assert [r.key for r in rows]
     assert all(r.key.startswith("REMEM_") for r in rows)

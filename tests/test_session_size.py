@@ -10,21 +10,27 @@ def _transcript(tmp_path, lines):
 
 
 def test_counts_user_turns_only(tmp_path):
-    p = _transcript(tmp_path, [
-        '{"parentUuid":null,"type":"user","message":{"role":"user"}}',
-        '{"type":"assistant","message":{"role":"assistant"}}',
-        '{"type": "user", "message": {"role": "user"}}',
-    ])
+    p = _transcript(
+        tmp_path,
+        [
+            '{"parentUuid":null,"type":"user","message":{"role":"user"}}',
+            '{"type":"assistant","message":{"role":"assistant"}}',
+            '{"type": "user", "message": {"role": "user"}}',
+        ],
+    )
     assert session_size.count_turns(p) == 2
 
 
 def test_malformed_lines_do_not_stop_the_count(tmp_path):
-    p = _transcript(tmp_path, [
-        '{"type":"user"}',
-        'not json at all',
-        '',
-        '{"type":"user"}',
-    ])
+    p = _transcript(
+        tmp_path,
+        [
+            '{"type":"user"}',
+            "not json at all",
+            "",
+            '{"type":"user"}',
+        ],
+    )
     assert session_size.count_turns(p) == 2
 
 
@@ -68,8 +74,9 @@ def test_old_sessions_are_pruned_on_write(tmp_path):
     path = tmp_path / "session-size.json"
     stale = 1_000_000.0
     session_size.record_warned("old", 150, path, now=stale)
-    session_size.record_warned("new", 150, path,
-                               now=stale + session_size.STATE_TTL_SECONDS + 1)
+    session_size.record_warned(
+        "new", 150, path, now=stale + session_size.STATE_TTL_SECONDS + 1
+    )
     data = json.loads(path.read_text())
     assert list(data["sessions"]) == ["new"]
 

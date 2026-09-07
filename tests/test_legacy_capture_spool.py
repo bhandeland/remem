@@ -30,7 +30,8 @@ def owner(store):
 def test_the_spool_is_renamed_not_dropped(conn):
     migrate(conn)
     names = {
-        r[0] for r in conn.execute(
+        r[0]
+        for r in conn.execute(
             "select table_name from information_schema.tables "
             "where table_schema = 'public'"
         ).fetchall()
@@ -48,7 +49,7 @@ def test_the_renamed_index_follows_the_table(conn):
     assert row is not None
     definition = row[0].lower()
     assert "capture_jobs_legacy" in definition
-    assert "status = \'pending\'" in definition
+    assert "status = 'pending'" in definition
 
 
 def test_a_fresh_install_has_nothing_pending(store, owner):
@@ -71,7 +72,7 @@ def test_a_finished_job_is_not_pending(conn, store, owner):
     job_id = new_id()
     conn.execute(
         "insert into capture_jobs_legacy (id, owner_id, project, "
-        "transcript_path, status) values (%s, %s, %s, %s, \'done\')",
+        "transcript_path, status) values (%s, %s, %s, %s, 'done')",
         (job_id, owner.id, "remem", "/tmp/t.jsonl"),
     )
     assert store.pending_legacy_capture_jobs(owner.id) == 0

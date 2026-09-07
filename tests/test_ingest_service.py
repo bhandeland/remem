@@ -32,8 +32,11 @@ def doc(tmp_path):
 
 def _live(store, owner, path):
     return store.search(
-        Query(tags=[ingest.src_tag(path)], origins=[Origin.INGESTED, Origin.ARCHIVED],
-              limit=ingest.MAX_CHUNKS_PER_FILE),
+        Query(
+            tags=[ingest.src_tag(path)],
+            origins=[Origin.INGESTED, Origin.ARCHIVED],
+            limit=ingest.MAX_CHUNKS_PER_FILE,
+        ),
         owner.id,
     )
 
@@ -89,8 +92,12 @@ def test_an_edited_section_supersedes_only_itself(store, owner, doc):
     assert "body a, revised" in bodies["Design § Alpha"]
     # The superseded original is kept, not destroyed.
     all_versions = store.search(
-        Query(tags=[ingest.sec_tag("alpha")], include_superseded=True,
-              origins=[Origin.INGESTED], limit=10),
+        Query(
+            tags=[ingest.sec_tag("alpha")],
+            include_superseded=True,
+            origins=[Origin.INGESTED],
+            limit=10,
+        ),
         owner.id,
     )
     assert len(all_versions) == 2
@@ -112,16 +119,22 @@ def test_dry_run_reports_the_plan_and_writes_nothing(store, owner, doc):
     assert _live(store, owner, doc) == []
 
 
-def test_too_many_chunks_raises_rather_than_truncating(store, owner, tmp_path, monkeypatch):
+def test_too_many_chunks_raises_rather_than_truncating(
+    store, owner, tmp_path, monkeypatch
+):
     monkeypatch.setattr(ingest, "MAX_CHUNKS_PER_FILE", 3)
     path = tmp_path / "big.md"
-    path.write_text("# Big\n\nlead\n\n" + "".join(f"## S{i}\n\nb{i}\n\n" for i in range(5)))
+    path.write_text(
+        "# Big\n\nlead\n\n" + "".join(f"## S{i}\n\nb{i}\n\n" for i in range(5))
+    )
 
     with pytest.raises(ingest.TooManyChunks):
         ingest.ingest_file(store, owner.id, path, project="remem")
 
 
-def test_a_retitled_document_supersedes_every_chunk_that_carries_the_title(store, owner, doc):
+def test_a_retitled_document_supersedes_every_chunk_that_carries_the_title(
+    store, owner, doc
+):
     # The title is part of the embedding text and of the weighted tsvector,
     # so a chunk whose title moved is genuinely found differently and has to
     # supersede. Bodies alone would leave the old titles standing forever:

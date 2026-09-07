@@ -154,14 +154,10 @@ def coerce(var: EnvVar, raw: str, target: Target) -> str:
         try:
             number = float(raw.strip())
         except ValueError:
-            raise InvalidValue(
-                f"{var.name} takes a number, not {raw!r}."
-            ) from None
+            raise InvalidValue(f"{var.name} takes a number, not {raw!r}.") from None
         if var.minimum is not None:
             below = (
-                number <= var.minimum
-                if var.exclusive_minimum
-                else number < var.minimum
+                number <= var.minimum if var.exclusive_minimum else number < var.minimum
             )
             if below:
                 raise InvalidValue(_float_range_error(var, number))
@@ -198,39 +194,53 @@ BOOTSTRAP_VARS = {"REMEM_CONFIG", "CLAUDE_CONFIG_DIR"}
 #: edit here; only the help text lives in this table.
 REMEM_VARS: Mapping[str, EnvVar] = {
     "REMEM_DSN": EnvVar(
-        "REMEM_DSN", Kind.STR, "Postgres connection string.",
+        "REMEM_DSN",
+        Kind.STR,
+        "Postgres connection string.",
         default=remem_config.DEFAULT_DSN,
     ),
     "REMEM_USER_ID": EnvVar(
-        "REMEM_USER_ID", Kind.STR, "Handle entries are attributed to.",
+        "REMEM_USER_ID",
+        Kind.STR,
+        "Handle entries are attributed to.",
         default=remem_config.DEFAULT_HANDLE,
     ),
     "REMEM_MAX_CHARS": EnvVar(
-        "REMEM_MAX_CHARS", Kind.INT, "Cap on a rendered context block.",
-        minimum=1, default=str(remem_config.DEFAULT_MAX_CHARS),
+        "REMEM_MAX_CHARS",
+        Kind.INT,
+        "Cap on a rendered context block.",
+        minimum=1,
+        default=str(remem_config.DEFAULT_MAX_CHARS),
     ),
     # The bounds mirror config.load()'s own guard exactly. Below or at 0 the
     # fuzzy fallback matches everything and above 1 it matches nothing, so
     # config.load() discards anything outside the range - which, while this
     # was a free-form Kind.STR, made `set` a reliable no-op for a bad value.
     "REMEM_FUZZY_THRESHOLD": EnvVar(
-        "REMEM_FUZZY_THRESHOLD", Kind.FLOAT,
+        "REMEM_FUZZY_THRESHOLD",
+        Kind.FLOAT,
         "Trigram similarity floor for the fuzzy fallback (0 < t <= 1).",
-        minimum=0.0, maximum=1.0, exclusive_minimum=True,
+        minimum=0.0,
+        maximum=1.0,
+        exclusive_minimum=True,
         default=str(remem_config.DEFAULT_FUZZY_THRESHOLD),
     ),
     "REMEM_EXTRACT_MODEL": EnvVar(
-        "REMEM_EXTRACT_MODEL", Kind.STR,
+        "REMEM_EXTRACT_MODEL",
+        Kind.STR,
         "Model used to extract entries from recorded events.",
         default=remem_config.DEFAULT_EXTRACT_MODEL,
     ),
     "REMEM_IDLE_MINUTES": EnvVar(
-        "REMEM_IDLE_MINUTES", Kind.INT,
+        "REMEM_IDLE_MINUTES",
+        Kind.INT,
         "Minutes a session must be quiet before extraction reads it.",
-        minimum=1, default=str(remem_config.DEFAULT_IDLE_MINUTES),
+        minimum=1,
+        default=str(remem_config.DEFAULT_IDLE_MINUTES),
     ),
     "REMEM_EMBED_MODEL": EnvVar(
-        "REMEM_EMBED_MODEL", Kind.STR,
+        "REMEM_EMBED_MODEL",
+        Kind.STR,
         "Embedding model recorded in entry_vectors.model.",
         default=remem_config.DEFAULT_EMBED_MODEL,
     ),
@@ -239,20 +249,27 @@ REMEM_VARS: Mapping[str, EnvVar] = {
     # is meaningless and above 1 it matches nothing, so config.load()
     # discards anything outside the range.
     "REMEM_SEMANTIC_THRESHOLD": EnvVar(
-        "REMEM_SEMANTIC_THRESHOLD", Kind.FLOAT,
+        "REMEM_SEMANTIC_THRESHOLD",
+        Kind.FLOAT,
         "Cosine similarity floor for the semantic tier (0 < t <= 1).",
-        minimum=0.0, maximum=1.0, exclusive_minimum=True,
+        minimum=0.0,
+        maximum=1.0,
+        exclusive_minimum=True,
         default=str(remem_config.DEFAULT_SEMANTIC_THRESHOLD),
     ),
     "REMEM_TURN_WARN_AT": EnvVar(
-        "REMEM_TURN_WARN_AT", Kind.INT,
+        "REMEM_TURN_WARN_AT",
+        Kind.INT,
         "Turn count at which the handoff reminder first fires.",
-        minimum=1, default=str(remem_config.DEFAULT_TURN_WARN_AT),
+        minimum=1,
+        default=str(remem_config.DEFAULT_TURN_WARN_AT),
     ),
     "REMEM_TURN_WARN_EVERY": EnvVar(
-        "REMEM_TURN_WARN_EVERY", Kind.INT,
+        "REMEM_TURN_WARN_EVERY",
+        Kind.INT,
         "Turns between repeat handoff reminders.",
-        minimum=1, default=str(remem_config.DEFAULT_TURN_WARN_EVERY),
+        minimum=1,
+        default=str(remem_config.DEFAULT_TURN_WARN_EVERY),
     ),
 }
 
@@ -405,9 +422,7 @@ def write_agent(path: Path, key: str, value: str | None) -> Path | None:
     return made
 
 
-def shadow_warning(
-    target: Target, key: str, env: Mapping[str, str]
-) -> str | None:
+def shadow_warning(target: Target, key: str, env: Mapping[str, str]) -> str | None:
     """Whether the value just written will actually be the one in effect.
 
     The two targets resolve in opposite directions, which is the single most
@@ -447,9 +462,7 @@ class Targets:
     table: Mapping[str, EnvVar]
 
 
-def resolve_targets(
-    adapter: object, home: Path, env: Mapping[str, str]
-) -> Targets:
+def resolve_targets(adapter: object, home: Path, env: Mapping[str, str]) -> Targets:
     """Which files this agent's settings live in, and what it lets us set.
 
     Policy, not parsing, which is why it is here and not in the frontend:
@@ -465,9 +478,7 @@ def resolve_targets(
     the probe cannot simply be deleted as unreachable: claude-code is the only
     adapter in-tree that has them.
     """
-    remem_path = Path(
-        env.get("REMEM_CONFIG", remem_config.default_config_path())
-    )
+    remem_path = Path(env.get("REMEM_CONFIG", remem_config.default_config_path()))
     table_of = getattr(adapter, "env_settings", None)
     path_of = getattr(adapter, "settings_path", None)
     if table_of is None or path_of is None:
@@ -525,9 +536,7 @@ def list_settings(
             continue
         name = _FILE_KEYS[key]
         if name in file_data:
-            rows.append(
-                Setting(key, str(file_data[name]), "file", var, Target.REMEM)
-            )
+            rows.append(Setting(key, str(file_data[name]), "file", var, Target.REMEM))
             continue
         rows.append(Setting(key, var.default, "default", var, Target.REMEM))
 
@@ -535,14 +544,10 @@ def list_settings(
     for key, var in table.items():
         # File first: for Claude Code the settings file beats the export.
         if key in agent_block:
-            rows.append(
-                Setting(key, agent_block[key], "file", var, Target.AGENT)
-            )
+            rows.append(Setting(key, agent_block[key], "file", var, Target.AGENT))
             continue
         if key in env:
-            rows.append(
-                Setting(key, env[key], "environment", var, Target.AGENT)
-            )
+            rows.append(Setting(key, env[key], "environment", var, Target.AGENT))
             continue
         rows.append(Setting(key, var.default, "default", var, Target.AGENT))
 

@@ -7,6 +7,8 @@ from pathlib import Path
 
 import psycopg
 
+from remem.backends.postgres.sqltext import as_sql
+
 _TRACKING_TABLE = """
 create table if not exists schema_migrations (
   version text primary key,
@@ -35,10 +37,11 @@ def applied_versions(conn: psycopg.Connection) -> list[str]:
     """Versions already applied. Read-only: inspecting a database must not
     write to it, so an unmigrated database reports [] rather than having the
     tracking table created as a side effect of asking."""
-    exists = conn.execute(
-        "select to_regclass('public.schema_migrations')"
-    ).fetchone()[0]
-    if exists is None:
+    row = conn.execute("select to_regclass('public.schema_migrations')").fetchone()
+    # A bare select always returns exactly one row - it is the value inside
+    # it that is None when the table does not exist yet.
+    assert row is not None
+    if row[0] is None:
         return []
     rows = conn.execute("select version from schema_migrations order by version")
     return [r[0] for r in rows.fetchall()]
@@ -64,9 +67,7 @@ def migrate(conn: psycopg.Connection) -> list[str]:
     for version, sql in migration_files():
         if version in done:
             continue
-        conn.execute(sql)
-        conn.execute(
-            "insert into schema_migrations (version) values (%s)", (version,)
-        )
+        conn.execute(as_sql(sql))
+        conn.execute("insert into schema_migrations (version) values (%s)", (version,))
         newly.append(version)
     return newly

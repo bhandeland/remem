@@ -44,16 +44,12 @@ def test_a_failing_delete_still_disables_recording(monkeypatch):
             "disable": staticmethod(
                 lambda store, owner, project: disabled.append(project)
             ),
-            "record": staticmethod(
-                lambda store, owner, event, agent: object()
-            ),
+            "record": staticmethod(lambda store, owner, event, agent: object()),
         },
     )
 
     monkeypatch.setattr("remem.config.load", lambda env=None: object())
-    monkeypatch.setattr(
-        "remem.session.open_session", lambda config: FakeSession()
-    )
+    monkeypatch.setattr("remem.session.open_session", lambda config: FakeSession())
     monkeypatch.setattr("remem.services.record", fake_record)
 
     report = verify.round_trip("cursor", env={})
@@ -99,16 +95,12 @@ def test_a_failing_disable_is_reported_too(monkeypatch):
         {
             "enable": staticmethod(lambda store, owner, project: None),
             "disable": staticmethod(raising_disable),
-            "record": staticmethod(
-                lambda store, owner, event, agent: object()
-            ),
+            "record": staticmethod(lambda store, owner, event, agent: object()),
         },
     )
 
     monkeypatch.setattr("remem.config.load", lambda env=None: object())
-    monkeypatch.setattr(
-        "remem.session.open_session", lambda config: FakeSession()
-    )
+    monkeypatch.setattr("remem.session.open_session", lambda config: FakeSession())
     monkeypatch.setattr("remem.services.record", fake_record)
 
     report = verify.round_trip("cursor", env={})

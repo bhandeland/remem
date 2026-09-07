@@ -34,8 +34,12 @@ def test_remember_defaults_to_a_memory_from_an_agent(store, owner):
 
 def test_remember_records_provenance(store, owner):
     e = write.remember(
-        store, owner.id, title="T", body="B",
-        agent="claude-code", session_id="sess-9",
+        store,
+        owner.id,
+        title="T",
+        body="B",
+        agent="claude-code",
+        session_id="sess-9",
     )
     got = store.get_entry(e.id, owner.id)
     assert got.agent == "claude-code"
@@ -52,23 +56,38 @@ def test_update_changes_only_what_is_given(store, owner):
 
 def test_update_raises_for_a_missing_entry(store, owner):
     from remem.domain import new_id
+
     with pytest.raises(write.EntryNotFound):
         write.update(store, owner.id, new_id(), body="x")
 
 
 def test_supersede_creates_a_new_entry_and_marks_the_old(store, owner):
-    old = write.remember(store, owner.id, title="Fridays", body="deploy fridays",
-                         project="remem", tags=["deploys"])
-    new = write.supersede(store, owner.id, old.id, title="Tuesdays",
-                          body="deploy tuesdays")
+    old = write.remember(
+        store,
+        owner.id,
+        title="Fridays",
+        body="deploy fridays",
+        project="remem",
+        tags=["deploys"],
+    )
+    new = write.supersede(
+        store, owner.id, old.id, title="Tuesdays", body="deploy tuesdays"
+    )
     assert new.id != old.id
     assert store.get_entry(old.id, owner.id).superseded_by == new.id
 
 
 def test_supersede_inherits_project_and_tags(store, owner):
-    old = write.remember(store, owner.id, title="T", body="B",
-                         summary="Deploy on Fridays only with a rollback plan",
-                         project="remem", tags=["deploys"], kind=Kind.RULE)
+    old = write.remember(
+        store,
+        owner.id,
+        title="T",
+        body="B",
+        summary="Deploy on Fridays only with a rollback plan",
+        project="remem",
+        tags=["deploys"],
+        kind=Kind.RULE,
+    )
     new = write.supersede(store, owner.id, old.id, title="T2", body="B2")
     assert new.project == "remem"
     assert new.tags == ["deploys"]
@@ -84,6 +103,7 @@ def test_superseded_entry_disappears_from_search(store, owner):
 
 def test_supersede_raises_for_a_missing_entry(store, owner):
     from remem.domain import new_id
+
     with pytest.raises(write.EntryNotFound):
         write.supersede(store, owner.id, new_id(), title="t", body="b")
 

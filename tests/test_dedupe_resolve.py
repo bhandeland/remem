@@ -20,8 +20,9 @@ def store(conn):
 
 
 def _entry(store, owner_id, title):
-    return store.put_entry(Entry(id=new_id(), kind=Kind.NOTE, title=title,
-                                 body=title, owner_id=owner_id))
+    return store.put_entry(
+        Entry(id=new_id(), kind=Kind.NOTE, title=title, body=title, owner_id=owner_id)
+    )
 
 
 def test_the_dropped_entry_points_at_the_kept_one(store):

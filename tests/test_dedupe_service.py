@@ -5,7 +5,13 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from remem.domain import (
-    DedupeReport, DuplicateSet, Entry, Kind, NearPair, Origin, new_id,
+    DedupeReport,
+    DuplicateSet,
+    Entry,
+    Kind,
+    NearPair,
+    Origin,
+    new_id,
 )
 from remem.services.dedupe import render, suppress, survivor
 
@@ -14,8 +20,12 @@ OWNER = new_id()
 
 def _entry(title, origin=Origin.AGENT, updated="2026-01-01", eid=None):
     return Entry(
-        id=eid or new_id(), kind=Kind.NOTE, title=title, body="b",
-        owner_id=OWNER, origin=origin,
+        id=eid or new_id(),
+        kind=Kind.NOTE,
+        title=title,
+        body="b",
+        owner_id=OWNER,
+        origin=origin,
         updated_at=datetime.fromisoformat(updated).replace(tzinfo=timezone.utc),
     )
 
@@ -53,8 +63,9 @@ def test_a_pair_with_only_one_member_in_a_group_survives():
 
 
 def _report(**kw):
-    base = dict(exact=[], near=[], near_total=0, threshold=0.95,
-                model="m", embedded=0, total=0)
+    base = dict(
+        exact=[], near=[], near_total=0, threshold=0.95, model="m", embedded=0, total=0
+    )
     return DedupeReport(**{**base, **kw})
 
 
@@ -79,16 +90,24 @@ def test_full_coverage_says_none_found_rather_than_not_checked():
 
 def test_truncation_is_named_as_truncation():
     a, b = _entry("a"), _entry("b")
-    out = render(_report(near=[NearPair(a, b, 0.97)], near_total=9,
-                         near_truncated=True, embedded=5, total=5))
+    out = render(
+        _report(
+            near=[NearPair(a, b, 0.97)],
+            near_total=9,
+            near_truncated=True,
+            embedded=5,
+            total=5,
+        )
+    )
     assert "9 pairs are above the threshold" in out
     assert "raise --limit" in out
 
 
 def test_a_complete_list_says_nothing_about_limits():
     a, b = _entry("a"), _entry("b")
-    out = render(_report(near=[NearPair(a, b, 0.97)], near_total=1,
-                         embedded=5, total=5))
+    out = render(
+        _report(near=[NearPair(a, b, 0.97)], near_total=1, embedded=5, total=5)
+    )
     assert "--limit" not in out
     assert "identical bodies" not in out
 
@@ -96,8 +115,15 @@ def test_a_complete_list_says_nothing_about_limits():
 def test_suppressed_pairs_are_not_reported_as_truncation():
     """The pairs are printed above as exact groups, not cut off."""
     a, b = _entry("a"), _entry("b")
-    out = render(_report(near=[NearPair(a, b, 0.97)], near_total=7,
-                         near_suppressed=5, embedded=5, total=5))
+    out = render(
+        _report(
+            near=[NearPair(a, b, 0.97)],
+            near_total=7,
+            near_suppressed=5,
+            embedded=5,
+            total=5,
+        )
+    )
     assert "5 further pairs are listed above as identical bodies" in out
     assert "raise --limit" not in out
 

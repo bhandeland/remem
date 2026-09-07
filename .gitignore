@@ -7,3 +7,5 @@ dist/
 .superpowers/
 .claude/
 .worktrees/
+.ruff_cache/
+.pyrefly_cache/

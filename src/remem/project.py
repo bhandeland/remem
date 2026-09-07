@@ -31,7 +31,7 @@ def _repo_root(start: Path) -> Path | None:
             text=True,
             timeout=5,
         )
-    except (OSError, subprocess.SubprocessError):
+    except OSError, subprocess.SubprocessError:
         return None
     if result.returncode != 0:
         return None
@@ -73,7 +73,7 @@ def toplevel(start: Path | None = None) -> Path | None:
             text=True,
             timeout=5,
         )
-    except (OSError, subprocess.SubprocessError):
+    except OSError, subprocess.SubprocessError:
         return None
     if result.returncode != 0 or not result.stdout.strip():
         return None
