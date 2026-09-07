@@ -105,6 +105,25 @@ markers = [
 project-includes = ["src", "tests"]
 search-path = ["."]
 
+# Silenced deliberately, and named here rather than left to run as a
+# counter nobody can act on. `0 errors (1 suppressed, 9 warnings not
+# shown)` printed on every `make check`, and pyrefly renders warn-level
+# diagnostics nowhere at all - not in `--output-format=json`, not under
+# `-v` - so learning what those nine were took promoting all 137 rules to
+# errors and tallying. A permanently-nonzero number that costs an
+# afternoon to read is the same failure `remem doctor` exists to avoid.
+#
+# All nine were `unnecessary-type-conversion`, and none was a defect: four
+# defensive coercions at a boundary where the value is TYPED as the target
+# type but not PROVEN to be one - `repr(float(x))` building a pgvector
+# literal, `str(env[...])` reading config, `int(count)` before a JSON
+# write - and five `str(result.stderr)` calls in tests, where click's
+# annotation says `str` but reading the attribute raises under
+# `mix_stderr`. The rule cannot see any of that, so making it an error
+# would mean deleting real guards to satisfy a lint.
+[tool.pyrefly.errors]
+unnecessary-type-conversion = false
+
 [tool.ruff]
 line-length = 88
 output-format = "concise"
