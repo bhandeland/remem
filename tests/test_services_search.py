@@ -4,6 +4,7 @@ from remem.backends.postgres.migrate import migrate
 from remem.backends.postgres.store import PostgresStore
 from remem.domain import Entry, Hit, Kind, Match, Query, new_id
 from remem.embed import EmbedderUnavailable
+from remem.services import search
 from remem.services.search import find
 from remem.services.write import remember
 
@@ -118,6 +119,45 @@ def test_no_embedder_degrades_to_two_tiers():
 
     assert store.called == ["exact", "fuzzy"]
     assert [h.match for h in hits] == [Match.FUZZY]
+
+
+def test_omitting_the_embedder_builds_the_shared_one(monkeypatch):
+    """The sentinel's whole reason for existing, and the half no test pinned.
+
+    An omitted `embedder` is not the same as `embedder=None`: None says
+    "skip the semantic tier", while saying nothing says "build the shared
+    embedder if and when that tier is reached". Collapsing the two reads as
+    a harmless simplification and silently costs every frontend the middle
+    tier - none of them pass an embedder.
+    """
+    built: list[str] = []
+
+    def fake_shared(model):
+        built.append(model)
+        return StubEmbedder()
+
+    monkeypatch.setattr(search, "shared_embedder", fake_shared)
+    store = StubStore(semantic=[_hit(Match.SEMANTIC)])
+
+    hits = find(store, new_id(), Query(text="q"), embed_model="some-model")
+
+    assert built == ["some-model"], "the shared embedder was never built"
+    assert store.called == ["exact", "semantic"]
+    assert [h.match for h in hits] == [Match.SEMANTIC]
+
+
+def test_the_shared_embedder_is_not_built_when_the_exact_tier_answers(monkeypatch):
+    """Constructing one imports fastembed and can download ~130MB, so the
+    tier that never runs must never pay for it."""
+    built: list[str] = []
+    monkeypatch.setattr(
+        search, "shared_embedder", lambda m: built.append(m) or StubEmbedder()
+    )
+    store = StubStore(exact=[_hit(Match.EXACT)])
+
+    find(store, new_id(), Query(text="q"))
+
+    assert built == []
 
 
 def test_an_embedder_that_raises_degrades_rather_than_failing_the_search():

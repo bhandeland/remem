@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import Final, Protocol
+from typing import Final, Protocol, final
 from uuid import UUID
 
 from remem.config import DEFAULT_FUZZY_THRESHOLD, DEFAULT_SEMANTIC_THRESHOLD
@@ -58,6 +58,22 @@ class SearchStore(Protocol):
 #: caller. Chosen deliberately; if a sixth origin appears, look here.
 DEFAULT_ORIGINS = [Origin.HUMAN, Origin.AGENT, Origin.EXTRACTED, Origin.INGESTED]
 
+
+@final
+class _Unspecified:
+    """The type of `_UNSPECIFIED`, and the only reason it is a class.
+
+    A bare `object()` cannot be spelled in an annotation, so the sentinel
+    had to be suppressed into the signature with a `type: ignore` - which
+    also hid the fact that `find` then passed it on to `_semantic`, whose
+    parameter said `Embedder | None` and never saw the third state. A named
+    type makes the three states declarable, so the checker narrows them
+    instead of being told to look away.
+    """
+
+    __slots__ = ()
+
+
 #: The default value of `find(embedder=...)`, and not the same thing as None.
 #:
 #: None is a caller saying "there is no embedder, skip the semantic tier".
@@ -66,7 +82,7 @@ DEFAULT_ORIGINS = [Origin.HUMAN, Origin.AGENT, Origin.EXTRACTED, Origin.INGESTED
 #: Collapsing the two would make an explicit `embedder=None` silently grow an
 #: embedder - including in the tests that pass it to assert the two-tier
 #: degradation, where it would cost a 130MB model download.
-_UNSPECIFIED: Final = object()
+_UNSPECIFIED: Final = _Unspecified()
 
 #: Embedders memoised by model name.
 #:
@@ -129,7 +145,7 @@ def find(
     fuzzy_threshold: float = DEFAULT_FUZZY_THRESHOLD,
     include_handoffs: bool = False,
     include_archived: bool = False,
-    embedder: Embedder | None = _UNSPECIFIED,  # type: ignore[assignment]
+    embedder: Embedder | None | _Unspecified = _UNSPECIFIED,
     semantic_threshold: float = DEFAULT_SEMANTIC_THRESHOLD,
     embed_model: str = DEFAULT_EMBED_MODEL,
 ) -> list[Hit]:
@@ -199,7 +215,7 @@ def _semantic(
     owner_id: UUID,
     query: Query,
     text: str,
-    embedder: Embedder | None,
+    embedder: Embedder | None | _Unspecified,
     threshold: float,
     embed_model: str,
 ) -> list[Hit]:
@@ -213,7 +229,7 @@ def _semantic(
     is reached only after the exact tier came back empty - so the cost of
     constructing one is paid by the searches that can actually use it.
     """
-    if embedder is _UNSPECIFIED:
+    if isinstance(embedder, _Unspecified):
         embedder = shared_embedder(embed_model)
     if embedder is None:
         return []
