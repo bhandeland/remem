@@ -15,6 +15,7 @@ import pytest
 
 from remem.domain import IngestDesignation, IngestRun, IngestTrigger
 from remem.services import ingest
+from tests.conftest import found
 
 AT = datetime(2026, 9, 4, 14, 2, tzinfo=timezone.utc)
 SHOWN = AT.astimezone().strftime("%Y-%m-%d %H:%M")
@@ -198,10 +199,10 @@ def test_status_for_one_project_carries_its_latest_run(store, owner, root):
     ingest.designate(store, owner.id, "here", ["docs/specs"])
     run = store.start_ingest_run(owner.id, "here", IngestTrigger.AUTO)
 
-    [found] = ingest.status(store, owner.id, "here", current_project=None, root=None)
+    [report] = ingest.status(store, owner.id, "here", current_project=None, root=None)
 
-    assert found.last_run.id == run.id
-    assert found.checked_against is None
+    assert found(report.last_run).id == run.id
+    assert report.checked_against is None
 
 
 @pytest.mark.db

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Any
 
 from remem.domain import (
     DedupeReport,
@@ -62,8 +63,11 @@ def test_a_pair_with_only_one_member_in_a_group_survives():
     assert len(pairs) == 1
 
 
-def _report(**kw):
-    base = dict(
+def _report(**kw: Any) -> DedupeReport:
+    # dict[str, Any] rather than an inferred type: a defaults table whose
+    # values are deliberately heterogeneous infers as the union of them all,
+    # and every field then fails to match its own parameter.
+    base: dict[str, Any] = dict(
         exact=[], near=[], near_total=0, threshold=0.95, model="m", embedded=0, total=0
     )
     return DedupeReport(**{**base, **kw})

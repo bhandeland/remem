@@ -3,6 +3,7 @@ import pytest
 from remem.backends.postgres.migrate import migrate, pending_versions
 from remem.backends.postgres.store import PostgresStore
 from remem.domain import Entry, Kind, Origin, new_id
+from tests.conftest import found
 
 pytestmark = pytest.mark.db
 
@@ -22,7 +23,7 @@ def test_the_handoff_origin_round_trips(conn):
             origin=Origin.HANDOFF,
         )
     )
-    assert store.get_entry(entry.id, owner.id).origin == Origin.HANDOFF
+    assert found(store.get_entry(entry.id, owner.id)).origin == Origin.HANDOFF
 
 
 def test_the_migration_is_applied_by_migrate(conn):

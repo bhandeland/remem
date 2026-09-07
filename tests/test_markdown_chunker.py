@@ -88,7 +88,10 @@ def test_an_oversized_body_is_truncated_not_split():
 def test_chunks_are_frozen():
     chunk = Chunk(slug="a", title="t", body="b", anchor=False)
     try:
-        chunk.slug = "b"
+        # setattr, not `chunk.slug = "b"`: the assignment is the thing under
+        # test, so a type checker refusing it statically would stop the test
+        # from ever reaching the AttributeError it exists to observe.
+        setattr(chunk, "slug", "b")
     except AttributeError:
         return
     raise AssertionError("Chunk must be frozen")

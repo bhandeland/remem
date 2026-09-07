@@ -19,6 +19,7 @@ import pytest
 from remem.agents.claude_code import hook
 from remem.backends.postgres.migrate import migrate
 from remem.extract.base import CHILD_ENV_VAR
+from tests.conftest import scalar
 
 
 def _payload(cwd, hook_event_name="PostToolUse", session_id="sess-1", **overrides):
@@ -138,5 +139,5 @@ def test_the_session_end_hook_records_an_event_and_enqueues_nothing(live_dsn, tm
         rows = c.execute("select kind from events").fetchall()
         assert len(rows) == 1
         assert rows[0][0] == "session_end"
-        assert c.execute("select count(*) from extract_jobs").fetchone()[0] == 0
-        assert c.execute("select count(*) from capture_jobs_legacy").fetchone()[0] == 0
+        assert scalar(c.execute("select count(*) from extract_jobs")) == 0
+        assert scalar(c.execute("select count(*) from capture_jobs_legacy")) == 0

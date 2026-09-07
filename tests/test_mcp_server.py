@@ -1,6 +1,7 @@
 import pytest
 
 from remem.backends.postgres.migrate import migrate
+from tests.conftest import scalar
 
 pytestmark = pytest.mark.db
 
@@ -111,10 +112,10 @@ def test_supersede_a_legacy_rule_with_a_summary_succeeds(env):
     import psycopg
 
     with psycopg.connect(env) as c:
-        row = c.execute(
-            "select summary from entries where id = %s", (result["id"],)
-        ).fetchone()
-    assert row[0] == "state the rule in one line"
+        summary = scalar(
+            c.execute("select summary from entries where id = %s", (result["id"],))
+        )
+    assert summary == "state the rule in one line"
 
 
 def test_kb_list_and_context(env):

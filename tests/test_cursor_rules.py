@@ -201,6 +201,7 @@ def test_inject_writes_the_block_and_returns_the_path(tmp_path):
     path = adapter.inject("the block", {ROOT_KEY: str(tmp_path)})
 
     assert path == str(tmp_path / ".cursor" / "rules" / "remem.mdc")
+    assert path is not None
     assert "the block" in Path(path).read_text()
 
 

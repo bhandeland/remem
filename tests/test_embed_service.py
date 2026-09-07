@@ -13,6 +13,7 @@ from remem.domain import Entry, Kind, new_id
 from remem.embed import EmbedderUnavailable
 from remem.services import embed
 from remem.services.embed import backfill
+from tests.conftest import found, scalar
 
 pytestmark = pytest.mark.db
 
@@ -61,7 +62,7 @@ def test_embeds_every_entry_that_needs_it(store):
 
     result = backfill(store, owner.id, FakeEmbedder())
 
-    assert result.embedded == 3
+    assert found(result).embedded == 3
     assert result.failed == 0
     assert store.entries_missing_vectors(owner.id, "fake-2", limit=10) == []
 
@@ -128,7 +129,7 @@ def test_max_entries_bounds_the_run(store):
 
     result = backfill(store, owner.id, FakeEmbedder(), batch_size=2, max_entries=3)
 
-    assert result.embedded == 3
+    assert found(result).embedded == 3
 
 
 # --- cron safety ------------------------------------------------------------
@@ -161,10 +162,12 @@ def test_a_second_embed_run_does_nothing_while_the_lock_is_held(
     holder = psycopg.connect(live_dsn)
     try:
         assert (
-            holder.execute(
-                "select pg_try_advisory_lock(hashtext('embed'), hashtext(%s))",
-                (str(owner.id),),
-            ).fetchone()[0]
+            scalar(
+                holder.execute(
+                    "select pg_try_advisory_lock(hashtext('embed'), hashtext(%s))",
+                    (str(owner.id),),
+                )
+            )
             is True
         )
 
@@ -212,7 +215,7 @@ def test_backfill_if_pending_builds_the_embedder_when_work_is_waiting(store):
     result = embed.backfill_if_pending(store, owner.id, "fake-2", load)
 
     assert built == [1]
-    assert result.embedded == 3
+    assert found(result).embedded == 3
 
 
 def test_backfill_if_pending_reports_an_unavailable_embedder_as_a_failure(

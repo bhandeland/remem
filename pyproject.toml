@@ -92,11 +92,18 @@ markers = [
 ]
 
 [tool.pyrefly]
-# src only. Type-checking the suite adds 111 errors that are almost all one
-# shape - a test dereferencing a `T | None` it just constructed and knows is
-# not None - and none of them are defects. Widening to tests/ is a separate
-# decision with its own cleanup, not a thing to smuggle in here.
-project-includes = ["src"]
+# src and the suite both. The suite was excluded while it carried 92 errors;
+# they were fixed rather than suppressed, and none of them turned out to be a
+# defect - the shapes were a test dereferencing a `T | None` it had just
+# constructed, a **kwargs override helper, a partial test double, and DDL
+# psycopg types as LiteralString. A test is code that asserts what the code
+# means, so a type error in one is a claim nobody checked.
+#
+# search-path is what lets `from tests.conftest import ...` resolve: tests/
+# is a package (it has an __init__.py) rooted at the repository, not at
+# tests/ itself, and without this pyrefly looks only under the includes.
+project-includes = ["src", "tests"]
+search-path = ["."]
 
 [tool.ruff]
 line-length = 88

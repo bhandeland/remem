@@ -13,6 +13,7 @@ import pytest
 
 from remem.agents.opencode.adapter import OpenCodeAdapter
 from remem.domain import EventKind
+from tests.conftest import found
 
 
 @pytest.fixture
@@ -74,7 +75,7 @@ def test_the_whole_payload_is_carried_through_unparsed(repo):
         "surprise": {"nested": [1, 2, 3]},
     }
 
-    event = OpenCodeAdapter().event({}, payload)
+    event = found(OpenCodeAdapter().event({}, payload))
 
     assert event.payload["surprise"] == {"nested": [1, 2, 3]}
 

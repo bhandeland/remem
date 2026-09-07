@@ -4,7 +4,9 @@ import pytest
 from typer.testing import CliRunner
 
 from remem.backends.postgres.migrate import migrate
+from remem.backends.postgres.sqltext import as_sql
 from remem.cli import app
+from tests.conftest import scalar
 
 pytestmark = pytest.mark.db
 
@@ -199,12 +201,12 @@ def unmigrated_dsn():
         pytest.skip(SKIP_REASON)
     name = f"remem_bare_{uuid.uuid4().hex[:12]}"
     with psycopg.connect(ADMIN_DSN, autocommit=True) as admin:
-        admin.execute(f'create database "{name}"')
+        admin.execute(as_sql(f'create database "{name}"'))
     try:
         yield ADMIN_DSN.rsplit("/", 1)[0] + "/" + name
     finally:
         with psycopg.connect(ADMIN_DSN, autocommit=True) as admin:
-            admin.execute(f'drop database if exists "{name}"')
+            admin.execute(as_sql(f'drop database if exists "{name}"'))
 
 
 def test_db_status_on_an_unmigrated_database_reports_pending(
@@ -293,10 +295,10 @@ def _summary_of(dsn, entry_id):
     import psycopg
 
     with psycopg.connect(dsn) as c:
-        row = c.execute(
-            "select summary from entries where id = %s", (entry_id,)
-        ).fetchone()
-    return row[0]
+        summary = scalar(
+            c.execute("select summary from entries where id = %s", (entry_id,))
+        )
+    return summary
 
 
 def test_remember_stores_a_summary(env):

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 
@@ -113,7 +115,7 @@ def _invoke(monkeypatch, argv):
 def test_bare_serve_runs_stdio(monkeypatch):
     from remem import mcp_server
 
-    called = {}
+    called: dict[str, Any] = {}
     monkeypatch.setattr(mcp_server, "main", lambda: called.setdefault("stdio", True))
     monkeypatch.setattr(
         mcp_server, "serve_http", lambda *a: called.setdefault("http", a)
@@ -127,7 +129,7 @@ def test_bare_serve_runs_stdio(monkeypatch):
 def test_serve_http_passes_host_port_and_project(monkeypatch):
     from remem import mcp_server
 
-    called = {}
+    called: dict[str, Any] = {}
     monkeypatch.setattr(mcp_server, "main", lambda: called.setdefault("stdio", True))
     monkeypatch.setattr(
         mcp_server, "serve_http", lambda *a: called.setdefault("http", a)
@@ -153,7 +155,7 @@ def test_serve_http_passes_host_port_and_project(monkeypatch):
 def test_serve_http_defaults_to_loopback_and_9100(monkeypatch):
     from remem import mcp_server
 
-    called = {}
+    called: dict[str, Any] = {}
     monkeypatch.setattr(
         mcp_server, "serve_http", lambda *a: called.setdefault("http", a)
     )

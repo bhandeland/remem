@@ -28,6 +28,7 @@ from remem.domain import CollectionQuery, Kind, MemoryTrigger, Origin
 from remem.project import resolve_project
 from remem.services import kb, memory
 from remem.services.write import remember
+from tests.conftest import found
 
 pytestmark = pytest.mark.db
 
@@ -145,7 +146,7 @@ def test_refresh_syncs_the_directory_without_printing(env, designated_with_one_s
 def test_refresh_records_the_run_as_auto(env, designated_with_one_stray):
     """The one caller `trigger='auto'` was added for. `sync` stays manual."""
     runner.invoke(app, ["memory", "refresh"], env=env)
-    run = _latest_run(env)
+    run = found(_latest_run(env))
     assert run.trigger == MemoryTrigger.AUTO
     assert run.finished_at is not None
 
@@ -187,7 +188,7 @@ def test_refresh_stays_silent_and_exits_zero_on_a_conflict(env, designated_in_co
     assert result.exit_code == 0
     assert result.stdout == ""
     assert (designated_in_conflict / "a-fact.remem-conflict.md").exists()
-    assert _latest_run(env).conflicts == ["a-fact"]
+    assert found(_latest_run(env)).conflicts == ["a-fact"]
 
 
 def test_refresh_explains_itself_on_stderr_under_hook_debug(

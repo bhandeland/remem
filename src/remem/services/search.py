@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import Final
+from typing import Final, Protocol
 from uuid import UUID
 
 from remem.config import DEFAULT_FUZZY_THRESHOLD, DEFAULT_SEMANTIC_THRESHOLD
@@ -14,9 +14,35 @@ from remem.embed import (
     EmbedderUnavailable,
     load_embedder,
 )
-from remem.store import Store
 
 MAX_LIMIT = 200
+
+
+class SearchStore(Protocol):
+    """The three store methods `find` actually reaches, and nothing else.
+
+    `Store` is the portability seam and is deliberately wide; `find` uses
+    three of its methods. Naming that subset here means the signature states
+    the real dependency rather than the widest type that happens to satisfy
+    it, and a test double covering the three tiers type-checks as itself
+    instead of needing a cast that would let it drift from the protocol
+    unnoticed. `PostgresStore` satisfies this structurally, so no caller
+    changes.
+    """
+
+    def search(self, query: Query, owner_id: UUID) -> list[Hit]: ...
+    def semantic_search(
+        self,
+        query: Query,
+        owner_id: UUID,
+        vector: list[float],
+        model: str,
+        threshold: float,
+    ) -> list[Hit]: ...
+    def fuzzy_search(
+        self, query: Query, owner_id: UUID, threshold: float
+    ) -> list[Hit]: ...
+
 
 #: What a search returns when the caller did not ask for specific origins.
 #: Handoffs are excluded: a project hands off dozens of times and every one of
@@ -97,7 +123,7 @@ def _clamped(query: Query) -> Query:
 
 
 def find(
-    store: Store,
+    store: SearchStore,
     owner_id: UUID,
     query: Query,
     fuzzy_threshold: float = DEFAULT_FUZZY_THRESHOLD,
@@ -169,7 +195,7 @@ def find(
 
 
 def _semantic(
-    store: Store,
+    store: SearchStore,
     owner_id: UUID,
     query: Query,
     text: str,

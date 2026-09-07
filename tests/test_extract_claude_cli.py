@@ -3,6 +3,7 @@
 import json
 import subprocess
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 import pytest
 
@@ -128,7 +129,7 @@ def test_extract_raises_on_nonzero_exit(monkeypatch):
 def test_the_events_are_passed_on_stdin_not_as_an_argument(monkeypatch):
     """A megabyte of rendered events in argv would exceed the platform's
     argument limit."""
-    seen = {}
+    seen: dict[str, Any] = {}
 
     def fake_run(cmd, **kwargs):
         seen["input"] = kwargs.get("input")
@@ -180,7 +181,7 @@ def test_a_large_batch_of_events_is_bounded_to_its_tail(monkeypatch):
     """Measured against the real CLI: 40KB follows the prompt and returns in
     seconds; 400KB takes ~5 minutes AND the model ignores the prompt
     entirely. An unbounded input fails on essentially every real session."""
-    seen = {}
+    seen: dict[str, Any] = {}
 
     def fake_run(cmd, **kwargs):
         seen["input"] = kwargs.get("input")
@@ -298,7 +299,7 @@ def test_the_command_pins_a_model():
 
 
 def test_the_extractor_passes_its_configured_model(monkeypatch):
-    seen = {}
+    seen: dict[str, Any] = {}
 
     def fake_run(cmd, **kwargs):
         seen["cmd"] = cmd
@@ -312,7 +313,7 @@ def test_the_extractor_passes_its_configured_model(monkeypatch):
 def test_the_extractor_defaults_to_the_configured_default(monkeypatch):
     from remem.config import DEFAULT_EXTRACT_MODEL
 
-    seen = {}
+    seen: dict[str, Any] = {}
 
     def fake_run(cmd, **kwargs):
         seen["cmd"] = cmd

@@ -14,6 +14,7 @@ import pytest
 
 from remem.agents.claude_code.adapter import VERIFY_PROJECT, ClaudeCodeAdapter
 from remem.backends.postgres.migrate import migrate
+from tests.conftest import scalar
 
 pytestmark = pytest.mark.db
 
@@ -48,9 +49,12 @@ def test_install_verification_cleans_up_after_itself(env, tmp_path):
 
     with psycopg.connect(env["REMEM_DSN"]) as c:
         assert (
-            c.execute(
-                "select count(*) from events where project = %s", (VERIFY_PROJECT,)
-            ).fetchone()[0]
+            scalar(
+                c.execute(
+                    "select count(*) from events where project = %s",
+                    (VERIFY_PROJECT,),
+                )
+            )
             == 0
         )
         enabled = c.execute(

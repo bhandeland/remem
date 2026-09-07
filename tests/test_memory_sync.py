@@ -8,6 +8,7 @@ from remem.backends.postgres.store import PostgresStore
 from remem.domain import CollectionQuery, Entry, Kind, Origin, new_id
 from remem.services import kb, memory
 from remem.services.write import remember, supersede
+from tests.conftest import found
 
 pytestmark = pytest.mark.db
 
@@ -648,7 +649,7 @@ def test_sync_all_syncs_every_designation_that_records_a_directory(
 
     assert {o.project for o in out} == {"a", "b"}
     assert all(o.skipped is None for o in out)
-    assert [o.report.adopted for o in out] == [1, 1]
+    assert [found(o.report).adopted for o in out] == [1, 1]
     # Adopted into the right project's collection, not pooled: the whole
     # point of walking designations is that each has its own directory.
     assert (tmp_path / "a" / "memory" / "a-note.md").exists()
@@ -676,7 +677,7 @@ def test_sync_all_reports_a_working_directory_that_is_gone(store, owner, tmp_pat
     )
     [out] = memory.sync_all(store, owner.id, resolve_directory=_dir_for)
     assert out.report is None
-    assert "gone" in out.skipped or "exist" in out.skipped
+    assert "gone" in found(out.skipped) or "exist" in found(out.skipped)
 
 
 def test_one_project_failing_does_not_stop_the_others(store, owner, tmp_path, conn):

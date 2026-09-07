@@ -10,6 +10,7 @@ unauditable thing this pipeline exists to replace.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from typing import cast
 
 import pytest
 
@@ -17,8 +18,15 @@ from remem.agents.base import HarnessEvent
 from remem.backends.postgres.migrate import migrate
 from remem.backends.postgres.store import PostgresStore
 from remem.domain import EventKind, JobStatus, Kind, Origin, Query, new_id
-from remem.extract.base import ExtractedEntry, ExtractionFailed, parse_entries
+from remem.extract.base import (
+    ExtractedEntry,
+    ExtractionFailed,
+    Extractor,
+    parse_entries,
+)
 from remem.services import extraction, record
+from remem.store import Store
+from tests.conftest import found
 
 pytestmark = pytest.mark.db
 
@@ -49,19 +57,27 @@ def a_harness_event(**kw):
 
 
 def three_events(store, owner, session_id="s1", project="remem", base=None):
-    """Three events, spaced, all old enough for the idle trigger."""
+    """Three events, spaced, all old enough for the idle trigger.
+
+    `found` because `record.record` returns None when the project has not
+    opted in. Every caller here enables recording first, so a None means the
+    gate under test rejected a write nobody expected it to - which is worth
+    saying here rather than as an AttributeError wherever the id is read.
+    """
     base = base or (NOW - timedelta(hours=2))
     return [
-        record.record(
-            store,
-            owner.id,
-            a_harness_event(
-                session_id=session_id,
-                project=project,
-                occurred_at=base + timedelta(seconds=i),
-                payload={"command": f"ls {i}"},
-            ),
-            "claude-code",
+        found(
+            record.record(
+                store,
+                owner.id,
+                a_harness_event(
+                    session_id=session_id,
+                    project=project,
+                    occurred_at=base + timedelta(seconds=i),
+                    payload={"command": f"ls {i}"},
+                ),
+                "claude-code",
+            )
         )
         for i in range(3)
     ]
@@ -213,14 +229,16 @@ def test_a_resumed_session_extracts_only_its_new_events(store, owner):
     extraction.process(store, owner.id, extractor, idle_seconds=IDLE, limit=10)
 
     later = [
-        record.record(
-            store,
-            owner.id,
-            a_harness_event(
-                occurred_at=NOW - timedelta(hours=1) + timedelta(seconds=i),
-                payload={"command": f"later {i}"},
-            ),
-            "claude-code",
+        found(
+            record.record(
+                store,
+                owner.id,
+                a_harness_event(
+                    occurred_at=NOW - timedelta(hours=1) + timedelta(seconds=i),
+                    payload={"command": f"later {i}"},
+                ),
+                "claude-code",
+            )
         )
         for i in range(2)
     ]
@@ -459,7 +477,13 @@ def test_an_extractor_without_known_titles_support_still_works(store, owner):
         def extract(self, events, project):
             return []
 
-    report = extraction.process(store, owner.id, TwoArg(), idle_seconds=IDLE, limit=10)
+    # cast because a two-argument extractor is deliberately NOT assignable to
+    # the Extractor protocol - the third parameter is optional for the
+    # implementer, which a Protocol cannot express, and tolerating one is
+    # precisely what this test asserts. See Extractor.extract's docstring.
+    report = extraction.process(
+        store, owner.id, cast(Extractor, TwoArg()), idle_seconds=IDLE, limit=10
+    )
     assert (report.claimed, report.succeeded) == (1, 1)
 
 
@@ -494,8 +518,10 @@ def test_a_write_that_explodes_is_recorded_not_raised(store, owner):
         def put_entry(self, entry):
             raise RuntimeError("connection lost")
 
+    # cast: a __getattr__ proxy over the real store, so it satisfies Store at
+    # run time by construction and cannot be seen to statically.
     report = extraction.process(
-        ExplodingStore(store),
+        cast(Store, ExplodingStore(store)),
         owner.id,
         FakeExtractor([an_entry()]),
         idle_seconds=IDLE,
@@ -628,4 +654,4 @@ def test_a_watermark_survives_a_later_failure_on_the_same_session(store, owner):
 
     [awaiting] = store.sessions_awaiting_extraction(owner.id, IDLE, 10)
     assert awaiting.event_count == len(later)
-    assert awaiting.extract_from == max(e.occurred_at for e in first)
+    assert awaiting.extract_from == max(found(e.occurred_at) for e in first)
