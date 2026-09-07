@@ -49,7 +49,12 @@ opencode = "remem.agents.opencode.adapter:OpenCodeAdapter"
 cursor = "remem.agents.cursor.adapter:CursorAdapter"
 
 [dependency-groups]
-dev = ["pytest>=8.3", "pytest-cov>=6.0"]
+dev = [
+    "pyrefly>=1.2.0",
+    "pytest>=8.3",
+    "pytest-cov>=6.0",
+    "ruff>=0.16.6",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -65,9 +70,41 @@ packages = ["src/remem"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Minimal output by default, because the default reader is an agent paying
+# for every line. -x and --lf together mean a failing loop reruns only what
+# failed and stops at the first one, so a broken run costs a handful of
+# lines instead of a screen. CI overrides both - it wants the whole list.
+addopts = "-q --no-header --tb=line -x --lf"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
 markers = [
     "db: requires a running Postgres (docker compose up -d)",
     "slow: shells out to a real build; skip with -m 'not slow'",
     "opencode: requires opencode's plugin types installed; checks our vendored copy is fresh",
     "cursor: requires Cursor.app installed; checks our vendored copy is fresh",
 ]
+
+[tool.pyrefly]
+# src only. Type-checking the suite adds 111 errors that are almost all one
+# shape - a test dereferencing a `T | None` it just constructed and knows is
+# not None - and none of them are defects. Widening to tests/ is a separate
+# decision with its own cleanup, not a thing to smuggle in here.
+project-includes = ["src"]
+
+[tool.ruff]
+line-length = 88
+output-format = "concise"
+
+[tool.ruff.lint]
+# Ruff has no warning level - everything selected is an error, which is what
+# T20 is here for. The MCP frontend speaks JSON-RPC over stdout under the
+# stdio transport, so one stray print() corrupts the stream for the whole
+# session. The CLI's 164 legitimate stdout writes go through typer.echo and
+# sys.stdout.write, which T20 does not touch, so this catches debugging
+# prints and nothing else.
+select = ["E", "F", "W", "I", "T20"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["remem"]
