@@ -33,8 +33,8 @@ def _designate(store, owner_id, project, directory):
     )
 
 
-def _finished(store, owner_id, project, **kw):
-    run = store.start_memory_run(owner_id, project, MemoryTrigger.MANUAL)
+def _finished(store, owner_id, project, trigger=MemoryTrigger.MANUAL, **kw):
+    run = store.start_memory_run(owner_id, project, trigger)
     base = dict(
         adopted=0,
         healed=0,
@@ -124,3 +124,41 @@ def test_only_designated_projects_are_swept(store, tmp_path):
     store.start_memory_run(owner.id, "stray", MemoryTrigger.MANUAL)
 
     assert memory_service.advisories(store, owner.id) == []
+
+
+def test_an_unfinished_run_names_its_trigger(store, tmp_path):
+    """An unattended `refresh` and a typed `sync` leave identical rows, so
+    the line has to say which one died - they are debugged differently."""
+    owner = store.ensure_principal("adv-unfinished-trigger")
+    _designate(store, owner.id, "p", tmp_path)
+    store.start_memory_run(owner.id, "p", MemoryTrigger.AUTO)
+
+    assert "auto" in memory_service.advisories(store, owner.id)[0]
+
+
+def test_failures_name_the_trigger_of_the_run_they_came_from(store, tmp_path):
+    owner = store.ensure_principal("adv-failures-trigger")
+    _designate(store, owner.id, "p", tmp_path)
+    _finished(
+        store,
+        owner.id,
+        "p",
+        trigger=MemoryTrigger.AUTO,
+        failures=[{"name": "bad", "reason": "boom"}],
+    )
+
+    assert "auto" in memory_service.advisories(store, owner.id)[0]
+
+
+def test_a_sidecar_is_not_attributed_to_the_last_run(store, tmp_path):
+    """A sidecar outlives every run - nothing deletes one - so naming the
+    last run's trigger beside it would attribute it to a sync that may not
+    have written it."""
+    owner = store.ensure_principal("adv-sidecar-trigger")
+    _designate(store, owner.id, "p", tmp_path)
+    _finished(store, owner.id, "p", trigger=MemoryTrigger.AUTO)
+    (tmp_path / "note.remem-conflict.md").write_text("x")
+
+    line = memory_service.advisories(store, owner.id)[0]
+    assert "conflict" in line
+    assert "auto" not in line

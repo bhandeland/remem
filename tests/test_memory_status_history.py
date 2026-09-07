@@ -9,6 +9,7 @@ from remem.domain import MemoryRun, MemoryTrigger, new_id
 from remem.services.memory import render_run
 
 WHEN = datetime(2026, 9, 5, 12, 0, tzinfo=timezone.utc)
+SHOWN = WHEN.astimezone().strftime("%Y-%m-%d %H:%M")
 
 
 def _run(**kw: Any) -> MemoryRun:
@@ -60,3 +61,29 @@ def test_the_four_spellings_are_distinct():
         render_run(_run(finished_at=None)),
     }
     assert len(lines) == 4
+
+
+def test_the_timestamp_is_shown_in_local_time():
+    """The column is `timestamptz` and psycopg hands it back in UTC, so a
+    bare strftime prints UTC's wall clock while `remem reingest status`,
+    two screens away, prints local. Same fact, two different times."""
+    assert SHOWN in render_run(_run())
+    assert SHOWN in render_run(_run(finished_at=None))
+
+
+def test_the_trigger_is_named():
+    """Which half of the pipeline ran is not derivable from the counts, and
+    an unattended `refresh` and a typed `sync` produce identical rows."""
+    assert "auto" in render_run(_run(trigger=MemoryTrigger.AUTO))
+    assert "manual" in render_run(_run(trigger=MemoryTrigger.MANUAL))
+
+
+def test_the_trigger_is_named_on_a_run_that_did_not_finish():
+    line = render_run(_run(trigger=MemoryTrigger.AUTO, finished_at=None))
+    assert "auto" in line
+
+
+def test_never_synced_names_no_trigger():
+    """There is no run, so there is no trigger to name."""
+    line = render_run(None)
+    assert "auto" not in line and "manual" not in line

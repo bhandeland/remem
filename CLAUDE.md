@@ -597,6 +597,14 @@ entry first.
   (never, clean, with conflicts or failures, did not finish). Those describe
   what last *happened*; `stale`, `overlap` and `conflicts` describe the
   directory *now*, and a reader must not have to infer one from the other.
+  Every spelling that has a run names its **trigger**, as `reingest status`
+  does: a spawned `refresh` and a typed `sync` leave identical rows, so
+  without it a reader cannot tell an unattended run from their own, and
+  believing the automatic half ran when only a manual one had is precisely
+  the false premise this line exists to make visible. The trigger rides on
+  the failure count in `advisories()` and deliberately not on the sidecar
+  count - a sidecar outlives every run, so naming the last one beside it
+  would attribute it to a sync that may not have written it.
 - `memory.advisories()` raises one line per unhealthy designated project in
   `remem record status`: an unresolved conflict sidecar, a run that did not
   finish, failures in the last run, or a designation that has never synced.

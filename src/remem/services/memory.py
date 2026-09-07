@@ -1045,9 +1045,26 @@ def render_run(run: MemoryRun | None) -> str:
     """
     if run is None:
         return "  never synced"
-    when = run.started_at.strftime("%Y-%m-%d %H:%M") if run.started_at else "?"
+    # .astimezone() first: the column is `timestamptz` and comes back in
+    # UTC, so a bare strftime prints UTC's wall clock here while `remem
+    # reingest status` prints local - the same instant, two clocks, one
+    # screen apart. `ingest._when` has always done this.
+    when = (
+        run.started_at.astimezone().strftime("%Y-%m-%d %H:%M")
+        if run.started_at
+        else "?"
+    )
+    # The trigger, not just the counts. A spawned `remem memory refresh`
+    # and a typed `remem memory sync` leave identical rows, so a reader
+    # cannot tell an unattended run from their own - and believing the
+    # automatic half ran when only a manual one had is exactly the false
+    # premise this line exists to make visible. Position follows
+    # `ingest._run_lines`: after the verb, before the timestamp.
     if run.finished_at is None:
-        return f"  last sync {when} did not finish - the process was killed partway"
+        return (
+            f"  last sync {run.trigger} {when} did not finish - "
+            f"the process was killed partway"
+        )
     counts = (
         f"{run.adopted} adopted, {run.edited} edited, "
         f"{run.regenerated} regenerated, {run.deleted} deleted, "
@@ -1059,8 +1076,8 @@ def render_run(run: MemoryRun | None) -> str:
     if run.failures:
         trouble.append(f"{len(run.failures)} failure(s)")
     if trouble:
-        return f"  last sync {when}: {counts} - {', '.join(trouble)}"
-    return f"  last sync {when}: {counts}"
+        return f"  last sync {run.trigger} {when}: {counts} - {', '.join(trouble)}"
+    return f"  last sync {run.trigger} {when}: {counts}"
 
 
 #: Where a person goes after reading an advisory line. Carries its scope,
@@ -1104,7 +1121,8 @@ def advisories(store: Store, owner_id: UUID) -> list[str]:
             continue
         if run.finished_at is None:
             lines.append(
-                f"{d.project}: the last memory sync did not finish - {pointer}"
+                f"{d.project}: the last memory sync ({run.trigger}) did not "
+                f"finish - {pointer}"
             )
             continue
 
@@ -1121,7 +1139,13 @@ def advisories(store: Store, owner_id: UUID) -> list[str]:
                     f"{len(sidecars)} unresolved conflict sidecar(s) on disk"
                 )
         if run.failures:
-            trouble.append(f"{len(run.failures)} failure(s) in the last sync")
+            # The trigger rides on this item and not on the sidecar one
+            # above: a sidecar outlives every run - nothing deletes one -
+            # so naming the last run beside it would attribute it to a
+            # sync that may well not have written it.
+            trouble.append(
+                f"{len(run.failures)} failure(s) in the last {run.trigger} sync"
+            )
         if trouble:
             lines.append(f"{d.project}: {'; '.join(trouble)} - {pointer}")
     return lines
