@@ -5,10 +5,10 @@ from __future__ import annotations
 from uuid import UUID
 
 from remem.domain import (
+    INJECTED_ORIGINS,
     Collection,
     CollectionQuery,
     Entry,
-    INJECTED_ORIGINS,
     Kind,
     Query,
     new_id,

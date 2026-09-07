@@ -16,7 +16,6 @@ written to ask: does the wheel match the source?
 from __future__ import annotations
 
 import subprocess
-import sys
 import zipfile
 from pathlib import Path
 

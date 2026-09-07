@@ -734,7 +734,9 @@ class PostgresStore:
             select * from (
                 select {entry_columns("e")},
                        md5(btrim(e.body, E' \\t\\n\\r')) as body_key,
-                       count(*) over (partition by md5(btrim(e.body, E' \\t\\n\\r'))) as n
+                       count(*) over (
+                           partition by md5(btrim(e.body, E' \\t\\n\\r'))
+                       ) as n
                 from entries e
                 where {" and ".join(where)}
             ) s
@@ -1525,8 +1527,9 @@ class PostgresStore:
         "Extracted" uses the same watermark rule as
         `sessions_awaiting_extraction` - the newest `covers_through` recorded
         for a session, whatever its job's current status - so prune and
-        process can never disagree about what has already been extracted. `--force` (the `force` argument)
-        drops that condition entirely rather than widening it: an unextracted
+        process can never disagree about what has already been extracted.
+        `--force` (the `force` argument) drops that condition entirely
+        rather than widening it: an unextracted
         event is raw that produced nothing, and losing it is the outcome the
         whole pipeline exists to prevent, so overriding that is a deliberate
         act, not a wider window.
@@ -1807,8 +1810,9 @@ class PostgresStore:
         The `watermarks` CTE gives the newest covers_through per session -
         the newest, not any, because a session can be extracted more than
         once across its life and only the latest watermark matters. It keys
-        on covers_through rather than on job status; see the CTE's comment. Events at or before that mark already produced
-        whatever they were going to produce; event_count and the idle check
+        on covers_through rather than on job status; see the CTE's comment.
+        Events at or before that mark already produced whatever they were
+        going to produce; event_count and the idle check
         both look only at what is left after it, which is what makes
         event_count mean "work outstanding" rather than "events that exist".
         """

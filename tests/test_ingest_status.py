@@ -230,14 +230,14 @@ def test_advisories_name_only_the_unhealthy_projects(store, owner, root):
 
     assert len(lines) == 3
     assert any(
-        l.startswith("failed:")
-        and "1 failure(s)" in l
-        and l.endswith("see: remem reingest status --project failed")
-        for l in lines
+        ln.startswith("failed:")
+        and "1 failure(s)" in ln
+        and ln.endswith("see: remem reingest status --project failed")
+        for ln in lines
     )
-    assert any(l.startswith("stuck:") and "did not finish" in l for l in lines)
-    assert any(l.startswith("renamed:") and "docs/gone" in l for l in lines)
-    assert not any(l.startswith("clean:") for l in lines)
+    assert any(ln.startswith("stuck:") and "did not finish" in ln for ln in lines)
+    assert any(ln.startswith("renamed:") and "docs/gone" in ln for ln in lines)
+    assert not any(ln.startswith("clean:") for ln in lines)
 
 
 @pytest.mark.db

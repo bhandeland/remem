@@ -16,7 +16,6 @@ import pytest
 from remem.agents.base import EnvVar, Kind
 from remem.services.settings import list_settings, resolve_targets
 
-
 TABLE: Mapping[str, EnvVar] = {
     "FAKE_TIMEOUT_MS": EnvVar("FAKE_TIMEOUT_MS", Kind.INT, "A fake.", minimum=1)
 }

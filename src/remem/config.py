@@ -119,19 +119,17 @@ def load(
     if "REMEM_EXTRACT_MODEL" in env:
         extract_model = str(env["REMEM_EXTRACT_MODEL"])
     elif "REMEM_CAPTURE_MODEL" in env:
-        print(
+        sys.stderr.write(
             "REMEM_CAPTURE_MODEL is renamed to REMEM_EXTRACT_MODEL; "
-            "set REMEM_EXTRACT_MODEL instead.",
-            file=sys.stderr,
+            "set REMEM_EXTRACT_MODEL instead.\n"
         )
         extract_model = str(env["REMEM_CAPTURE_MODEL"])
     elif "extract_model" in data:
         extract_model = str(data["extract_model"])
     elif "capture_model" in data:
-        print(
+        sys.stderr.write(
             "capture_model in config.toml is renamed to extract_model; "
-            "set extract_model instead.",
-            file=sys.stderr,
+            "set extract_model instead.\n"
         )
         extract_model = str(data["capture_model"])
     else:

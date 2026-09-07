@@ -68,9 +68,10 @@ def test_install_verification_does_not_touch_events_outside_the_verify_project(
     session would delete every event this owner has ever recorded, not just
     the one verification wrote. A second, unrelated, older event for the
     same owner in a different project must survive the round-trip."""
+    from datetime import datetime, timedelta, timezone
+
     from remem.backends.postgres.store import PostgresStore
     from remem.domain import Event, EventKind, new_id
-    from datetime import datetime, timedelta, timezone
 
     with psycopg.connect(env["REMEM_DSN"]) as c:
         store = PostgresStore(c)

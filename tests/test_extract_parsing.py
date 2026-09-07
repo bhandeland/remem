@@ -1,5 +1,6 @@
 import pytest
 
+from remem.domain import Kind
 from remem.extract.base import (
     MAX_BODY,
     MAX_ENTRIES,
@@ -8,7 +9,6 @@ from remem.extract.base import (
     ExtractionFailed,
     parse_entries,
 )
-from remem.domain import Kind
 
 
 def test_parses_a_well_formed_array():

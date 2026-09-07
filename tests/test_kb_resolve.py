@@ -54,7 +54,7 @@ def test_pinned_entries_come_before_query_matches(store, owner):
     c = kb.create(
         store, owner.id, slug="s", title="T", query=CollectionQuery(tags=["style"])
     )
-    matched = remember(store, owner.id, title="Matched", body="b", tags=["style"])
+    remember(store, owner.id, title="Matched", body="b", tags=["style"])
     pinned = remember(store, owner.id, title="Pinned", body="b")
     store.pin(c.id, pinned.id, position=0, owner_id=owner.id)
     titles = [x.title for x in kb.resolve(store, owner.id, "s")]

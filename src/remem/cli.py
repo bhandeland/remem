@@ -762,7 +762,8 @@ def install(
 ):
     """Install remem into an agent (MCP server, hook, and skill)."""
     from remem.agents.base import UnsupportedScope
-    from remem.agents.registry import UnknownAgent, get as get_adapter
+    from remem.agents.registry import UnknownAgent
+    from remem.agents.registry import get as get_adapter
 
     try:
         adapter = get_adapter(agent)()
@@ -795,7 +796,8 @@ def verify(
     database, or just before trusting the pipeline, does not have to run the
     whole install again to find out.
     """
-    from remem.agents.registry import UnknownAgent, get as get_adapter
+    from remem.agents.registry import UnknownAgent
+    from remem.agents.registry import get as get_adapter
 
     try:
         adapter = get_adapter(agent)()
@@ -889,7 +891,8 @@ def _config_targets(agent: str):
     import os
     from pathlib import Path
 
-    from remem.agents.registry import UnknownAgent, get as get_adapter
+    from remem.agents.registry import UnknownAgent
+    from remem.agents.registry import get as get_adapter
     from remem.services import settings as svc
 
     env = os.environ

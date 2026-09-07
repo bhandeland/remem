@@ -206,7 +206,9 @@ class AgentAdapter(Protocol):
     # reason install() takes it, and so that CLAUDE_CONFIG_DIR and its
     # equivalents are honoured without the service knowing they exist.
     #
-    #     def event(self, env: Mapping[str, str], payload: dict) -> HarnessEvent | None: ...
+    #     def event(
+    #         self, env: Mapping[str, str], payload: dict
+    #     ) -> HarnessEvent | None: ...
     #
     # `event()` is what makes `remem record event` harness-neutral. An
     # adapter that does not implement it records nothing, and the CLI says

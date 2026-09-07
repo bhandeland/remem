@@ -107,7 +107,7 @@ def test_an_extracted_rule_is_written_without_a_summary(store, owner):
     on origin, this raised RuleNeedsSummary and failed the whole job -
     losing the note written earlier in the same batch along with it."""
     record.enable(store, owner.id, "remem")
-    events = three_events(store, owner)
+    three_events(store, owner)
     rule = ExtractedEntry(
         title="Always lint before committing",
         body="the case for it",

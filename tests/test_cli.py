@@ -67,7 +67,7 @@ def test_search_json_is_a_list_even_when_empty(env):
 
 
 def test_get_prints_the_full_body(env):
-    r = runner.invoke(app, ["remember", "T", "--body", "the whole body"])
+    runner.invoke(app, ["remember", "T", "--body", "the whole body"])
     s = runner.invoke(app, ["search", "whole", "--json"])
     entry_id = json.loads(s.stdout)[0]["id"]
     g = runner.invoke(app, ["get", entry_id])

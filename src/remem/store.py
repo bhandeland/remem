@@ -10,11 +10,11 @@ from uuid import UUID
 
 from remem.domain import (
     Collection,
+    DuplicateGroup,
+    DuplicateSet,
     Entry,
     Event,
     ExtractJob,
-    DuplicateGroup,
-    DuplicateSet,
     HarnessStats,
     Hit,
     IngestDesignation,

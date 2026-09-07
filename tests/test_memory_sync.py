@@ -5,9 +5,8 @@ import pytest
 from remem import memory_file
 from remem.backends.postgres.migrate import migrate
 from remem.backends.postgres.store import PostgresStore
-from remem.domain import CollectionQuery, Entry, new_id
+from remem.domain import CollectionQuery, Entry, Kind, Origin, new_id
 from remem.services import kb, memory
-from remem.domain import Kind, Origin
 from remem.services.write import remember, supersede
 
 pytestmark = pytest.mark.db

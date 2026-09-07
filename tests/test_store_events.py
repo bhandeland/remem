@@ -80,7 +80,7 @@ def test_delete_session_events_is_scoped_to_all_four_keys(store, owner):
     `prune_events` deletes by owner and a time window, and reaching for that
     to clean up one known event would take every other event this owner has
     recorded with it. Every dimension it does not name must survive."""
-    target = store.put_event(an_event(owner, session="s1"))
+    store.put_event(an_event(owner, session="s1"))
     other_session = store.put_event(an_event(owner, session="s2"))
     other_project = store.put_event(
         Event(

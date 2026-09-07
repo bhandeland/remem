@@ -17,7 +17,10 @@ def test_slugify_lowercases_and_hyphenates():
 
 
 def test_the_first_chunk_is_the_anchor_and_carries_the_lead_paragraph():
-    text = "# Ingest design\n\nDesign, 2026-09-01.\n\n## Problem\n\nnone of it is in remem\n"
+    text = (
+        "# Ingest design\n\nDesign, 2026-09-01.\n\n"
+        "## Problem\n\nnone of it is in remem\n"
+    )
     chunks = split(text, doc_name="ingest design")
 
     assert chunks[0].anchor is True

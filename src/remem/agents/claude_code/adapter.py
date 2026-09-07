@@ -53,7 +53,8 @@ __all__ = ["ClaudeCodeAdapter", "VERIFY_PROJECT"]
 
 SLUG_CONVENTION = (
     "The SessionStart hook injects the knowledge base whose slug matches the "
-    "session's repository name - create one with `remem kb new <repo-name>`. A subdirectory or a worktree resolves to the same name."
+    "session's repository name - create one with `remem kb new <repo-name>`. "
+    "A subdirectory or a worktree resolves to the same name."
 )
 
 HANDOFF_NOTE = (

@@ -8,8 +8,6 @@ meant it drifted - two days of doc writing left 32 chunks unindexed.
 
 import subprocess
 
-import pytest
-
 from remem import hookio
 from remem.extract.base import CHILD_ENV_VAR
 

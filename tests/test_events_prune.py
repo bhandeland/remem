@@ -129,7 +129,7 @@ def test_prune_reports_what_it_left_dangling(store, owner):
 
 
 def test_events_inside_the_window_are_kept(store, owner):
-    old = store.put_event(an_event(owner, at=NOW - timedelta(days=40)))
+    store.put_event(an_event(owner, at=NOW - timedelta(days=40)))
     recent = store.put_event(an_event(owner, at=NOW - timedelta(days=1), session="s1"))
     _mark_done(store, owner, "s1", covers_through=NOW)
 

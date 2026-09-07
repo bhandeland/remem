@@ -217,5 +217,6 @@ def test_plugin_serializes_inside_try_catch():
     callremem_text = "\n".join(lines[callremem_start : callremem_end + 1])
     assert "JSON.stringify" in callremem_text, (
         "JSON.stringify(...) found outside callRemem function. "
-        "This breaks the fail-soft contract - exceptions from stringify will escape uncaught."
+        "This breaks the fail-soft contract - exceptions from stringify "
+        "will escape uncaught."
     )

@@ -226,7 +226,7 @@ def test_truncation_never_cuts_a_line_in_half():
     field cap than one event alone would be, which is a whole line all the
     same."""
     text = render_events(events_of_size(MAX_PROMPT_BYTES * 2))
-    body = [l for l in text.splitlines() if not l.startswith("[")]
+    body = [ln for ln in text.splitlines() if not ln.startswith("[")]
     assert len(body) > 1
     for line in body:
         assert json.loads(line.split(" ", 3)[3])
@@ -348,11 +348,11 @@ def test_a_line_that_is_still_too_long_after_capping_is_cut_short():
 
 def _lines(text):
     """The event lines, without the bracketed notes the renderer prepends."""
-    return [l for l in text.splitlines() if not l.startswith("[")]
+    return [ln for ln in text.splitlines() if not ln.startswith("[")]
 
 
 def _notes(text):
-    return [l for l in text.splitlines() if l.startswith("[")]
+    return [ln for ln in text.splitlines() if ln.startswith("[")]
 
 
 def test_a_key_identical_across_every_event_is_stated_once():

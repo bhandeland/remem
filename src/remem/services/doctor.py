@@ -27,7 +27,6 @@ from typing import Mapping
 
 from remem.agents.base import HookState, UnsupportedScope
 
-
 #: The scopes a sweep examines. remem's, not the adapters' - the vocabulary
 #: is already closed and already remem-wide, since `--scope` accepts exactly
 #: these two words everywhere and every adapter hardcodes its accept-list

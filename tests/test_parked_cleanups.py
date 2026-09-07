@@ -169,9 +169,7 @@ def test_set_query_can_empty_a_query(store, owner):
 
 
 def test_set_query_preserves_title_description_and_pins(store, owner):
-    collection = kb.create(
-        store, owner.id, slug="s", title="Original", description="keep me"
-    )
+    kb.create(store, owner.id, slug="s", title="Original", description="keep me")
     pinned = write.remember(store, owner.id, title="Pinned", body="B")
     kb.pin(store, owner.id, "s", pinned.id)
 

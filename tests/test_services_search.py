@@ -2,7 +2,7 @@ import pytest
 
 from remem.backends.postgres.migrate import migrate
 from remem.backends.postgres.store import PostgresStore
-from remem.domain import Hit, Query
+from remem.domain import Entry, Hit, Kind, Match, Query, new_id
 from remem.embed import EmbedderUnavailable
 from remem.services.search import find
 from remem.services.write import remember
@@ -40,8 +40,6 @@ def test_find_rejects_a_nonpositive_limit(store, owner):
 
 
 # Three tiers, tried in order, never blended.
-
-from remem.domain import Entry, Kind, Match, new_id
 
 
 class StubStore:
