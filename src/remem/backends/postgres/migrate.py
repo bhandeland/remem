@@ -7,6 +7,8 @@ from pathlib import Path
 
 import psycopg
 
+from remem.backends.postgres.sqltext import as_sql
+
 _TRACKING_TABLE = """
 create table if not exists schema_migrations (
   version text primary key,
@@ -65,7 +67,7 @@ def migrate(conn: psycopg.Connection) -> list[str]:
     for version, sql in migration_files():
         if version in done:
             continue
-        conn.execute(sql)
+        conn.execute(as_sql(sql))
         conn.execute("insert into schema_migrations (version) values (%s)", (version,))
         newly.append(version)
     return newly

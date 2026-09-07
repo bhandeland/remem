@@ -61,6 +61,16 @@ domain:     domain.py (pure dataclasses/enums, no I/O)
 - **Frontends parse and format; they never decide.** A rule enforced in a service is one
   every frontend gets for free (query clamping, the search tier chain, record opt-in checks). If
   you find yourself adding a policy branch in `cli.py`, it belongs in `services/`.
+- **`backends/postgres/sqltext.as_sql()` is the only place SQL text is
+  asserted to be SQL.** psycopg types `execute`'s query as `LiteralString`
+  so a string built from user data can never arrive as SQL; this backend
+  does build queries with f-strings, but every interpolation is one of its
+  own constants (`entry_columns()`, a `where` fragment) and every value
+  goes through a parameter. `as_sql` is a named function rather than an
+  inline cast so the exemption is greppable - interpolating anything that
+  is not a module constant means calling it, deliberately. It lives in its
+  own module because `store.py` and `migrate.py` both need it and two
+  copies would drift.
 - **`store.py` is the portability seam** - a `Protocol`, with Postgres as the only
   implementation. Ownership is enforced *inside* the store (`NotOwner`), not by callers.
 - **`session.open_session()` is the only way to reach the database.** It connects,

@@ -11,6 +11,7 @@ from uuid import UUID
 import psycopg
 from psycopg.rows import dict_row
 
+from remem.backends.postgres.sqltext import as_sql
 from remem.domain import (
     Collection,
     CollectionQuery,
@@ -412,7 +413,7 @@ class PostgresStore:
                 or previous["body"] != entry.body
             )
             cur.execute(
-                f"""
+                as_sql(f"""
                 insert into entries (
                   id, kind, title, body, summary, project, scope, owner_id,
                   tags, links, agent, session_id, origin, superseded_by
@@ -432,7 +433,7 @@ class PostgresStore:
                   updated_at = clock_timestamp()
                 where entries.owner_id = %(owner_id)s
                 returning {entry_columns()}
-                """,
+                """),
                 {
                     "id": entry.id,
                     "kind": str(entry.kind),
@@ -478,8 +479,10 @@ class PostgresStore:
     def get_entry(self, entry_id: UUID, owner_id: UUID) -> Entry | None:
         with self._cur() as cur:
             cur.execute(
-                f"select {entry_columns()} from entries "
-                "where id = %s and owner_id = %s",
+                as_sql(
+                    f"select {entry_columns()} from entries "
+                    "where id = %s and owner_id = %s"
+                ),
                 (entry_id, owner_id),
             )
             row = cur.fetchone()
@@ -539,7 +542,7 @@ class PostgresStore:
             """
 
         with self._cur() as cur:
-            cur.execute(sql, params)
+            cur.execute(as_sql(sql), params)
             rows = cur.fetchall()
         return [
             Hit(
@@ -584,7 +587,7 @@ class PostgresStore:
             limit %(limit)s
         """
         with self._cur() as cur:
-            cur.execute(sql, params)
+            cur.execute(as_sql(sql), params)
             rows = cur.fetchall()
         return [
             Hit(
@@ -647,7 +650,7 @@ class PostgresStore:
         """
         with self._cur() as cur:
             cur.execute(
-                f"""
+                as_sql(f"""
                 select {entry_columns("e")}
                 from entries e
                 left join entry_vectors v
@@ -657,7 +660,7 @@ class PostgresStore:
                   and v.entry_id is null
                 order by e.created_at asc
                 limit %(limit)s
-                """,
+                """),
                 {"owner_id": owner_id, "model": model, "limit": limit},
             )
             return [_row_to_entry(r) for r in cur.fetchall()]
@@ -705,7 +708,7 @@ class PostgresStore:
             limit %(limit)s
         """
         with self._cur() as cur:
-            cur.execute(sql, params)
+            cur.execute(as_sql(sql), params)
             rows = cur.fetchall()
         return [
             Hit(
@@ -762,7 +765,7 @@ class PostgresStore:
             order by s.body_key, s.created_at asc
         """
         with self._cur() as cur:
-            cur.execute(sql, params)
+            cur.execute(as_sql(sql), params)
             rows = cur.fetchall()
 
         groups: dict[str, list[Entry]] = {}
@@ -817,19 +820,19 @@ class PostgresStore:
               and {similarity} >= %(threshold)s
         """
         with self._cur() as cur:
-            cur.execute(f"select count(*) as n {joins}", params)
+            cur.execute(as_sql(f"select count(*) as n {joins}"), params)
             total = int(_one(cur)["n"])
             if total == 0:
                 return [], 0
             cur.execute(
-                f"""
+                as_sql(f"""
                 select {_aliased_entry_columns("a", "a_")},
                        {_aliased_entry_columns("b", "b_")},
                        {similarity} as similarity
                 {joins}
                 order by similarity desc, a.id, b.id
                 limit %(pair_limit)s
-                """,
+                """),
                 params,
             )
             rows = cur.fetchall()
@@ -854,13 +857,13 @@ class PostgresStore:
         where, params = _entry_filters(query, owner_id)
         with self._cur() as cur:
             cur.execute(
-                f"""
+                as_sql(f"""
                 select count(v.entry_id) as embedded, count(*) as total
                 from entries e
                 left join entry_vectors v
                        on v.entry_id = e.id and v.model = %(model)s
                 where {" and ".join(where)}
-                """,
+                """),
                 {**params, "model": model},
             )
             row = _one(cur)
@@ -953,13 +956,13 @@ class PostgresStore:
     def pinned_entries(self, collection_id: UUID, owner_id: UUID) -> list[Entry]:
         with self._cur() as cur:
             cur.execute(
-                f"""
+                as_sql(f"""
                 select {entry_columns("e")}
                 from collection_members m
                 join entries e on e.id = m.entry_id
                 where m.collection_id = %s and e.owner_id = %s
                 order by m.position, e.created_at
-                """,
+                """),
                 (collection_id, owner_id),
             )
             return [_row_to_entry(r) for r in cur.fetchall()]
@@ -1101,11 +1104,11 @@ class PostgresStore:
         run_id = new_id()
         with self._cur() as cur:
             cur.execute(
-                f"""
+                as_sql(f"""
                 insert into ingest_runs (id, owner_id, project, trigger, archive)
                 values (%s, %s, %s, %s, %s)
                 returning {ingest_run_columns()}
-                """,
+                """),
                 (run_id, owner_id, project, str(trigger), archive),
             )
             return _row_to_ingest_run(_one(cur))
@@ -1154,12 +1157,12 @@ class PostgresStore:
     def latest_ingest_run(self, owner_id: UUID, project: str) -> IngestRun | None:
         with self._cur() as cur:
             cur.execute(
-                f"""
+                as_sql(f"""
                 select {ingest_run_columns()} from ingest_runs
                  where owner_id = %s and project = %s
                  order by started_at desc
                  limit 1
-                """,
+                """),
                 (owner_id, project),
             )
             row = cur.fetchone()
@@ -1177,11 +1180,11 @@ class PostgresStore:
         run_id = new_id()
         with self._cur() as cur:
             cur.execute(
-                f"""
+                as_sql(f"""
                 insert into memory_runs (id, owner_id, project, trigger)
                 values (%s, %s, %s, %s)
                 returning {memory_run_columns()}
-                """,
+                """),
                 (run_id, owner_id, project, str(trigger)),
             )
             return _row_to_memory_run(_one(cur))
@@ -1234,12 +1237,12 @@ class PostgresStore:
     def latest_memory_run(self, owner_id: UUID, project: str) -> MemoryRun | None:
         with self._cur() as cur:
             cur.execute(
-                f"""
+                as_sql(f"""
                 select {memory_run_columns()} from memory_runs
                  where owner_id = %s and project = %s
                  order by started_at desc
                  limit 1
-                """,
+                """),
                 (owner_id, project),
             )
             row = cur.fetchone()
@@ -1250,7 +1253,7 @@ class PostgresStore:
         # literal percent has to be doubled for psycopg's formatter.
         with self._cur() as cur:
             cur.execute(
-                f"""
+                as_sql(f"""
                 select {entry_columns("e")} from entries e
                  where e.owner_id = %s
                    and e.project = %s
@@ -1259,7 +1262,7 @@ class PostgresStore:
                    and exists (select 1 from unnest(e.tags) t where t like 'src:%%')
                    and not exists (select 1 from unnest(e.tags) t where t like 'sec:%%')
                  order by e.created_at desc
-                """,
+                """),
                 (owner_id, project),
             )
             return [_row_to_entry(r) for r in cur.fetchall()]
@@ -1633,8 +1636,10 @@ class PostgresStore:
     def get_extract_job(self, job_id: UUID, owner_id: UUID) -> ExtractJob | None:
         with self._cur() as cur:
             cur.execute(
-                f"select {extract_job_columns()} from extract_jobs "
-                "where id = %s and owner_id = %s",
+                as_sql(
+                    f"select {extract_job_columns()} from extract_jobs "
+                    "where id = %s and owner_id = %s"
+                ),
                 (job_id, owner_id),
             )
             row = cur.fetchone()
@@ -1654,12 +1659,12 @@ class PostgresStore:
     ) -> list[ExtractJob]:
         with self._cur() as cur:
             cur.execute(
-                f"""
+                as_sql(f"""
                 select {extract_job_columns()} from extract_jobs
                  where owner_id = %s and status = 'failed'
                  order by updated_at desc
                  limit %s
-                """,
+                """),
                 (owner_id, limit),
             )
             return [_row_to_extract_job(r) for r in cur.fetchall()]
@@ -1754,11 +1759,11 @@ class PostgresStore:
         """
         with self._cur() as cur:
             cur.execute(
-                f"""
+                as_sql(f"""
                 select {extract_job_columns()} from extract_jobs
                  where owner_id = %s and project = %s and harness = %s
                    and session_id = %s
-                """,
+                """),
                 (owner_id, session.project, session.harness, session.session_id),
             )
             row = cur.fetchone()
@@ -1769,7 +1774,7 @@ class PostgresStore:
         and its attempt count instead of accumulating one row per attempt."""
         with self._cur() as cur:
             cur.execute(
-                f"""
+                as_sql(f"""
                 insert into extract_jobs (
                   id, owner_id, project, harness, session_id, status, attempts
                 ) values (%(id)s, %(owner_id)s, %(project)s, %(harness)s,
@@ -1779,7 +1784,7 @@ class PostgresStore:
                                 attempts = extract_jobs.attempts + 1,
                                 updated_at = clock_timestamp()
                 returning {extract_job_columns()}
-                """,
+                """),
                 {
                     "id": new_id(),
                     "owner_id": owner_id,
@@ -1801,7 +1806,7 @@ class PostgresStore:
         """
         with self._cur() as cur:
             cur.execute(
-                f"""
+                as_sql(f"""
                 with claimed as (
                   select id from extract_jobs
                    where id = %(id)s and owner_id = %(owner_id)s
@@ -1814,7 +1819,7 @@ class PostgresStore:
                   from claimed
                  where j.id = claimed.id
                 returning {extract_job_columns("j")}
-                """,
+                """),
                 {"id": job_id, "owner_id": owner_id},
             )
             row = cur.fetchone()
