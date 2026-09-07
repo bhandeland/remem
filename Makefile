@@ -20,7 +20,7 @@ lint:
 	@uv run ruff check --fix -q src tests
 
 typecheck:
-	@uv run pyrefly check
+	@uv run pyrefly check --output-format=min-text
 
 test:
 	@uv run pytest

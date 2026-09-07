@@ -11,7 +11,7 @@ import tempfile
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated, NoReturn, Optional
 from uuid import UUID
 
 import psycopg
@@ -78,7 +78,7 @@ def _default_project() -> str | None:
     return resolve_project()
 
 
-def _unreachable(dsn: str) -> None:
+def _unreachable(dsn: str) -> NoReturn:
     """Docker not running is this tool's expected failure mode; say so."""
     typer.echo(
         f"Cannot reach Postgres at {dsn}. Start it with `docker compose up -d` "

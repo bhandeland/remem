@@ -44,10 +44,13 @@ ruff:
     - .python-base
     - .default-rules
   script:
-    - uv run ruff check src/ tests/
+    # --no-fix, unlike `make check`: CI reports, it does not rewrite. A job
+    # that fixed the tree would pass while leaving the fix on the runner.
+    - uv run ruff check --no-fix src/ tests/
     - uv run ruff format --check src/ tests/
-  # Advisory until ruff is added to the dev group and the tree is clean.
-  allow_failure: true
+  # Enforcing. ruff is in the dev group and the tree is clean as of the
+  # `make check` gate; this job spent its whole life failing to spawn ruff
+  # under allow_failure, which is indistinguishable from passing.
 
 # =============================================================================
 # Security Scanning Stage
@@ -111,7 +114,11 @@ pytest:
       except psycopg.Error as exc:
           sys.exit(f"Postgres NOT reachable at {dsn}: {exc}")
       PY
-    - uv run pytest tests/ -v --cov=src/remem --cov-report=term-missing --cov-report=xml:coverage.xml --junitxml=report.xml
+    # --maxfail=0 and --tb=short override the addopts in pyproject.toml.
+    # Those are tuned for the local agent loop, where -x --tb=line is the
+    # point; here the whole failure list is what the run is for, and -x
+    # would report one test and hide the rest.
+    - uv run pytest tests/ -v --maxfail=0 --tb=short --cov=src/remem --cov-report=term-missing --cov-report=xml:coverage.xml --junitxml=report.xml
   coverage: '/TOTAL.*\s+(\d+%)/'
   artifacts:
     reports:
