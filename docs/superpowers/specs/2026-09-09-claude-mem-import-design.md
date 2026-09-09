@@ -34,8 +34,8 @@ verify.
   store access, no policy, no I/O beyond the one file it is given.
 - `services/import_.py` - every policy decision: mapping, identity,
   idempotency, project resolution, dry-run.
-- `remem import claude-mem <path>` in `cli.py`, with `--dry-run`,
-  `--project` and `--limit`.
+- `remem import claude-mem <path>` in `cli.py`, with `--dry-run` and
+  `--project`.
 
 ## Layering
 
@@ -153,6 +153,27 @@ file because ingest owns those chunks and the file is the truth. Here the
 source is being decommissioned: a row deleted from claude-mem - or a whole
 database that stops existing - must never delete anything from remem. This is
 a migration, not a sync, and the asymmetry is deliberate.
+
+## How entries are written
+
+Through `services/write.remember`, which already takes `origin`, `summary`,
+`tags` and `project` - the importer needs no new write primitive. Its
+`RuleNeedsSummary` check does not fire here: it is gated on `Kind.RULE`, and
+nothing imported is a rule.
+
+A changed record goes through `write.supersede`, **not** `store.set_superseded`.
+This is the opposite of ingest's orphan sweep, which calls the store directly
+because a heading deleted from a file has no replacement to point at. Here the
+replacement is precisely what we have - the new version of the row - so the
+primitive that mints one is the right one.
+
+`IMPORTED` is added to `DEFAULT_ORIGINS` and deliberately **not** to
+`INJECTED_ORIGINS`. Verified against the code: `kb.resolve` filters the query
+half to `INJECTED_ORIGINS`, so an origin absent from that list is excluded
+from context blocks without any further work. The one documented hole is
+unchanged and acceptable - `store.pinned_entries` has no origin filter, so
+`remem kb pin` can still promote an imported entry into a block, which is the
+documented way to promote machine-written knowledge.
 
 ## Projects
 
