@@ -38,3 +38,18 @@ class SourceRecord:
     #: Never prose - see the reader's rendering rules.
     tags: tuple[str, ...] = ()
     created_at: datetime | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ReadResult:
+    """What one source yielded, and what it could not map.
+
+    `skipped` is not decoration: an import that drops rows and never says so
+    leaves knowledge behind with nobody told, which is the one thing a
+    migration must not do quietly.
+    """
+
+    records: list[SourceRecord]
+    #: One human-readable line per dropped row, naming the table, the row id
+    #: and the reason - e.g. "memory_items m7: unknown kind 'sketch'".
+    skipped: list[str]

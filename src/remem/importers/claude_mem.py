@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Final
 
-from remem.importers.base import SourceKind, SourceRecord
+from remem.importers.base import ReadResult, SourceKind, SourceRecord
 
 #: Prefixes every tag this importer mints, so an Obsidian import can never
 #: collide with a claude-mem one on identity.
@@ -29,7 +29,7 @@ class UnreadableSource(Exception):
     """The file is not a claude-mem database, or not a database at all."""
 
 
-def read(path: Path) -> list[SourceRecord]:
+def read(path: Path) -> ReadResult:
     conn = _open(path)
     try:
         tables = _tables(conn)
@@ -62,17 +62,25 @@ def _tables(conn: sqlite3.Connection) -> set[str]:
     return {r[0] for r in rows}
 
 
-def _read_modern(conn: sqlite3.Connection) -> list[SourceRecord]:
+def _read_modern(conn: sqlite3.Connection) -> ReadResult:
     conn.row_factory = sqlite3.Row
     rows = conn.execute(
         "select m.*, p.name as project_name "
         "from memory_items m left join projects p on p.id = m.project_id "
         "order by m.created_at_epoch"
     )
-    return [r for r in (_record(row) for row in rows) if r is not None]
+    records: list[SourceRecord] = []
+    skipped: list[str] = []
+    for row in rows:
+        record, skip = _record(MODERN_TABLE, row)
+        if record is not None:
+            records.append(record)
+        if skip is not None:
+            skipped.append(skip)
+    return ReadResult(records=records, skipped=skipped)
 
 
-def _read_legacy(conn: sqlite3.Connection, tables: set[str]) -> list[SourceRecord]:
+def _read_legacy(conn: sqlite3.Connection, tables: set[str]) -> ReadResult:
     """Pre-33 claude-mem: three tables, one per record kind.
 
     Each table is optional - a database that never recorded a prompt simply
@@ -80,16 +88,22 @@ def _read_legacy(conn: sqlite3.Connection, tables: set[str]) -> list[SourceRecor
     """
     conn.row_factory = sqlite3.Row
     records: list[SourceRecord] = []
+    skipped: list[str] = []
     if "observations" in tables:
         rows = conn.execute("select * from observations order by created_at_epoch")
-        records.extend(r for r in (_record(row) for row in rows) if r is not None)
+        for row in rows:
+            record, skip = _record("observations", row)
+            if record is not None:
+                records.append(record)
+            if skip is not None:
+                skipped.append(skip)
     if "session_summaries" in tables:
         rows = conn.execute("select * from session_summaries order by created_at_epoch")
         records.extend(_summary(row) for row in rows)
     if "user_prompts" in tables:
         rows = conn.execute("select * from user_prompts order by id")
         records.extend(_prompts(list(rows)))
-    return records
+    return ReadResult(records=records, skipped=skipped)
 
 
 def _column(row: sqlite3.Row, *names: str):
@@ -113,10 +127,12 @@ def _kind(raw_kind: str | None) -> SourceKind | None:
     `_json_list` already applies to one malformed column. Refusing the
     whole import over one unclassifiable row would throw away the other
     thousands of rows that read fine; returning `None` lets the caller
-    drop just that row instead. A missing `kind` (every legacy table except
-    `observations`, which has no such column at all) defaults to
-    `OBSERVATION` rather than being treated as unknown - it is absent by
-    schema, not malformed.
+    drop just that row instead. A missing `kind` defaults to `OBSERVATION`
+    rather than being treated as unknown - it is absent by schema, not
+    malformed, and true of every row this function ever sees: `observations`
+    is the only legacy table that reaches `_kind` at all (`session_summaries`
+    and `user_prompts` build their `SourceKind` directly), and it has no
+    `kind` column either.
     """
     if not raw_kind:
         return SourceKind.OBSERVATION
@@ -126,19 +142,30 @@ def _kind(raw_kind: str | None) -> SourceKind | None:
         return None
 
 
-def _record(row: sqlite3.Row) -> SourceRecord | None:
-    kind = _kind(_column(row, "kind"))
+def _record(table: str, row: sqlite3.Row) -> tuple[SourceRecord | None, str | None]:
+    """Build one record, or say why the row could not become one.
+
+    `table` names the source table purely for the skip message - the row
+    itself carries no reliable way to say where it came from once it is a
+    bare `sqlite3.Row`, and a skip line that cannot name its table is not
+    reportable to a person deciding whether to go looking for it by hand.
+    """
+    raw_kind = _column(row, "kind")
+    kind = _kind(raw_kind)
     if kind is None:
-        return None
-    return SourceRecord(
-        source_id=str(row["id"]),
-        kind=kind,
-        project=_column(row, "project_name", "project"),
-        title=row["title"] or "(untitled)",
-        summary=(row["subtitle"] or None),
-        body=_body(row),
-        tags=(f"{NAMESPACE}-type:{row['type']}",) if row["type"] else (),
-        created_at=_when(row["created_at_epoch"]),
+        return None, f"{table} {row['id']}: unknown kind {raw_kind!r}"
+    return (
+        SourceRecord(
+            source_id=str(row["id"]),
+            kind=kind,
+            project=_column(row, "project_name", "project"),
+            title=row["title"] or "(untitled)",
+            summary=(row["subtitle"] or None),
+            body=_body(row),
+            tags=(f"{NAMESPACE}-type:{row['type']}",) if row["type"] else (),
+            created_at=_when(row["created_at_epoch"]),
+        ),
+        None,
     )
 
 

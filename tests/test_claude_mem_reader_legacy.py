@@ -93,7 +93,7 @@ def _by_kind(records, kind):
 
 
 def test_all_three_legacy_tables_are_read(tmp_path):
-    records = read(_legacy(tmp_path))
+    records = read(_legacy(tmp_path)).records
 
     assert len(_by_kind(records, SourceKind.OBSERVATION)) == 1
     assert len(_by_kind(records, SourceKind.SUMMARY)) == 1
@@ -101,7 +101,7 @@ def test_all_three_legacy_tables_are_read(tmp_path):
 
 
 def test_a_legacy_observation_maps_like_a_modern_one(tmp_path):
-    [obs] = _by_kind(read(_legacy(tmp_path)), SourceKind.OBSERVATION)
+    [obs] = _by_kind(read(_legacy(tmp_path)).records, SourceKind.OBSERVATION)
 
     assert obs.source_id == "1"
     assert obs.summary == "Mapped 80+ projects"
@@ -110,7 +110,7 @@ def test_a_legacy_observation_maps_like_a_modern_one(tmp_path):
 
 
 def test_a_summary_renders_its_five_fields(tmp_path):
-    [summary] = _by_kind(read(_legacy(tmp_path)), SourceKind.SUMMARY)
+    [summary] = _by_kind(read(_legacy(tmp_path)).records, SourceKind.SUMMARY)
 
     for expected in (
         "User invoked learn-codebase",
@@ -125,7 +125,7 @@ def test_a_summary_renders_its_five_fields(tmp_path):
 def test_prompts_are_grouped_into_one_record_per_session(tmp_path):
     """One entry per prompt would be near-empty entries competing in search
     against real memories. The sequence is the signal, not the string."""
-    [prompts] = _by_kind(read(_legacy(tmp_path)), SourceKind.PROMPT)
+    [prompts] = _by_kind(read(_legacy(tmp_path)).records, SourceKind.PROMPT)
 
     assert prompts.source_id == "prompts:sess-a"
     assert "/claude-mem:learn-codebase" in prompts.body
@@ -134,7 +134,7 @@ def test_prompts_are_grouped_into_one_record_per_session(tmp_path):
 
 def test_milliseconds_are_not_read_as_seconds(tmp_path):
     """Legacy epochs are milliseconds. Read as seconds they land in 1970."""
-    [obs] = _by_kind(read(_legacy(tmp_path)), SourceKind.OBSERVATION)
+    [obs] = _by_kind(read(_legacy(tmp_path)).records, SourceKind.OBSERVATION)
 
     assert obs.created_at is not None
     assert obs.created_at.year == 2026

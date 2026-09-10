@@ -89,7 +89,7 @@ def test_an_unrecognised_kind_is_dropped_not_raised(tmp_path):
         [_row("m1", "observation"), _row("m2", "from-a-future-schema")],
     )
 
-    records = read(db)
+    records = read(db).records
 
     assert [r.source_id for r in records] == ["m1"]
 
@@ -104,7 +104,24 @@ def test_dropping_one_bad_row_does_not_cost_the_good_rows_around_it(tmp_path):
         ],
     )
 
-    records = read(db)
+    records = read(db).records
 
     assert [r.source_id for r in records] == ["m1", "m3"]
     assert records[1].kind is SourceKind.SUMMARY
+
+
+def test_the_dropped_row_is_named_in_skipped_not_merely_dropped(tmp_path):
+    """Dropping a row silently leaves nobody able to say afterward that
+    anything was lost - `skipped` is what a later task reports as "N rows
+    skipped" without re-reading the source database to diff totals."""
+    db = _db(
+        tmp_path,
+        [_row("m1", "observation"), _row("m2", "from-a-future-schema")],
+    )
+
+    result = read(db)
+
+    assert len(result.skipped) == 1
+    assert "m2" in result.skipped[0]
+    assert "from-a-future-schema" in result.skipped[0]
+    assert "memory_items" in result.skipped[0]

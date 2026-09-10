@@ -72,7 +72,7 @@ def _modern(tmp_path: Path) -> Path:
 
 
 def test_an_observation_becomes_one_record(tmp_path):
-    [record] = read(_modern(tmp_path))
+    [record] = read(_modern(tmp_path)).records
 
     assert record.source_id == "m1"
     assert record.kind is SourceKind.OBSERVATION
@@ -83,7 +83,7 @@ def test_an_observation_becomes_one_record(tmp_path):
 def test_the_subtitle_becomes_the_summary(tmp_path):
     """claude-mem's subtitle is already a one-line hook written to sit under
     a title, which is exactly what remem's summary field is for."""
-    [record] = read(_modern(tmp_path))
+    [record] = read(_modern(tmp_path)).records
 
     assert record.summary == "Mapped 80+ projects across Python, Node and Terraform"
 
@@ -94,7 +94,7 @@ def test_facts_and_concepts_are_rendered_into_the_body(tmp_path):
     The body is half the embedding text and the bulk of the tsvector, so a
     serialised array here would be searched as punctuation, breaking recall.
     """
-    [record] = read(_modern(tmp_path))
+    [record] = read(_modern(tmp_path)).records
 
     # Prose substring containment (necessary but not sufficient)
     assert "comprehensive scan" in record.body
@@ -110,7 +110,7 @@ def test_facts_and_concepts_are_rendered_into_the_body(tmp_path):
 def test_facts_never_become_tags(tmp_path):
     """Tags are the highest-weighted tsvector field after the title, so a
     sentence in a tag distorts ranking for every query sharing a word."""
-    [record] = read(_modern(tmp_path))
+    [record] = read(_modern(tmp_path)).records
 
     assert record.tags == ("cmem-type:discovery",)
 
