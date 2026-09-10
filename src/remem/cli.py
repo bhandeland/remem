@@ -29,10 +29,11 @@ from remem.domain import (
     Query,
 )
 from remem.embed import EmbedderUnavailable, load_embedder
+from remem.importers import claude_mem
 from remem.project import repo_root, resolve_project, toplevel
 from remem.services import dedupe as dedupe_service
+from remem.services import import_, kb, write
 from remem.services import ingest as ingest_service
-from remem.services import kb, write
 from remem.services import memory as memory_service
 from remem.services.embed import backfill
 from remem.services.search import find
@@ -75,6 +76,9 @@ app.add_typer(dedupe_app, name="dedupe")
 
 reingest_app = typer.Typer(help="Automatic re-ingest of designated paths.")
 app.add_typer(reingest_app, name="reingest")
+
+import_app = typer.Typer(help="Import knowledge from another tool's store.")
+app.add_typer(import_app, name="import")
 
 
 def _default_project() -> str | None:
@@ -2197,6 +2201,65 @@ def _reingest_once(env: dict[str, str]) -> None:
         hookio.debug(env, f"re-ingest failed: {path}: {reason}")
     if result.embed_error:
         hookio.debug(env, f"re-ingest embed skipped: {result.embed_error}")
+
+
+@import_app.command("claude-mem")
+def import_claude_mem(
+    path: Annotated[str, typer.Argument(help="Path to claude-mem's sqlite file.")],
+    project: Annotated[Optional[str], typer.Option("--project")] = None,
+    dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
+):
+    """Load a claude-mem database in as entries with origin='imported'.
+
+    Re-runnable: an entry whose `cmem:<id>` tag is already present and whose
+    body is unchanged is skipped without a write. There is no orphan sweep -
+    a row deleted from claude-mem never deletes anything here, because the
+    source is being decommissioned and this is a migration, not a sync.
+    """
+    source = Path(path)
+    # read() runs before _session() opens a connection, deliberately: a
+    # file that is not a database should be refused without ever touching
+    # Postgres, the same ordering `remem ingest` uses for an unreadable path.
+    try:
+        result = claude_mem.read(source)
+    except claude_mem.UnreadableSource as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1)
+
+    try:
+        with _session() as s:
+            report = import_.run(
+                s.store,
+                s.owner.id,
+                result.records,
+                namespace=claude_mem.NAMESPACE,
+                project=project,
+                dry_run=dry_run,
+                skipped=result.skipped,
+            )
+    except import_.SchemaTooOld as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1)
+
+    if dry_run:
+        typer.echo("Dry run - nothing was written.")
+    for name, count in sorted(report.by_project.items()):
+        typer.echo(f"  {name}: {count}")
+    for name, count in sorted(report.by_kind.items()):
+        typer.echo(f"  {name}: {count}")
+    typer.echo(
+        f"{report.created} created, {report.updated} updated, "
+        f"{report.unchanged} unchanged"
+    )
+    # A row that could not be mapped is not a silent loss: it is named here,
+    # exactly as it was named in the reader, so a person can go decide by
+    # hand whether it mattered. This is the whole reason `skipped` exists.
+    if report.skipped:
+        typer.echo(f"{len(report.skipped)} skipped:")
+        for line in report.skipped:
+            typer.echo(f"  {line}")
+    if report.created or report.updated:
+        typer.echo("Run `remem embed` to give the new entries vectors.")
 
 
 @dedupe_app.command("report")

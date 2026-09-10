@@ -470,6 +470,75 @@ anchor with the same filename exists under another `src:` path,
 in the run row by the refresh. Nothing supersedes a twin automatically - a
 moved file and a document ingested twice look identical from here.
 
+### Importing claude-mem
+
+`remem import claude-mem <path>` reads claude-mem's sqlite file directly and
+writes its rows in as `Entry`s with `origin='imported'`. This is deliberately
+the opposite of `ingest`'s network-shaped worries: remem runs on the same
+machine that holds the file, so there is no transport to secure and
+therefore no `--host`, no remote mode, and nothing to authenticate. A path
+is the whole interface.
+
+- Identity is the `cmem:<id>` tag, playing exactly the role `src:`/`sec:`
+  plays for ingest: the same source row imported twice produces one entry,
+  not two, because `import_.run` looks the tag up before deciding whether to
+  create, supersede, or skip. `NAMESPACE` ("cmem") prefixes every tag this
+  importer mints, so a future Obsidian or other importer can never collide
+  with it on identity.
+- **No orphan sweep**, and that is the deliberate opposite of `ingest`'s
+  sweep-by-anchor behaviour. Ingest's source is a living directory that the
+  same run re-reads in full, so a heading that vanished from the file really
+  did vanish and superseding it is correct. An import's source is a tool
+  being decommissioned - nothing here re-reads claude-mem's rows on a
+  schedule, and a row a person deletes from it after the fact says nothing
+  about whether the knowledge it captured is still true. Deleting on their
+  behalf would be guessing; leaving the entry alone is not.
+- Session summaries become `kind=doc`, not `origin=handoff`, even though a
+  handoff is the closer-sounding concept. `remem handoff write` supersedes
+  the prior *live* handoff for the same `(project, topic)` on every write,
+  because a handoff is deliberately singular - only the newest is ever live,
+  the rest are history reachable only by asking for it. Importing fifteen
+  historical claude-mem summaries as handoffs under one topic would run that
+  invariant fifteen times in a row: fourteen of them would supersede each
+  other before a person ever saw them, and `search` excludes non-live
+  handoffs by default. A `doc` has no such singularity - all fifteen stay
+  independently live and independently searchable, which is what a migration
+  owes rows that already existed as distinct records on the other side.
+- User prompts become **one entry per session**, not one per prompt.
+  `claude_mem._prompts` groups by `content_session_id` and renders the
+  ordered numbered list as the body. A single prompt is frequently a slash
+  command - not knowledge on its own - and one entry each would be dozens of
+  near-empty entries competing in search against real memories. The
+  *sequence* of a session's prompts is the signal worth keeping, and that
+  only exists at the session grain.
+- `Origin.IMPORTED` is in `search.DEFAULT_ORIGINS` (searchable, same as
+  `EXTRACTED` and `INGESTED`) and deliberately not in `INJECTED_ORIGINS`
+  (never rendered into a context block, same reasoning as `EXTRACTED`) -
+  imported rows are somebody else's history, not this project's agreed
+  conventions, and `kb.pin` is still the way to promote one deliberately.
+  `DEFAULT_ORIGINS` must gain any future origin or that origin silently
+  vanishes from search - the same warning `ingest` and `extraction` both
+  carry, repeated here because it is exactly as true a third time.
+- Both the pre-33 (`observations` / `session_summaries` / `user_prompts`)
+  and schema-33-and-later (`memory_items`) shapes are read, chosen by
+  probing `sqlite_master` for the tables each shape has rather than by a
+  version column or a `--schema` flag: the version installed on whatever
+  machine produced this file cannot be verified from here, and refusing a
+  valid database because this importer guessed wrong about its age would be
+  a worse failure than reading two shapes.
+- A row `read()` cannot map - today, only an unrecognised `kind` value -
+  is not a crash and not a silent drop. It is named in `ReadResult.skipped`
+  (table, row id, and why) and carried through `import_.Report.skipped` to
+  the CLI, which prints the count and every line. A migration that drops
+  knowledge and never says so is unacceptable; a migration that names
+  exactly what it could not carry across is the honest version of the same
+  job.
+- No embedder is constructed here, for the same reason `ingest` and
+  `dedupe report` decline to build one: this command's job is to get rows
+  into Postgres, not to decide an ONNX session and a possible ~130MB
+  download belong to every import. `remem embed` fills in vectors
+  afterwards, and the CLI says so when it created or updated anything.
+
 ### Claude Code memory
 
 `remem memory sync` owns `~/.claude/projects/<cwd-slug>/memory/` - Claude
