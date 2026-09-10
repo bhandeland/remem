@@ -105,10 +105,16 @@ def _require_origin(store: Store, owner_id: UUID) -> None:
     that dies on its first row is worse than one that never starts."""
     try:
         store.search(Query(origins=[Origin.IMPORTED], limit=1), owner_id)
-    except Exception as exc:  # noqa: BLE001 - re-raised as a named error
+    except Exception as exc:  # noqa: BLE001 - reported, not swallowed
+        # The most common cause is a schema behind the code, but a dropped
+        # connection or permissions error is possible too. Name both the likely
+        # cause and the actual error so the user is not misdirected if they are
+        # staring at a different failure.
         raise SchemaTooOld(
-            "this database has no 'imported' origin, so migration 019 has not "
-            "been applied. Run `remem db up`, then import again."
+            f"could not probe the database (likely cause: migration 019 has not "
+            f"been applied, which adds the 'imported' origin): {exc}\n"
+            f"If the schema is current, check your database connection and try again. "
+            f"Otherwise run `remem db up`."
         ) from exc
 
 

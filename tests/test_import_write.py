@@ -127,9 +127,32 @@ def test_a_skipped_list_passed_in_arrives_on_the_report(store, owner):
 def test_a_schema_without_the_imported_origin_is_refused_by_name(conn, owner):
     """A new enum value cannot be USED in the transaction that added it, so
     a store one migration behind fails at the first write. The message must
-    name `remem db up`, not a psycopg type error."""
+    name `remem db up` for the genuine schema-too-old case, and also carry
+    the original database error so the user can see what actually happened."""
     conn.execute("alter type entry_origin rename value 'imported' to 'imported_x'")
     store = PostgresStore(conn)
 
     with pytest.raises(SchemaTooOld, match="remem db up"):
         run(store, owner.id, [_record()], namespace="cmem")
+
+
+def test_a_non_schema_probe_failure_surfaces_its_own_error(store, owner, monkeypatch):
+    """When the probe fails for a reason other than schema, that reason must
+    appear in the error message - not be hidden behind 'migration 019'.
+    A user staring at a connection fault must see the connection fault, not
+    be misdirected to `remem db up`."""
+    unrelated_error = RuntimeError("simulated connection lost")
+
+    def failing_search(*args, **kwargs):
+        raise unrelated_error
+
+    monkeypatch.setattr(store, "search", failing_search)
+
+    with pytest.raises(SchemaTooOld) as exc_info:
+        run(store, owner.id, [_record()], namespace="cmem")
+
+    # The original error text must be visible to the user, not swallowed
+    assert "simulated connection lost" in str(exc_info.value)
+    # The message still names the likely cause, but not as the only one
+    assert "likely cause" in str(exc_info.value)
+    assert "migration 019" in str(exc_info.value)
