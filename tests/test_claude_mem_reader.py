@@ -89,12 +89,22 @@ def test_the_subtitle_becomes_the_summary(tmp_path):
 
 
 def test_facts_and_concepts_are_rendered_into_the_body(tmp_path):
+    """Facts and concepts render as prose (bullet lists), not JSON.
+
+    The body is half the embedding text and the bulk of the tsvector, so a
+    serialised array here would be searched as punctuation, breaking recall.
+    """
     [record] = read(_modern(tmp_path))
 
+    # Prose substring containment (necessary but not sufficient)
     assert "comprehensive scan" in record.body
-    assert "Workspace occupies 75GB" in record.body
-    assert "80+ project directories" in record.body
-    assert "how-it-works: git repos are the unit" in record.body
+
+    # Shape assertion: facts render as a bullet list, not JSON
+    assert "## Facts\n\n- Workspace occupies 75GB" in record.body
+    assert "- 80+ project directories" in record.body
+
+    # Concepts also render as bullet list
+    assert "## Concepts\n\n- how-it-works: git repos are the unit" in record.body
 
 
 def test_facts_never_become_tags(tmp_path):
