@@ -35,6 +35,8 @@ def read(path: Path) -> list[SourceRecord]:
         tables = _tables(conn)
         if MODERN_TABLE in tables:
             return _read_modern(conn)
+        if set(LEGACY_TABLES) & tables:
+            return _read_legacy(conn, tables)
         raise UnreadableSource(
             f"{path} has none of the tables a claude-mem database has. "
             f"Looked for {MODERN_TABLE!r} (schema 33 and later) and "
@@ -67,15 +69,71 @@ def _read_modern(conn: sqlite3.Connection) -> list[SourceRecord]:
         "from memory_items m left join projects p on p.id = m.project_id "
         "order by m.created_at_epoch"
     )
-    return [_record(row) for row in rows]
+    return [r for r in (_record(row) for row in rows) if r is not None]
 
 
-def _record(row: sqlite3.Row) -> SourceRecord:
-    kind = SourceKind(row["kind"])
+def _read_legacy(conn: sqlite3.Connection, tables: set[str]) -> list[SourceRecord]:
+    """Pre-33 claude-mem: three tables, one per record kind.
+
+    Each table is optional - a database that never recorded a prompt simply
+    has no `user_prompts`, and refusing that would refuse a valid store.
+    """
+    conn.row_factory = sqlite3.Row
+    records: list[SourceRecord] = []
+    if "observations" in tables:
+        rows = conn.execute("select * from observations order by created_at_epoch")
+        records.extend(r for r in (_record(row) for row in rows) if r is not None)
+    if "session_summaries" in tables:
+        rows = conn.execute("select * from session_summaries order by created_at_epoch")
+        records.extend(_summary(row) for row in rows)
+    if "user_prompts" in tables:
+        rows = conn.execute("select * from user_prompts order by id")
+        records.extend(_prompts(list(rows)))
+    return records
+
+
+def _column(row: sqlite3.Row, *names: str):
+    """The first of `names` the row actually has. The modern reader joins
+    `projects` and yields `project_name`; the legacy tables carry `project`
+    inline. One accessor rather than two record builders."""
+    available = row.keys()
+    for name in names:
+        if name in available:
+            return row[name]
+    return None
+
+
+def _kind(raw_kind: str | None) -> SourceKind | None:
+    """Resolve a row's `kind`, tolerating a value the enum does not know.
+
+    This importer runs once, against a claude-mem version nobody has
+    verified in advance. A `kind` string is that tool's private vocabulary,
+    and a value added in some version between the fixtures this code was
+    built against is plausible, not exceptional - the same reasoning
+    `_json_list` already applies to one malformed column. Refusing the
+    whole import over one unclassifiable row would throw away the other
+    thousands of rows that read fine; returning `None` lets the caller
+    drop just that row instead. A missing `kind` (every legacy table except
+    `observations`, which has no such column at all) defaults to
+    `OBSERVATION` rather than being treated as unknown - it is absent by
+    schema, not malformed.
+    """
+    if not raw_kind:
+        return SourceKind.OBSERVATION
+    try:
+        return SourceKind(raw_kind)
+    except ValueError:
+        return None
+
+
+def _record(row: sqlite3.Row) -> SourceRecord | None:
+    kind = _kind(_column(row, "kind"))
+    if kind is None:
+        return None
     return SourceRecord(
         source_id=str(row["id"]),
         kind=kind,
-        project=row["project_name"],
+        project=_column(row, "project_name", "project"),
         title=row["title"] or "(untitled)",
         summary=(row["subtitle"] or None),
         body=_body(row),
@@ -120,6 +178,73 @@ def _json_list(raw: str | None) -> list[str]:
     if not isinstance(value, list):
         return []
     return [str(v) for v in value if str(v).strip()]
+
+
+#: The five fields a legacy session summary carries, in the order they are
+#: rendered. Spelled here rather than read off the row so that a column added
+#: upstream cannot silently reorder a body.
+SUMMARY_FIELDS: Final = (
+    ("request", "Request"),
+    ("investigated", "Investigated"),
+    ("learned", "Learned"),
+    ("completed", "Completed"),
+    ("next_steps", "Next steps"),
+)
+
+
+def _summary(row: sqlite3.Row) -> SourceRecord:
+    parts = []
+    for field, heading in SUMMARY_FIELDS:
+        value = (_column(row, field) or "").strip()
+        if value:
+            parts.append(f"## {heading}\n\n{value}")
+    session = _column(row, "memory_session_id") or row["id"]
+    return SourceRecord(
+        source_id=f"summary:{row['id']}",
+        kind=SourceKind.SUMMARY,
+        project=_column(row, "project_name", "project"),
+        title=f"Session summary {session}",
+        summary=None,
+        body="\n\n".join(parts),
+        tags=(),
+        created_at=_when(_column(row, "created_at_epoch")),
+    )
+
+
+def _prompts(rows: list[sqlite3.Row]) -> list[SourceRecord]:
+    """One record per session, not per prompt.
+
+    A single prompt is often a slash command - not knowledge, and one entry
+    each would be dozens of near-empty entries competing in search with real
+    memories. The ORDERED SEQUENCE of a session's prompts is the signal.
+    """
+    by_session: dict[str, list[sqlite3.Row]] = {}
+    for row in rows:
+        session = _column(row, "content_session_id") or "unknown"
+        by_session.setdefault(str(session), []).append(row)
+
+    records = []
+    for session, group in by_session.items():
+        lines = []
+        for n, row in enumerate(group, start=1):
+            text = (_column(row, "prompt_text") or "").strip()
+            if text:
+                lines.append(f"{n}. {text}")
+        if not lines:
+            continue
+        records.append(
+            SourceRecord(
+                source_id=f"prompts:{session}",
+                kind=SourceKind.PROMPT,
+                project=None,
+                title=f"Prompts from session {session}",
+                summary=None,
+                body="\n".join(lines),
+                tags=(),
+                created_at=_when(_column(group[0], "created_at_epoch")),
+            )
+        )
+    return records
 
 
 def _when(epoch: int | None) -> datetime | None:
