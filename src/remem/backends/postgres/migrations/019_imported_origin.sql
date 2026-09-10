@@ -1,0 +1,20 @@
+-- Knowledge imported from another tool is an ordinary entry with its own
+-- origin, so it can be searched, audited and (if an import goes wrong)
+-- removed as a set, without a second table.
+--
+-- Its own value rather than reusing 'extracted': both are machine-written,
+-- but 'extracted' means remem's own extractor produced this from events
+-- remem itself recorded. An imported entry came from a tool whose judgement
+-- remem cannot vouch for and whose store is being decommissioned. Collapsing
+-- the two would make a bad import indistinguishable from remem's own work
+-- for as long as the row lives.
+--
+-- This migration adds a value and writes NO row that carries it. That is
+-- required, not stylistic: as 005_handoff.sql records and 012_ingest_origins
+-- repeats, a value added by `add value` cannot be USED in the transaction
+-- that added it unless the type was created there too, and migrate() runs
+-- every pending migration in one transaction.
+--
+-- `if not exists` because a database migrated by a build that already
+-- carried this value must not fail here.
+alter type entry_origin add value if not exists 'imported';

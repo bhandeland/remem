@@ -33,6 +33,11 @@ class Origin(StrEnum):
     #: whose text is mostly source code that now lives in src/. Not in
     #: DEFAULT_ORIGINS; reachable with --archived.
     ARCHIVED = "archived"
+    #: Knowledge loaded from another tool's store by `remem import`. In
+    #: DEFAULT_ORIGINS, so it is searchable; deliberately NOT in
+    #: INJECTED_ORIGINS, so it never renders into a context block. See
+    #: docs/superpowers/specs/2026-09-09-claude-mem-import-design.md.
+    IMPORTED = "imported"
 
 
 #: Origins `kb.resolve` renders into the session context block - the only

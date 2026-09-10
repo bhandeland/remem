@@ -56,7 +56,13 @@ class SearchStore(Protocol):
 #: from search. The alternative - an `exclude_origins` field on Query - avoids
 #: that at the cost of a second overlapping filter in the store's SQL for one
 #: caller. Chosen deliberately; if a sixth origin appears, look here.
-DEFAULT_ORIGINS = [Origin.HUMAN, Origin.AGENT, Origin.EXTRACTED, Origin.INGESTED]
+DEFAULT_ORIGINS = [
+    Origin.HUMAN,
+    Origin.AGENT,
+    Origin.EXTRACTED,
+    Origin.INGESTED,
+    Origin.IMPORTED,
+]
 
 
 @final
