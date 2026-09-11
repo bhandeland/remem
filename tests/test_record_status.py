@@ -465,3 +465,93 @@ def test_status_carries_an_ingest_advisory(
 
     assert "! remem: last auto ingest" in events.render(report)
     assert events.to_dict(report)["ingest_advisories"] == lines
+
+
+def test_status_carries_a_knowledge_base_budget_advisory(
+    store: PostgresStore, owner: Principal
+) -> None:
+    """The only place a dead context block can be reported.
+
+    `RulesExceedBudget` is raised inside `kb.render`, whose callers are all
+    hooks bound by a fail-soft contract to exit 0 and print nothing, so
+    injection dies on every harness at once in total silence. `record
+    status` is already the fail-loud half of that pipeline.
+    """
+    from remem.domain import CollectionQuery, Kind
+    from remem.services import kb
+
+    kb.create(
+        store,
+        owner.id,
+        slug="fat",
+        title="Fat",
+        project="fat",
+        query=CollectionQuery(project="fat"),
+    )
+    for i in range(6):
+        write.remember(
+            store,
+            owner.id,
+            title=f"rule {i}",
+            body="the incident",
+            kind=Kind.RULE,
+            project="fat",
+            summary="x" * 300,
+        )
+    lines = kb.budget_advisories(store, owner.id, max_chars=800)
+    assert lines
+
+    report = events.status(store, owner.id, idle_seconds=IDLE, kb_advisories=lines)
+
+    assert "! knowledge base 'fat'" in events.render(report)
+    assert events.to_dict(report)["kb_advisories"] == lines
+
+
+def test_record_status_reports_an_over_budget_knowledge_base(
+    live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """End to end, because the wiring is the whole point.
+
+    A service that computes the advisory and a frontend that never asks
+    for it is exactly the state this feature was built to leave: correct,
+    and silent.
+    """
+    import psycopg
+
+    from remem.domain import CollectionQuery, Kind
+    from remem.services import kb
+
+    with psycopg.connect(live_dsn) as conn:
+        migrate(conn)
+        s = PostgresStore(conn)
+        live_owner = s.ensure_principal("brandon")
+        kb.create(
+            s,
+            live_owner.id,
+            slug="fat",
+            title="Fat",
+            project="fat",
+            query=CollectionQuery(project="fat"),
+        )
+        for i in range(6):
+            write.remember(
+                s,
+                live_owner.id,
+                title=f"rule {i}",
+                body="the incident",
+                kind=Kind.RULE,
+                project="fat",
+                summary="x" * 300,
+            )
+        conn.commit()
+
+    monkeypatch.setenv("REMEM_DSN", live_dsn)
+    monkeypatch.setenv("REMEM_USER_ID", "brandon")
+    monkeypatch.setenv("REMEM_CONFIG", str(tmp_path / "none.toml"))
+    monkeypatch.setenv("REMEM_MAX_CHARS", "800")
+
+    result = runner.invoke(app, ["record", "status"])
+
+    assert result.exit_code == 0
+    assert "knowledge base 'fat'" in result.stdout
+    assert "not being injected" in result.stdout

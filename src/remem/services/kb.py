@@ -18,16 +18,39 @@ from remem.store import Store
 
 RESOLVE_LIMIT = 200
 
+#: The fraction of the budget at which `budget_advisories` starts warning.
+#:
+#: The hard failure is worth reporting, but by the time it fires injection
+#: has already been dead in every session since the rule that tipped it over
+#: was written - and nothing said so, because every injection path is
+#: fail-soft. The value of this advisory is almost entirely in the warning
+#: that comes before it, so there is one. 0.8 is a judgement, not a
+#: measurement: it is far enough back that a single ordinary rule (a title
+#: and a one-line summary, a few hundred characters against a default
+#: budget in the tens of thousands) cannot cross the whole gap from silent
+#: to dead, and close enough that a knowledge base which has simply been
+#: small all along never mentions itself.
+BUDGET_WARN_FRACTION = 0.8
+
+#: Every advisory line ends with this, as ingest's and memory's do. `kb
+#: show --full` is the command that names which rules are costing what,
+#: which is the thing a person has to see before they can prune one.
+BUDGET_POINTER = "see: remem kb show {slug} --full"
+
 __all__ = [
+    "BUDGET_POINTER",
+    "BUDGET_WARN_FRACTION",
     "CollectionNotFound",
     "EntryNotFound",
     "RulesExceedBudget",
     "advisories",
+    "budget_advisories",
     "create",
     "get",
     "pin",
     "render",
     "resolve",
+    "rules_chars",
     "set_query",
 ]
 
@@ -194,24 +217,101 @@ def _content(entry: Entry) -> str:
     return ""
 
 
-def render(collection: Collection, entries: list[Entry], max_chars: int) -> str:
-    """Render a knowledge base as a context block.
+def _header_and_rules(collection: Collection, entries: list[Entry]) -> list[str]:
+    """The parts of a block that are never dropped, in order.
 
-    Rules first and never truncated; then other entries, whole ones only,
-    until the budget runs out; then an explicit count of what was dropped.
+    Factored out of `render` so that `rules_chars` - and therefore
+    `budget_advisories` - measures the literal same characters the raise
+    site counts, rather than a second implementation that agrees with it
+    today. Two copies of this arithmetic drifting apart would mean the
+    advisory reporting healthy on a knowledge base that is raising, which
+    is the one failure the advisory exists to make impossible.
     """
     header = f"# {collection.title}\n"
     if collection.description:
         header += f"\n{collection.description}\n"
 
     rules = [e for e in entries if e.kind == Kind.RULE]
-    others = [e for e in entries if e.kind != Kind.RULE]
-
     parts = [header]
     if rules:
         parts.append("\n## Rules\n")
         parts.extend(_render_entry(e) for e in rules)
+    return parts
 
+
+def rules_chars(collection: Collection, entries: list[Entry]) -> int:
+    """What this knowledge base spends of the budget before it spends any
+    of it on notes: the header plus every rule, rendered.
+
+    This, and not the length of the rendered block, is the number that
+    predicts the failure. Rules never truncate and notes are dropped whole
+    to make room, so the block that ships is capped at the budget by
+    construction and can never measure over it - a length-based check
+    reports healthy on a knowledge base that is silently losing every note
+    it has, and goes on reporting healthy right up to the moment injection
+    dies. Only this quantity moves, and only pruning rules moves it back.
+    """
+    return sum(len(p) for p in _header_and_rules(collection, entries))
+
+
+def budget_advisories(
+    store: Store,
+    owner_id: UUID,
+    max_chars: int,
+    *,
+    warn_fraction: float = BUDGET_WARN_FRACTION,
+) -> list[str]:
+    """One line per knowledge base whose rules are crowding the budget.
+
+    For `remem record status`, the fail-loud half of a fail-soft pipeline,
+    which already carries the doctor, ingest and memory advisories the same
+    way. This is the only place the failure can be told: `RulesExceedBudget`
+    is raised inside `render`, and every caller of `render` that matters is
+    a hook which by hard contract exits 0 and prints nothing - so when a
+    knowledge base outgrows the budget, context injection dies on Claude
+    Code, opencode and Cursor at once, with no output anywhere. It has
+    happened in this repository.
+
+    Deliberately not in `remem doctor`: doctor reads files and opens no
+    database, so that a diagnostic still works when the system does not,
+    and this question cannot be answered without resolving a collection.
+
+    Two tiers, both rendered the same way, because a reader scanning
+    `record status` needs the difference in the sentence rather than in a
+    field: over the budget says injection is already dead, near it says it
+    is about to be.
+    """
+    lines: list[str] = []
+    for collection in store.list_collections(owner_id):
+        entries = resolve(store, owner_id, collection.slug)
+        used = rules_chars(collection, entries)
+        pointer = BUDGET_POINTER.format(slug=collection.slug)
+        if used > max_chars:
+            lines.append(
+                f"knowledge base '{collection.slug}': its rules and header "
+                f"need {used} chars against a {max_chars} budget, so its "
+                f"context block is not being injected in any session - "
+                f"prune rules from it or raise REMEM_MAX_CHARS - {pointer}"
+            )
+        elif used >= max_chars * warn_fraction:
+            lines.append(
+                f"knowledge base '{collection.slug}': its rules and header "
+                f"use {used} of a {max_chars} budget, and once they pass it "
+                f"context injection stops silently in every session - prune "
+                f"rules from it or raise REMEM_MAX_CHARS - {pointer}"
+            )
+    return lines
+
+
+def render(collection: Collection, entries: list[Entry], max_chars: int) -> str:
+    """Render a knowledge base as a context block.
+
+    Rules first and never truncated; then other entries, whole ones only,
+    until the budget runs out; then an explicit count of what was dropped.
+    """
+    others = [e for e in entries if e.kind != Kind.RULE]
+
+    parts = _header_and_rules(collection, entries)
     used = sum(len(p) for p in parts)
     if used > max_chars:
         raise RulesExceedBudget(
