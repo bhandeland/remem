@@ -12,6 +12,7 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Final
+from urllib.parse import quote
 
 from remem.importers.base import ReadResult, SourceKind, SourceRecord
 
@@ -34,7 +35,19 @@ def read(path: Path) -> ReadResult:
     try:
         tables = _tables(conn)
         if MODERN_TABLE in tables:
-            return _read_modern(conn)
+            result = _read_modern(conn)
+            # `memory_items.legacy_observation_id` is direct evidence that a
+            # v33 database can be one migrated in place from the pre-33
+            # shape - claude-mem's own migration is not guaranteed to have
+            # dropped the old tables. Reading both risks double-importing
+            # rows the migration already copied into `memory_items`, so
+            # these are named rather than read: silence is the one outcome
+            # `skipped` exists to prevent, and it is worse than either
+            # choice here.
+            leftover = set(LEGACY_TABLES) & tables
+            if leftover:
+                result.skipped.extend(_unread_legacy_counts(conn, leftover))
+            return result
         if set(LEGACY_TABLES) & tables:
             return _read_legacy(conn, tables)
         raise UnreadableSource(
@@ -46,9 +59,34 @@ def read(path: Path) -> ReadResult:
         conn.close()
 
 
+def _unread_legacy_counts(conn: sqlite3.Connection, leftover: set[str]) -> list[str]:
+    """Name each legacy table a modern read left untouched, with its row
+    count, so a person deciding whether that matters does not have to open
+    the database by hand to find out. `leftover` only ever holds names drawn
+    from `LEGACY_TABLES`, a module constant - never a value read out of the
+    database - so building the query with an f-string here carries none of
+    the risk `sqltext.as_sql` exists to name."""
+    lines = []
+    for table in LEGACY_TABLES:
+        if table not in leftover:
+            continue
+        (count,) = conn.execute(f"select count(*) from {table}").fetchone()
+        lines.append(
+            f"{table}: {count} row(s) not read - this database also has "
+            f"{MODERN_TABLE!r}, and reading both risks double-importing rows "
+            f"the migration to it already copied across"
+        )
+    return lines
+
+
 def _open(path: Path) -> sqlite3.Connection:
     try:
-        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        # `path` becomes part of a `file:` URI, where `?` and `#` are
+        # syntax (query string, fragment) rather than literal path
+        # characters - quote() escapes them so a path containing either
+        # is not mis-parsed into the wrong file or a bad query param.
+        uri = f"file:{quote(str(path))}?mode=ro"
+        conn = sqlite3.connect(uri, uri=True)
         # connect() is lazy, so a non-database file is only discovered on
         # the first read. Force it here, where the path is still in hand.
         conn.execute("select count(*) from sqlite_master")
@@ -63,6 +101,19 @@ def _tables(conn: sqlite3.Connection) -> set[str]:
 
 
 def _read_modern(conn: sqlite3.Connection) -> ReadResult:
+    """schema 33 and later: one table, `kind` tells rows apart.
+
+    `kind='prompt'` rows are pulled out and grouped through `_prompts`
+    before anything else touches them - the spec's "one entry per session,
+    never one per prompt" rule is schema-neutral, and routing them through
+    `_record` instead (as this function used to) would mint one near-empty
+    entry per prompt, exactly what the spec rejects. Every other kind still
+    goes through `_record` unchanged: `_body`'s narrative/text/facts/concepts
+    rendering is already schema-neutral prose, and a `kind='summary'` row
+    here has no `request`/`investigated`/`learned`/`completed`/`next_steps`
+    columns to render as `_summary` does for the legacy shape - `_record`'s
+    rendering is the only mapping that shape has to give.
+    """
     conn.row_factory = sqlite3.Row
     rows = conn.execute(
         "select m.*, p.name as project_name "
@@ -71,12 +122,17 @@ def _read_modern(conn: sqlite3.Connection) -> ReadResult:
     )
     records: list[SourceRecord] = []
     skipped: list[str] = []
+    prompt_rows: list[sqlite3.Row] = []
     for row in rows:
+        if _column(row, "kind") == SourceKind.PROMPT.value:
+            prompt_rows.append(row)
+            continue
         record, skip = _record(MODERN_TABLE, row)
         if record is not None:
             records.append(record)
         if skip is not None:
             skipped.append(skip)
+    records.extend(_prompts(prompt_rows))
     return ReadResult(records=records, skipped=skipped)
 
 
@@ -244,17 +300,24 @@ def _prompts(rows: list[sqlite3.Row]) -> list[SourceRecord]:
     A single prompt is often a slash command - not knowledge, and one entry
     each would be dozens of near-empty entries competing in search with real
     memories. The ORDERED SEQUENCE of a session's prompts is the signal.
+
+    Schema-neutral by construction, via `_column`'s name-fallback: the
+    legacy `user_prompts` table has `content_session_id`/`prompt_text`, the
+    modern `memory_items` table has `server_session_id`/`text` for a
+    `kind='prompt'` row. The grouping rule is the same rule either way, so
+    it lives here once rather than being re-derived per schema - the same
+    reasoning `_column` already applies to `project_name`/`project`.
     """
     by_session: dict[str, list[sqlite3.Row]] = {}
     for row in rows:
-        session = _column(row, "content_session_id") or "unknown"
+        session = _column(row, "content_session_id", "server_session_id") or "unknown"
         by_session.setdefault(str(session), []).append(row)
 
     records = []
     for session, group in by_session.items():
         lines = []
         for n, row in enumerate(group, start=1):
-            text = (_column(row, "prompt_text") or "").strip()
+            text = (_column(row, "prompt_text", "text") or "").strip()
             if text:
                 lines.append(f"{n}. {text}")
         if not lines:
