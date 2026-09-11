@@ -9,6 +9,7 @@ rename and that outcome - the counterpart to tests/test_opencode_event.py.
 from __future__ import annotations
 
 import subprocess
+from typing import Any
 
 from remem.agents.cursor.adapter import ROOT_KEY, SESSION_KEY, CursorAdapter
 from remem.domain import EventKind
@@ -25,7 +26,7 @@ def test_the_payload_keys_are_the_ones_cursor_sends():
     assert ROOT_KEY == "workspace_roots"
 
 
-def _payload(hook: str, tmp_path, **extra) -> dict:
+def _payload(hook: str, tmp_path, **extra) -> dict[str, Any]:
     # Literal key names, not SESSION_KEY/ROOT_KEY - see the test above.
     # Building this from the adapter's own constants would make every test
     # in this file pass even if both constants were renamed to garbage,

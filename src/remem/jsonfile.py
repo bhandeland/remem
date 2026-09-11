@@ -16,6 +16,7 @@ import json
 import shutil
 import time
 from pathlib import Path
+from typing import Any
 
 
 def backup(path: Path) -> Path:
@@ -46,7 +47,7 @@ def backup_once(path: Path, backed_up: set[Path]) -> Path | None:
     return None
 
 
-def read_json(path: Path, backed_up: set[Path]) -> tuple[dict, list[str]]:
+def read_json(path: Path, backed_up: set[Path]) -> tuple[dict[str, Any], list[str]]:
     if not path.exists():
         return {}, []
     raw = path.read_text()
@@ -60,7 +61,7 @@ def read_json(path: Path, backed_up: set[Path]) -> tuple[dict, list[str]]:
         ]
 
 
-def read_document(path: Path) -> dict:
+def read_document(path: Path) -> dict[str, Any]:
     """Read a JSON object, tolerating everything, writing nothing.
 
     Deliberately NOT `read_json`: that helper backs a corrupt file up before
@@ -91,7 +92,7 @@ def read_document(path: Path) -> dict:
     return loaded if isinstance(loaded, dict) else {}
 
 
-def write_json(path: Path, data: dict, backed_up: set[Path]) -> Path | None:
+def write_json(path: Path, data: dict[str, Any], backed_up: set[Path]) -> Path | None:
     """Write data, backing the existing file up first. Returns the backup."""
     made = backup_once(path, backed_up)
     path.parent.mkdir(parents=True, exist_ok=True)

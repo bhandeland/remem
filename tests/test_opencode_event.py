@@ -8,6 +8,7 @@ by design.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -26,7 +27,7 @@ def repo(tmp_path):
 
 
 def test_tool_call_becomes_a_tool_call_event(repo):
-    payload = {
+    payload: dict[str, Any] = {
         "hook": "tool.execute.after",
         "sessionID": "ses_abc123",
         "cwd": str(repo),

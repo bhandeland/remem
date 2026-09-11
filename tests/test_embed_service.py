@@ -5,6 +5,8 @@ idempotency and what happens when the model chokes on one batch - none of
 which needs real embeddings, all of which needs to be exercised.
 """
 
+from typing import override
+
 import pytest
 
 from remem.backends.postgres.migrate import migrate
@@ -31,6 +33,7 @@ class FakeEmbedder:
 
 
 class BrokenEmbedder(FakeEmbedder):
+    @override
     def embed(self, texts):
         raise RuntimeError("model exploded")
 
@@ -157,7 +160,11 @@ def test_a_second_embed_run_does_nothing_while_the_lock_is_held(
     monkeypatch.setenv("REMEM_USER_ID", "brandon")
     monkeypatch.setenv("REMEM_CONFIG", str(tmp_path / "none.toml"))
     embedder = FakeEmbedder()
-    monkeypatch.setattr("remem.cli.load_embedder", lambda model: embedder)
+
+    def fake_load_embedder(model: str) -> FakeEmbedder:
+        return embedder
+
+    monkeypatch.setattr("remem.cli.load_embedder", fake_load_embedder)
 
     holder = psycopg.connect(live_dsn)
     try:

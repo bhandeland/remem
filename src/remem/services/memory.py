@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import StrEnum
 from pathlib import Path
+from typing import Any
 from uuid import UUID
 
 from remem import memory_file
@@ -1080,7 +1081,7 @@ def render_run(run: MemoryRun | None) -> str:
     return f"  last sync {run.trigger} {when}: {counts}"
 
 
-def _run_to_dict(run: MemoryRun | None) -> dict | None:
+def _run_to_dict(run: MemoryRun | None) -> dict[str, Any] | None:
     """`MemoryRun` as plain JSON. Mirrors `ingest._run_to_dict`, including
     the raw `.isoformat()`: `render_run` converts to local time because a
     person reads it beside `reingest status`, but an ISO string carries its
@@ -1105,7 +1106,7 @@ def _run_to_dict(run: MemoryRun | None) -> dict | None:
     }
 
 
-def status_to_dict(st: Status) -> dict:
+def status_to_dict(st: Status) -> dict[str, Any]:
     """One object, not a list - and that is the deliberate departure from
     `ingest.status_to_dict`, which returns a list because `reingest status`
     sweeps every designated project. This command resolves exactly one, so

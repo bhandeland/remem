@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+from typing import NoReturn
+
 import pytest
 
 from remem.backends.postgres.migrate import migrate
@@ -77,11 +80,11 @@ def test_the_trigger_is_recorded_as_given(store, tmp_path):
 def test_an_exception_is_recorded_and_re_raised(store, tmp_path, monkeypatch):
     owner = store.ensure_principal("run-boom")
     _designate(store, owner.id, "p", tmp_path)
-    monkeypatch.setattr(
-        memory_service,
-        "load_watermarks",
-        lambda directory: (_ for _ in ()).throw(OSError("disk gone")),
-    )
+
+    def unreadable(directory: Path) -> NoReturn:
+        raise OSError("disk gone")
+
+    monkeypatch.setattr(memory_service, "load_watermarks", unreadable)
 
     with pytest.raises(OSError):
         memory_service.sync(store, owner.id, project="p", directory=tmp_path)

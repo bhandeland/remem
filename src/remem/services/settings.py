@@ -17,7 +17,7 @@ import warnings
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import Mapping
+from typing import Any, Mapping
 
 import tomli_w
 
@@ -311,7 +311,7 @@ def route(key: str, table: Mapping[str, EnvVar]) -> tuple[Target, EnvVar]:
     raise UnknownSetting(f"unknown setting '{key}'. Supported: {supported}")
 
 
-def _read_toml(path: Path) -> dict:
+def _read_toml(path: Path) -> dict[str, Any]:
     """remem's config.toml, or an empty dict if it is missing or broken.
 
     Same posture as config.load(): a file remem cannot parse must not be a
@@ -404,8 +404,11 @@ def write_agent(path: Path, key: str, value: str | None) -> Path | None:
     backed_up: set[Path] = set()
     made = jsonfile.backup_once(path, backed_up)
     data, _ = jsonfile.read_json(path, backed_up)
-    env_block = data.get("env")
-    if not isinstance(env_block, dict):
+    env_block: dict[str, Any]
+    found = data.get("env")
+    if isinstance(found, dict):
+        env_block = found
+    else:
         # settings.json is a file remem does not own, and every other touch
         # of it degrades rather than raising. A hand-corrupted file can have
         # "env" set to something other than a dict (e.g. "env": "yes"); a
@@ -505,7 +508,7 @@ def resolve_targets(adapter: object, home: Path, env: Mapping[str, str]) -> Targ
         return Targets(remem_path, None, {})
 
 
-def _agent_env(path: Path | None) -> dict:
+def _agent_env(path: Path | None) -> dict[str, Any]:
     if path is None:
         return {}
     data, _ = jsonfile.read_json(path, set())

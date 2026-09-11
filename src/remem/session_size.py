@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import time
 from pathlib import Path
+from typing import Any
 
 from platformdirs import user_cache_path
 
@@ -52,7 +53,7 @@ def state_path() -> Path:
     return user_cache_path("remem") / "session-size.json"
 
 
-def _load(path: Path) -> dict:
+def _load(path: Path) -> dict[str, Any]:
     try:
         data = json.loads(path.read_text())
     except OSError, ValueError:
@@ -81,9 +82,8 @@ def record_warned(
     path = path or state_path()
     now = time.time() if now is None else now
     data = _load(path)
-    sessions = data.get("sessions")
-    if not isinstance(sessions, dict):
-        sessions = {}
+    found = data.get("sessions")
+    sessions: dict[str, Any] = found if isinstance(found, dict) else {}
     sessions[session_id] = {"count": int(count), "at": now}
     # Pruned on write rather than on a schedule: nothing else ever opens this
     # file, so this is the only moment it can be trimmed.

@@ -26,6 +26,10 @@ def test_remember_then_recall(env):
     assert "id" in result
 
     hits = recall_tool(query="work_mem")
+    # recall_tool returns hits OR an error dict. Nothing may index the
+    # result until it is known to be the hits, and asserting that is what
+    # separates "no results" from "the tool refused the call".
+    assert isinstance(hits, list)
     assert hits[0]["title"] == "Postgres tuning"
     assert "snippet" in hits[0]
 
@@ -55,7 +59,9 @@ def test_supersede_hides_the_old_entry_from_recall(env):
 
     old = remember_tool(title="Fridays", body="deploy fridays")
     supersede_tool(entry_id=old["id"], title="Tuesdays", body="deploy tuesdays")
-    assert [h["title"] for h in recall_tool(query="deploy")] == ["Tuesdays"]
+    hits = recall_tool(query="deploy")
+    assert isinstance(hits, list)
+    assert [h["title"] for h in hits] == ["Tuesdays"]
 
 
 def _legacy_rule(dsn, title):

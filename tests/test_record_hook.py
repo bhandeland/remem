@@ -12,6 +12,8 @@ to be.
 
 import io
 import json
+from collections.abc import Mapping
+from typing import Any
 
 import psycopg
 import pytest
@@ -55,9 +57,12 @@ def test_the_hook_refuses_to_recurse_inside_an_extraction_child(monkeypatch, cap
     events, which the next extraction would then read - an unbounded loop.
     """
     calls = []
+
+    def fake_event(self, env: Mapping[str, str], payload: dict[str, Any]) -> None:
+        calls.append(1)
+
     monkeypatch.setattr(
-        "remem.agents.claude_code.adapter.ClaudeCodeAdapter.event",
-        lambda self, env, payload: calls.append(1),
+        "remem.agents.claude_code.adapter.ClaudeCodeAdapter.event", fake_event
     )
     hook.record_event(
         _payload("/tmp/whatever"), env={CHILD_ENV_VAR: "1", "REMEM_HOOK_DEBUG": "1"}

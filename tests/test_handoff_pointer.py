@@ -1,4 +1,5 @@
 import json
+from collections.abc import Mapping
 
 import pytest
 
@@ -20,15 +21,17 @@ def live(live_dsn, monkeypatch, tmp_path):
     with psycopg.connect(live_dsn) as c:
         migrate(c)
         c.commit()
+
     # session_start spawns three detached `remem` processes in a `finally` on
     # every path. Pointed at this live test database they outlive the test
     # and race conftest's truncate-cascade for table locks - the same
     # deadlock test_hook_context_cli.py's env fixture stubs against.
-    monkeypatch.setattr(
-        "remem.agents.claude_code.hook.spawn_process", lambda env: False
-    )
-    monkeypatch.setattr("remem.agents.claude_code.hook.spawn_ingest", lambda env: False)
-    monkeypatch.setattr("remem.agents.claude_code.hook.spawn_memory", lambda env: False)
+    def no_spawn(env: Mapping[str, str]) -> bool:
+        return False
+
+    monkeypatch.setattr("remem.agents.claude_code.hook.spawn_process", no_spawn)
+    monkeypatch.setattr("remem.agents.claude_code.hook.spawn_ingest", no_spawn)
+    monkeypatch.setattr("remem.agents.claude_code.hook.spawn_memory", no_spawn)
     return {
         "REMEM_DSN": live_dsn,
         "REMEM_USER_ID": "brandon",

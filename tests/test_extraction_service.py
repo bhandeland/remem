@@ -17,7 +17,7 @@ import pytest
 from remem.agents.base import HarnessEvent
 from remem.backends.postgres.migrate import migrate
 from remem.backends.postgres.store import PostgresStore
-from remem.domain import EventKind, JobStatus, Kind, Origin, Query, new_id
+from remem.domain import Event, EventKind, JobStatus, Kind, Origin, Query, new_id
 from remem.extract.base import (
     ExtractedEntry,
     ExtractionFailed,
@@ -93,7 +93,7 @@ class FakeExtractor:
     def __init__(self, entries=None, error=None):
         self.entries = entries or []
         self.error = error
-        self.seen: list[list] = []
+        self.seen: list[list[Event]] = []
         self.known: list[list[str]] = []
 
     def extract(self, events, project, known_titles=None):
@@ -474,7 +474,7 @@ def test_an_extractor_without_known_titles_support_still_works(store, owner):
     three_events(store, owner)
 
     class TwoArg:
-        def extract(self, events, project):
+        def extract(self, events, project) -> list[ExtractedEntry]:
             return []
 
     # cast because a two-argument extractor is deliberately NOT assignable to

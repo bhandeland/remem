@@ -2,22 +2,30 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from remem.domain import Kind
 from remem.importers.base import SourceKind, SourceRecord
 from remem.services.import_ import plan
 
+# Built as a real SourceRecord and varied with `replace`, not assembled in a
+# dict and splatted in. A `dict(...)` of heterogeneous values widens to
+# `dict[str, SourceKind | str | tuple[str]]`, so `**base` offers that union to
+# every parameter and the call stops being checkable at all - which is exactly
+# the signature-drift a test helper should be the first thing to catch.
+_BASE = SourceRecord(
+    source_id="m1",
+    kind=SourceKind.OBSERVATION,
+    project="at-workspace",
+    title="A title",
+    summary="A hook",
+    body="A body",
+    tags=("cmem-type:discovery",),
+)
+
 
 def _record(**kw) -> SourceRecord:
-    base = dict(
-        source_id="m1",
-        kind=SourceKind.OBSERVATION,
-        project="at-workspace",
-        title="A title",
-        summary="A hook",
-        body="A body",
-        tags=("cmem-type:discovery",),
-    )
-    return SourceRecord(**{**base, **kw})
+    return replace(_BASE, **kw)
 
 
 def test_an_observation_becomes_a_note():

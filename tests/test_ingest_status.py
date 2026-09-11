@@ -7,6 +7,7 @@ states are tested without a database.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -34,16 +35,17 @@ def _run(**kw) -> IngestRun:
     return IngestRun(**base)
 
 
+_BASE_STATUS = ingest.ProjectIngestStatus(
+    project="remem",
+    designations=[IngestDesignation("remem", ("docs/specs", "docs/notes"))],
+    last_run=None,
+    checked_against=None,
+    missing=[],
+)
+
+
 def _status(**kw) -> ingest.ProjectIngestStatus:
-    base = dict(
-        project="remem",
-        designations=[IngestDesignation("remem", ("docs/specs", "docs/notes"))],
-        last_run=None,
-        checked_against=None,
-        missing=[],
-    )
-    base.update(kw)
-    return ingest.ProjectIngestStatus(**base)
+    return replace(_BASE_STATUS, **kw)
 
 
 # ---- pure ----

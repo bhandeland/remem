@@ -240,7 +240,10 @@ def test_install_with_project_scope_exits_nonzero(monkeypatch, tmp_path):
     is rejected before any file is written anyway."""
     import pathlib
 
-    monkeypatch.setattr(pathlib.Path, "home", classmethod(lambda cls: tmp_path))
+    def fake_home(cls: type[pathlib.Path]) -> pathlib.Path:
+        return tmp_path
+
+    monkeypatch.setattr(pathlib.Path, "home", classmethod(fake_home))
     r = runner.invoke(app, ["install", "claude-code", "--scope", "project"])
     assert r.exit_code != 0
     assert "user" in r.stderr

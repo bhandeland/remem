@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from typing import Any
 from uuid import UUID
 
 from remem.config import load as load_config
@@ -270,7 +271,7 @@ def render(report: StatusReport) -> str:
     return "\n".join(lines)
 
 
-def to_dict(report: StatusReport) -> dict:
+def to_dict(report: StatusReport) -> dict[str, Any]:
     """The `--json` half of `render`. Same `StatusReport`, same numbers."""
     return {
         "extract_model": report.extract_model,

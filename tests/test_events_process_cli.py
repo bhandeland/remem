@@ -243,7 +243,7 @@ def test_the_run_uses_the_configured_model(env, monkeypatch):
         def __init__(self, *args, **kwargs):
             seen.update(kwargs)
 
-        def extract(self, events, project, known_titles=None):
+        def extract(self, events, project, known_titles=None) -> list[ExtractedEntry]:
             return []
 
     _record(env, "remem", "s1", "anything")

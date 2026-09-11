@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
+from typing import Any
 from uuid import UUID, uuid7
 
 
@@ -133,7 +134,7 @@ class CollectionQuery:
     def is_empty(self) -> bool:
         return not self.tags and not self.kinds and self.project is None
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "tags": list(self.tags),
             "kinds": [str(k) for k in self.kinds],
@@ -141,7 +142,7 @@ class CollectionQuery:
         }
 
     @classmethod
-    def from_dict(cls, data: dict | None) -> CollectionQuery:
+    def from_dict(cls, data: dict[str, Any] | None) -> CollectionQuery:
         data = data or {}
         return cls(
             tags=list(data.get("tags") or []),
@@ -222,8 +223,8 @@ class IngestRun:
     unchanged: int = 0
     swept: int = 0
     embedded: int = 0
-    failures: list[dict] = field(default_factory=list)
-    twins: list[dict] = field(default_factory=list)
+    failures: list[dict[str, Any]] = field(default_factory=list)
+    twins: list[dict[str, Any]] = field(default_factory=list)
     embed_error: str | None = None
 
 
@@ -258,7 +259,7 @@ class MemoryRun:
     renamed: list[list[str]] = field(default_factory=list)
     conflicts: list[str] = field(default_factory=list)
     sidecars: list[str] = field(default_factory=list)
-    failures: list[dict] = field(default_factory=list)
+    failures: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -355,7 +356,7 @@ class Event:
     harness: str
     session_id: str
     kind: EventKind
-    payload: dict
+    payload: dict[str, Any]
     tool: str | None = None
     occurred_at: datetime | None = None
     recorded_at: datetime | None = None

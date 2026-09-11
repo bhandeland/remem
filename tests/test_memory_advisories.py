@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from remem.backends.postgres.migrate import migrate
@@ -35,7 +37,7 @@ def _designate(store, owner_id, project, directory):
 
 def _finished(store, owner_id, project, trigger=MemoryTrigger.MANUAL, **kw):
     run = store.start_memory_run(owner_id, project, trigger)
-    base = dict(
+    base: dict[str, Any] = dict(
         adopted=0,
         healed=0,
         edited=0,

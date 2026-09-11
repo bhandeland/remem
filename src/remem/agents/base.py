@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import Mapping, Protocol
+from typing import Any, Mapping, Protocol
 
 from remem.domain import EventKind
 
@@ -55,7 +55,7 @@ class HarnessEvent:
     session_id: str
     project: str | None
     tool: str | None = None
-    payload: dict = field(default_factory=dict)
+    payload: dict[str, Any] = field(default_factory=dict)
     occurred_at: datetime | None = None
 
 
@@ -185,7 +185,7 @@ class AgentAdapter(Protocol):
         home: Path,
         env: Mapping[str, str] | None = None,
     ) -> InstallReport: ...
-    def identity(self, env: Mapping[str, str], payload: dict) -> Identity: ...
+    def identity(self, env: Mapping[str, str], payload: dict[str, Any]) -> Identity: ...
 
     # Optional capabilities, probed with getattr rather than declared here:
     #

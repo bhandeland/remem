@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
+from typing import Any
 
 from remem import jsonfile
 
@@ -14,7 +16,7 @@ def test_read_json_returns_empty_for_a_missing_file(tmp_path):
 def test_read_json_backs_up_and_warns_on_invalid_json(tmp_path):
     path = tmp_path / "settings.json"
     path.write_text("{not valid json")
-    backed_up: set = set()
+    backed_up: set[Path] = set()
 
     data, warnings = jsonfile.read_json(path, backed_up)
 
@@ -27,10 +29,11 @@ def test_read_json_backs_up_and_warns_on_invalid_json(tmp_path):
 def test_write_json_preserves_unrelated_keys_via_the_caller(tmp_path):
     path = tmp_path / "settings.json"
     path.write_text(json.dumps({"theme": "dark"}))
-    backed_up: set = set()
+    backed_up: set[Path] = set()
 
     data, _ = jsonfile.read_json(path, backed_up)
-    data["hooks"] = {}
+    hooks: dict[str, Any] = {}
+    data["hooks"] = hooks
     jsonfile.write_json(path, data, backed_up)
 
     assert json.loads(path.read_text()) == {"theme": "dark", "hooks": {}}
@@ -39,7 +42,7 @@ def test_write_json_preserves_unrelated_keys_via_the_caller(tmp_path):
 def test_backup_once_does_not_back_up_the_same_file_twice(tmp_path):
     path = tmp_path / "settings.json"
     path.write_text("{}")
-    backed_up: set = set()
+    backed_up: set[Path] = set()
 
     jsonfile.backup_once(path, backed_up)
     jsonfile.backup_once(path, backed_up)

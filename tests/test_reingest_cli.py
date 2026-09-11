@@ -50,7 +50,11 @@ def _no_real_embedder(monkeypatch):
     exactly what conftest's `_no_shared_embedder` keeps out of the suite for
     the search path. Same rule, applied where the CLI reaches it.
     """
-    monkeypatch.setattr("remem.cli.load_embedder", lambda model: FakeEmbedder())
+
+    def fake_load_embedder(model: str) -> FakeEmbedder:
+        return FakeEmbedder()
+
+    monkeypatch.setattr("remem.cli.load_embedder", fake_load_embedder)
 
 
 @pytest.fixture

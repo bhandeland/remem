@@ -7,6 +7,7 @@ meant it drifted - two days of doc writing left 32 chunks unindexed.
 """
 
 import subprocess
+from collections.abc import Mapping
 
 from remem import hookio
 from remem.extract.base import CHILD_ENV_VAR
@@ -45,7 +46,11 @@ def test_spawn_ingest_is_skipped_inside_an_extraction_child(monkeypatch):
     spawns work which the next extraction reads has no bound.
     """
     called = []
-    monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: called.append(1))
+
+    def fake_popen(*a: object, **k: object) -> None:
+        called.append(1)
+
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
     assert hookio.spawn_ingest({CHILD_ENV_VAR: "1"}) is False
     assert called == []
 
@@ -66,13 +71,18 @@ def test_spawn_ingest_returns_false_when_remem_is_missing(monkeypatch):
 def test_session_start_spawns_the_refresh(monkeypatch):
     from remem.agents.claude_code import hook
 
-    spawned = []
-    monkeypatch.setattr(
-        "remem.agents.claude_code.hook.spawn_ingest",
-        lambda env: spawned.append(env) or True,
-    )
-    monkeypatch.setattr("remem.agents.claude_code.hook.spawn_process", lambda env: True)
-    monkeypatch.setattr("remem.agents.claude_code.hook.spawn_memory", lambda env: True)
+    spawned: list[Mapping[str, str]] = []
+
+    def record_spawn(env: Mapping[str, str]) -> bool:
+        spawned.append(env)
+        return True
+
+    def already_spawned(env: Mapping[str, str]) -> bool:
+        return True
+
+    monkeypatch.setattr("remem.agents.claude_code.hook.spawn_ingest", record_spawn)
+    monkeypatch.setattr("remem.agents.claude_code.hook.spawn_process", already_spawned)
+    monkeypatch.setattr("remem.agents.claude_code.hook.spawn_memory", already_spawned)
     monkeypatch.setattr("sys.stdin", __import__("io").StringIO("{}"))
 
     assert hook.main() == 0

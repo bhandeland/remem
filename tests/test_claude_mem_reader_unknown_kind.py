@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
+from typing import Any
 
 from remem.importers.base import SourceKind
 from remem.importers.claude_mem import read
@@ -43,7 +44,7 @@ create table memory_items (
 """
 
 
-def _db(tmp_path: Path, rows: list[tuple]) -> Path:
+def _db(tmp_path: Path, rows: list[tuple[Any, ...]]) -> Path:
     db = tmp_path / "claude-mem.db"
     conn = sqlite3.connect(db)
     conn.executescript(MODERN_SCHEMA)
@@ -61,7 +62,7 @@ def _db(tmp_path: Path, rows: list[tuple]) -> Path:
     return db
 
 
-def _row(item_id: str, kind: str) -> tuple:
+def _row(item_id: str, kind: str) -> tuple[Any, ...]:
     return (
         item_id,
         "p1",

@@ -6,6 +6,7 @@ import json
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from remem.agents.base import ExpectedHook, UnsupportedScope
 
@@ -113,7 +114,7 @@ def merge(
     path: Path,
     entries: dict[str, str],
     legacy: dict[str, tuple[str, ...]] | None = None,
-) -> tuple[dict, Path | None]:
+) -> tuple[dict[str, Any], Path | None]:
     """Merge `entries` into the hooks.json at `path`.
 
     Returns the merged document and the backup path, or None if there was
@@ -133,7 +134,7 @@ def merge(
     """
     legacy = LEGACY_COMMANDS if legacy is None else legacy
     backup: Path | None = None
-    document: dict = {}
+    document: dict[str, Any] = {}
 
     if path.exists():
         raw = path.read_text()
@@ -153,13 +154,13 @@ def merge(
     document["version"] = document.get("version", 1)
     hooks = document.setdefault("hooks", {})
     if not isinstance(hooks, dict):
-        hooks = {}
+        hooks: dict[str, Any] = {}
         document["hooks"] = hooks
 
     for hook, command in entries.items():
         group = hooks.setdefault(hook, [])
         if not isinstance(group, list):
-            group = []
+            group: list[Any] = []
             hooks[hook] = group
         # Repair remem's own entries before testing membership. Idempotence
         # alone only ever prevented a duplicate THIS install would add; it
@@ -172,7 +173,7 @@ def merge(
         # left exactly as found. Removing one would be worse than the
         # duplicate this is fixing.
         ours = tuple(legacy.get(hook, ())) + (command,)
-        kept: list = []
+        kept: list[Any] = []
         seen = False
         for h in group:
             if not isinstance(h, dict) or h.get("command") not in ours:

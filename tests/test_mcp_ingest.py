@@ -33,4 +33,5 @@ def test_recall_hides_archived_chunks_unless_asked(env, tmp_path):
     assert recall_tool(query="session wiring") == []
 
     shown = recall_tool(query="session wiring", include_archived=True)
+    assert isinstance(shown, list)
     assert [h["title"] for h in shown] == ["Plan § Task 9"]

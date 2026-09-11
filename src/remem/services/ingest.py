@@ -17,6 +17,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path, PurePosixPath
+from typing import Any
 from uuid import UUID
 
 from remem.domain import (
@@ -451,7 +452,9 @@ class RefreshResult:
     embed_error: str | None = None
 
 
-def _outcome(report: Report, *, embedded: int, embed_error: str | None) -> dict:
+def _outcome(
+    report: Report, *, embedded: int, embed_error: str | None
+) -> dict[str, Any]:
     """A report as `Store.finish_ingest_run` keyword arguments.
 
     Paths become strings here, once, so the two callers that write a row
@@ -792,7 +795,7 @@ def render_status(found: list[ProjectIngestStatus], project: str | None) -> str:
     return "\n".join(lines)
 
 
-def _run_to_dict(run: IngestRun | None) -> dict | None:
+def _run_to_dict(run: IngestRun | None) -> dict[str, Any] | None:
     if run is None:
         return None
     return {
@@ -812,7 +815,7 @@ def _run_to_dict(run: IngestRun | None) -> dict | None:
     }
 
 
-def status_to_dict(found: list[ProjectIngestStatus]) -> list[dict]:
+def status_to_dict(found: list[ProjectIngestStatus]) -> list[dict[str, Any]]:
     return [
         {
             "project": s.project,

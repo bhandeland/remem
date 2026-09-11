@@ -5,6 +5,7 @@ text is the only thing steering agent behaviour."""
 from __future__ import annotations
 
 import os
+from typing import Any
 from uuid import UUID
 
 # The installed mcp package is 2.x, where `FastMCP` was renamed to
@@ -83,7 +84,7 @@ def remember_tool(
     project: str | None = None,
     tags: list[str] | None = None,
     summary: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Store something worth knowing later.
 
     Use when you learn a durable fact about this project, write down a
@@ -143,7 +144,7 @@ def recall_tool(
     limit: int = 10,
     include_handoffs: bool = False,
     include_archived: bool = False,
-) -> list[dict] | dict:
+) -> list[dict[str, Any]] | dict[str, Any]:
     """Search stored knowledge before assuming something is unknown.
 
     Use at the start of work on an unfamiliar area, when the user refers to
@@ -213,7 +214,7 @@ def recall_tool(
 
 
 @mcp.tool(name="get_entry")
-def get_entry_tool(entry_id: str) -> dict:
+def get_entry_tool(entry_id: str) -> dict[str, Any]:
     """Read one entry in full, by id from a recall result.
 
     Use when a recall snippet looks relevant and you need the whole text.
@@ -238,7 +239,7 @@ def get_entry_tool(entry_id: str) -> dict:
 @mcp.tool(name="supersede")
 def supersede_tool(
     entry_id: str, title: str, body: str, summary: str | None = None
-) -> dict:
+) -> dict[str, Any]:
     """Replace knowledge that stopped being true.
 
     Use when you discover a stored entry is now wrong or out of date. The
@@ -294,7 +295,7 @@ def kb_context_tool(slug: str, max_chars: int | None = None) -> str:
 
 
 @mcp.tool(name="kb_list")
-def kb_list_tool() -> list[dict]:
+def kb_list_tool() -> list[dict[str, Any]]:
     """List available knowledge bases and what each covers."""
     with open_session() as s:
         return [
@@ -309,7 +310,7 @@ def kb_list_tool() -> list[dict]:
 
 
 @mcp.tool(name="kb_pin")
-def kb_pin_tool(slug: str, entry_id: str) -> dict:
+def kb_pin_tool(slug: str, entry_id: str) -> dict[str, Any]:
     """Curate an entry into a knowledge base so it is always included.
 
     Use when an entry is important enough that it should appear in the
@@ -325,7 +326,7 @@ def kb_pin_tool(slug: str, entry_id: str) -> dict:
         return {"pinned": entry_id, "slug": slug}
 
 
-def http_run_kwargs(host: str, port: int) -> dict:
+def http_run_kwargs(host: str, port: int) -> dict[str, Any]:
     """Keyword arguments for serving over streamable-HTTP.
 
     Separate from `serve_http` so the security-relevant parts can be asserted

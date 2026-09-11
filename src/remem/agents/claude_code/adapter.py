@@ -7,8 +7,9 @@ import shutil
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from importlib import resources
+from operator import attrgetter
 from pathlib import Path
-from typing import Mapping
+from typing import Any, Mapping
 
 from remem import jsonfile
 from remem.agents.base import (
@@ -335,7 +336,7 @@ class ClaudeCodeAdapter:
         """
         root = paths.skills
         source_root = resources.files("remem.agents.claude_code") / "skills"
-        for skill_dir in sorted(source_root.iterdir(), key=lambda p: p.name):
+        for skill_dir in sorted(source_root.iterdir(), key=attrgetter("name")):
             if not skill_dir.is_dir():
                 continue
             target = root / skill_dir.name
@@ -348,7 +349,7 @@ class ClaudeCodeAdapter:
             shutil.copytree(Path(str(skill_dir)), target, dirs_exist_ok=True)
             report.actions.append(f"Installed the {skill_dir.name} skill in {target}")
 
-    def identity(self, env: Mapping[str, str], payload: dict) -> Identity:
+    def identity(self, env: Mapping[str, str], payload: dict[str, Any]) -> Identity:
         cwd = payload.get("cwd")
         return Identity(
             agent=self.name,
@@ -385,7 +386,9 @@ class ClaudeCodeAdapter:
         """
         return CLAUDE_CODE_ENV_VARS
 
-    def event(self, env: Mapping[str, str], payload: dict) -> HarnessEvent | None:
+    def event(
+        self, env: Mapping[str, str], payload: dict[str, Any]
+    ) -> HarnessEvent | None:
         """Read one Claude Code hook payload as an event, or None.
 
         The payload is passed through WHOLE. Picking fields out here would
@@ -445,7 +448,7 @@ class ClaudeCodeAdapter:
 
         hooks = jsonfile.read_document(path).get("hooks", {})
         if not isinstance(hooks, dict):
-            hooks = {}
+            hooks: dict[str, Any] = {}
 
         found: dict[str, tuple[str, ...]] = {}
         for entry in HOOK_ENTRIES:

@@ -95,7 +95,7 @@ def _aliased_entry_columns(alias: str, prefix: str) -> str:
     return ", ".join(f"{alias}.{f} as {prefix}{f}" for f in ENTRY_FIELDS)
 
 
-def _row_to_entry_prefixed(row: dict, prefix: str) -> Entry:
+def _row_to_entry_prefixed(row: dict[str, Any], prefix: str) -> Entry:
     return _row_to_entry(
         {k[len(prefix) :]: v for k, v in row.items() if k.startswith(prefix)}
     )
@@ -125,7 +125,7 @@ def memory_run_columns() -> str:
     return ", ".join(MEMORY_RUN_FIELDS)
 
 
-def _row_to_memory_run(row: dict) -> MemoryRun:
+def _row_to_memory_run(row: dict[str, Any]) -> MemoryRun:
     return MemoryRun(
         id=row["id"],
         owner_id=row["owner_id"],
@@ -146,7 +146,7 @@ def _row_to_memory_run(row: dict) -> MemoryRun:
     )
 
 
-def _entry_filters(query: Query, owner_id: UUID) -> tuple[list[str], dict]:
+def _entry_filters(query: Query, owner_id: UUID) -> tuple[list[str], dict[str, Any]]:
     """The filters every entry read applies, built once for all search tiers.
 
     Extracted because there are now three tiers running the same predicates
@@ -158,7 +158,7 @@ def _entry_filters(query: Query, owner_id: UUID) -> tuple[list[str], dict]:
     reference. Text matching is NOT included - that is what differs between
     tiers and is the caller's business.
     """
-    params: dict = {"owner_id": owner_id, "limit": query.limit}
+    params: dict[str, Any] = {"owner_id": owner_id, "limit": query.limit}
     where = ["e.owner_id = %(owner_id)s"]
 
     if not query.include_superseded:
@@ -193,7 +193,7 @@ def _vector_literal(vector: list[float]) -> str:
     return "[" + ",".join(repr(float(x)) for x in vector) + "]"
 
 
-def _row_to_entry(row: dict) -> Entry:
+def _row_to_entry(row: dict[str, Any]) -> Entry:
     return Entry(
         id=row["id"],
         kind=Kind(row["kind"]),
@@ -214,7 +214,7 @@ def _row_to_entry(row: dict) -> Entry:
     )
 
 
-def _row_to_collection(row: dict) -> Collection:
+def _row_to_collection(row: dict[str, Any]) -> Collection:
     query = row["query"]
     if isinstance(query, str):
         query = json.loads(query)
@@ -253,7 +253,7 @@ def extract_job_columns(alias: str = "") -> str:
     return ", ".join(f"{prefix}{f}" for f in EXTRACT_JOB_FIELDS)
 
 
-def _row_to_extract_job(row: dict) -> ExtractJob:
+def _row_to_extract_job(row: dict[str, Any]) -> ExtractJob:
     return ExtractJob(
         id=row["id"],
         owner_id=row["owner_id"],
@@ -294,7 +294,7 @@ def ingest_run_columns(alias: str = "") -> str:
     return ", ".join(f"{prefix}{f}" for f in INGEST_RUN_FIELDS)
 
 
-def _row_to_ingest_run(row: dict) -> IngestRun:
+def _row_to_ingest_run(row: dict[str, Any]) -> IngestRun:
     return IngestRun(
         id=row["id"],
         owner_id=row["owner_id"],
@@ -314,7 +314,7 @@ def _row_to_ingest_run(row: dict) -> IngestRun:
     )
 
 
-def _row_to_session_ref(row: dict) -> SessionRef:
+def _row_to_session_ref(row: dict[str, Any]) -> SessionRef:
     return SessionRef(
         project=row["project"],
         harness=row["harness"],
@@ -325,7 +325,7 @@ def _row_to_session_ref(row: dict) -> SessionRef:
     )
 
 
-def _row_to_harness_stats(row: dict) -> HarnessStats:
+def _row_to_harness_stats(row: dict[str, Any]) -> HarnessStats:
     return HarnessStats(
         harness=row["harness"],
         events_24h=row["events_24h"],
@@ -334,7 +334,7 @@ def _row_to_harness_stats(row: dict) -> HarnessStats:
     )
 
 
-def _row_to_event(row: dict) -> Event:
+def _row_to_event(row: dict[str, Any]) -> Event:
     return Event(
         id=row["id"],
         owner_id=row["owner_id"],
@@ -1123,8 +1123,8 @@ class PostgresStore:
         unchanged: int,
         swept: int,
         embedded: int,
-        failures: list[dict],
-        twins: list[dict],
+        failures: list[dict[str, Any]],
+        twins: list[dict[str, Any]],
         embed_error: str | None,
     ) -> None:
         with self._cur() as cur:
@@ -1203,7 +1203,7 @@ class PostgresStore:
         renamed: list[list[str]],
         conflicts: list[str],
         sidecars: list[str],
-        failures: list[dict],
+        failures: list[dict[str, Any]],
     ) -> None:
         with self._cur() as cur:
             cur.execute(

@@ -36,20 +36,32 @@ def test_a_failing_delete_still_disables_recording(monkeypatch):
         def __exit__(self, *exc):
             return False
 
+    def fake_enable(store: object, owner: object, project: str) -> None:
+        return None
+
+    def recording_disable(store: object, owner: object, project: str) -> None:
+        disabled.append(project)
+
+    def fake_record_event(
+        store: object, owner: object, event: object, agent: object
+    ) -> object:
+        return object()
+
+    def fake_open_session(config: object) -> FakeSession:
+        return FakeSession()
+
     fake_record = type(
         "FakeRecord",
         (),
         {
-            "enable": staticmethod(lambda store, owner, project: None),
-            "disable": staticmethod(
-                lambda store, owner, project: disabled.append(project)
-            ),
-            "record": staticmethod(lambda store, owner, event, agent: object()),
+            "enable": staticmethod(fake_enable),
+            "disable": staticmethod(recording_disable),
+            "record": staticmethod(fake_record_event),
         },
     )
 
     monkeypatch.setattr("remem.config.load", lambda env=None: object())
-    monkeypatch.setattr("remem.session.open_session", lambda config: FakeSession())
+    monkeypatch.setattr("remem.session.open_session", fake_open_session)
     monkeypatch.setattr("remem.services.record", fake_record)
 
     report = verify.round_trip("cursor", env={})
@@ -89,18 +101,29 @@ def test_a_failing_disable_is_reported_too(monkeypatch):
     def raising_disable(store, owner, project):
         raise RuntimeError("disable blew up")
 
+    def fake_enable(store: object, owner: object, project: str) -> None:
+        return None
+
+    def fake_record_event(
+        store: object, owner: object, event: object, agent: object
+    ) -> object:
+        return object()
+
+    def fake_open_session(config: object) -> FakeSession:
+        return FakeSession()
+
     fake_record = type(
         "FakeRecord",
         (),
         {
-            "enable": staticmethod(lambda store, owner, project: None),
+            "enable": staticmethod(fake_enable),
             "disable": staticmethod(raising_disable),
-            "record": staticmethod(lambda store, owner, event, agent: object()),
+            "record": staticmethod(fake_record_event),
         },
     )
 
     monkeypatch.setattr("remem.config.load", lambda env=None: object())
-    monkeypatch.setattr("remem.session.open_session", lambda config: FakeSession())
+    monkeypatch.setattr("remem.session.open_session", fake_open_session)
     monkeypatch.setattr("remem.services.record", fake_record)
 
     report = verify.round_trip("cursor", env={})

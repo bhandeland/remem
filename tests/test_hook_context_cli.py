@@ -9,6 +9,8 @@ itself only through REMEM_HOOK_DEBUG on stderr.
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
+from typing import Any
 
 import psycopg
 import pytest
@@ -33,6 +35,7 @@ def env(live_dsn, monkeypatch, tmp_path):
     monkeypatch.setenv("REMEM_DSN", live_dsn)
     monkeypatch.setenv("REMEM_USER_ID", "brandon")
     monkeypatch.setenv("REMEM_CONFIG", str(tmp_path / "none.toml"))
+
     # `hook context` spawns three detached `remem` processes in a `finally`
     # on every path (extraction, re-ingest and the memory sync). Pointed
     # at this live test
@@ -41,9 +44,12 @@ def env(live_dsn, monkeypatch, tmp_path):
     # on this branch. Every test gets the no-op stub by default; the tests
     # that assert on spawning install their own recorder afterwards, which
     # wins because monkeypatch applies in call order.
-    monkeypatch.setattr("remem.hookio.spawn_process", lambda env: False)
-    monkeypatch.setattr("remem.hookio.spawn_ingest", lambda env: False)
-    monkeypatch.setattr("remem.hookio.spawn_memory", lambda env: False)
+    def no_spawn(env: Mapping[str, str]) -> bool:
+        return False
+
+    monkeypatch.setattr("remem.hookio.spawn_process", no_spawn)
+    monkeypatch.setattr("remem.hookio.spawn_ingest", no_spawn)
+    monkeypatch.setattr("remem.hookio.spawn_memory", no_spawn)
     return live_dsn
 
 
@@ -296,7 +302,7 @@ def test_an_adapter_with_inject_does_not_print_the_block_to_stdout(env, repo):
 
 def _spy(monkeypatch):
     """Patch the spawn where `hook context` looks it up, and record calls."""
-    calls: list[dict] = []
+    calls: list[dict[str, Any]] = []
 
     def fake(env):
         calls.append(dict(env))
@@ -341,10 +347,13 @@ def test_context_spawns_the_memory_sync(env, repo, monkeypatch):
     refresh has anything to do is its own question - an undesignated
     project exits 0 having done nothing.
     """
-    calls: list[dict] = []
-    monkeypatch.setattr(
-        "remem.hookio.spawn_memory", lambda env: calls.append(dict(env)) or True
-    )
+    calls: list[dict[str, Any]] = []
+
+    def record_spawn(env: Mapping[str, str]) -> bool:
+        calls.append(dict(env))
+        return True
+
+    monkeypatch.setattr("remem.hookio.spawn_memory", record_spawn)
     _seed_kb(env)
     result = runner.invoke(
         app,
@@ -358,10 +367,13 @@ def test_context_spawns_the_memory_sync(env, repo, monkeypatch):
 def test_context_spawns_the_memory_sync_even_when_no_project_resolves(env, monkeypatch):
     """In the `finally`, like its two siblings, so every early return
     reaches it - unusable stdin included."""
-    calls: list[dict] = []
-    monkeypatch.setattr(
-        "remem.hookio.spawn_memory", lambda env: calls.append(dict(env)) or True
-    )
+    calls: list[dict[str, Any]] = []
+
+    def record_spawn(env: Mapping[str, str]) -> bool:
+        calls.append(dict(env))
+        return True
+
+    monkeypatch.setattr("remem.hookio.spawn_memory", record_spawn)
     result = runner.invoke(app, ["hook", "context"], input="not json")
     assert result.exit_code == 0
     assert len(calls) == 1
@@ -391,7 +403,7 @@ def test_spawn_process_launches_the_processor_detached(monkeypatch):
     """The guard must not be the only reason it ever returns False."""
     from remem import hookio
 
-    seen: dict = {}
+    seen: dict[str, Any] = {}
 
     def fake_popen(argv, **kwargs):
         seen["argv"] = argv

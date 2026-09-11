@@ -10,8 +10,9 @@ import sys
 import tempfile
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from functools import partial
 from pathlib import Path
-from typing import Annotated, NoReturn, Optional
+from typing import Annotated, Any, NoReturn, Optional
 from uuid import UUID
 
 import psycopg
@@ -138,7 +139,7 @@ def _job_id(value: str) -> UUID:
         raise typer.Exit(1)
 
 
-def _entry_dict(entry: Entry, snippet: str | None = None) -> dict:
+def _entry_dict(entry: Entry, snippet: str | None = None) -> dict[str, Any]:
     data = {
         "id": str(entry.id),
         "kind": str(entry.kind),
@@ -1109,7 +1110,9 @@ def hook_context(
     try:
         stdin_text = sys.stdin.read()
         try:
-            payload = json.loads(stdin_text) if stdin_text.strip() else {}
+            payload: dict[str, Any] = (
+                json.loads(stdin_text) if stdin_text.strip() else {}
+            )
         except json.JSONDecodeError, AttributeError:
             debug(env, "stdin was not valid JSON")
             raise typer.Exit(0)
@@ -1156,9 +1159,7 @@ def hook_context(
         inject = getattr(adapter, "inject", None)
         if inject is not None:
             try:
-                written = inject(
-                    rendered, payload, note=lambda reason: debug(env, reason)
-                )
+                written = inject(rendered, payload, note=partial(debug, env))
             except Exception as exc:
                 debug(
                     env,
@@ -1478,7 +1479,7 @@ def record_status(
             doctor_service.check(registry.discover(), env=dict(os.environ))
         )
     except Exception:
-        advisories = []
+        advisories: list[str] = []
 
     with _session() as s:
         # Wrapped like the doctor call above, and for the same reason: an
@@ -1492,7 +1493,7 @@ def record_status(
                 root=repo_root(),
             )
         except Exception:
-            ingest_advisories = []
+            ingest_advisories: list[str] = []
 
         # Wrapped like the doctor and ingest calls above, and for the same
         # reason: a memory advisory that cannot be computed must not take
@@ -1500,7 +1501,7 @@ def record_status(
         try:
             memory_advisories = memory_service.advisories(s.store, s.owner.id)
         except Exception:
-            memory_advisories = []
+            memory_advisories: list[str] = []
 
         report = events.status(
             s.store,
@@ -1577,7 +1578,7 @@ def record_event(
     stdin_text = sys.stdin.read()
 
     try:
-        payload = json.loads(stdin_text) if stdin_text.strip() else {}
+        payload: dict[str, Any] = json.loads(stdin_text) if stdin_text.strip() else {}
     except json.JSONDecodeError, AttributeError:
         debug(env, "stdin was not valid JSON")
         if loud:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from importlib import resources
+from operator import attrgetter
 from pathlib import Path
 
 import psycopg
@@ -27,7 +28,7 @@ def migration_files() -> list[tuple[str, str]]:
     """
     package = resources.files("remem.backends.postgres") / "migrations"
     out = []
-    for item in sorted(package.iterdir(), key=lambda p: p.name):
+    for item in sorted(package.iterdir(), key=attrgetter("name")):
         if item.name.endswith(".sql"):
             out.append((Path(item.name).stem, item.read_text()))
     return out

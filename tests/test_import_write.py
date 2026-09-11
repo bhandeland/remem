@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from remem.backends.postgres.migrate import migrate
@@ -24,17 +26,22 @@ def owner(store):
     return store.ensure_principal("brandon")
 
 
+# A real SourceRecord varied with `replace`, for the reason spelled out in
+# test_import_mapping.py: a dict of heterogeneous values splatted in makes
+# every argument a union and the call uncheckable.
+_BASE = SourceRecord(
+    source_id="m1",
+    kind=SourceKind.OBSERVATION,
+    project="at-workspace",
+    title="A title",
+    summary="A hook",
+    body="the original body",
+    tags=("cmem-type:discovery",),
+)
+
+
 def _record(**kw) -> SourceRecord:
-    base = dict(
-        source_id="m1",
-        kind=SourceKind.OBSERVATION,
-        project="at-workspace",
-        title="A title",
-        summary="A hook",
-        body="the original body",
-        tags=("cmem-type:discovery",),
-    )
-    return SourceRecord(**{**base, **kw})
+    return replace(_BASE, **kw)
 
 
 def _live(store, owner):

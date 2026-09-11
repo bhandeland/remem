@@ -62,7 +62,7 @@ def latest(
     would return, and thus present, an unrelated topic's handoff as this
     topic's. Reject it instead of silently dropping the tag filter.
     """
-    tags = []
+    tags: list[str] = []
     if topic is not None:
         slug = slugify(topic)
         if not slug:

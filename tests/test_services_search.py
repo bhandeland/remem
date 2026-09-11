@@ -1,3 +1,5 @@
+from typing import override
+
 import pytest
 
 from remem.backends.postgres.migrate import migrate
@@ -150,9 +152,12 @@ def test_the_shared_embedder_is_not_built_when_the_exact_tier_answers(monkeypatc
     """Constructing one imports fastembed and can download ~130MB, so the
     tier that never runs must never pay for it."""
     built: list[str] = []
-    monkeypatch.setattr(
-        search, "shared_embedder", lambda m: built.append(m) or StubEmbedder()
-    )
+
+    def fake_shared_embedder(model: str) -> StubEmbedder:
+        built.append(model)
+        return StubEmbedder()
+
+    monkeypatch.setattr(search, "shared_embedder", fake_shared_embedder)
     store = StubStore(exact=[_hit(Match.EXACT)])
 
     find(store, new_id(), Query(text="q"))
@@ -166,6 +171,7 @@ def test_an_embedder_that_raises_degrades_rather_than_failing_the_search():
     # raises never reaches store.semantic_search, so "semantic" never lands
     # in store.called - only ["exact", "fuzzy"] is a correct outcome here.
     class Broken(StubEmbedder):
+        @override
         def embed(self, texts):
             raise RuntimeError("no model")
 

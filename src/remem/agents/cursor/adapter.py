@@ -15,7 +15,7 @@ import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, Mapping
+from typing import Any, Callable, Mapping
 
 from remem import jsonfile
 from remem.agents.base import (
@@ -73,7 +73,7 @@ class CursorAdapter:
         "afterAgentResponse": EventKind.MESSAGE,
     }
 
-    def identity(self, env: Mapping[str, str], payload: dict) -> Identity:
+    def identity(self, env: Mapping[str, str], payload: dict[str, Any]) -> Identity:
         return Identity(
             agent=self.name,
             session_id=self._session_id(payload),
@@ -84,13 +84,13 @@ class CursorAdapter:
             project=self._project(payload),
         )
 
-    def _session_id(self, payload: dict) -> str | None:
+    def _session_id(self, payload: dict[str, Any]) -> str | None:
         # See _SESSION_FALLBACK_KEY's comment: Cursor's own constructor
         # falls back to conversation_id when session_id is unset, so this
         # adapter does too.
         return payload.get(SESSION_KEY) or payload.get(_SESSION_FALLBACK_KEY)
 
-    def _root(self, payload: dict) -> Path | None:
+    def _root(self, payload: dict[str, Any]) -> Path | None:
         """The workspace root as a path, or None. Distinct from
         `_project`, which turns the same value into a knowledge base slug -
         injection needs the directory, recording needs the name."""
@@ -114,11 +114,13 @@ class CursorAdapter:
             root = root[0] if root else None
         return Path(root) if root else None
 
-    def _project(self, payload: dict) -> str | None:
+    def _project(self, payload: dict[str, Any]) -> str | None:
         root = self._root(payload)
         return resolve_project(root) if root else None
 
-    def event(self, env: Mapping[str, str], payload: dict) -> HarnessEvent | None:
+    def event(
+        self, env: Mapping[str, str], payload: dict[str, Any]
+    ) -> HarnessEvent | None:
         """Read one Cursor hook payload as an event, or None.
 
         The payload is passed through WHOLE, for the same reason the other
@@ -153,7 +155,7 @@ class CursorAdapter:
     def inject(
         self,
         block: str,
-        payload: dict,
+        payload: dict[str, Any],
         note: Callable[[str], None] | None = None,
     ) -> str | None:
         """Write the context block where Cursor will read it.
@@ -285,7 +287,7 @@ class CursorAdapter:
 
         hooks = jsonfile.read_document(path).get("hooks", {})
         if not isinstance(hooks, dict):
-            hooks = {}
+            hooks: dict[str, Any] = {}
 
         found: dict[str, tuple[str, ...]] = {}
         for entry in HOOK_ENTRIES:

@@ -23,7 +23,7 @@ import os
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import Mapping
+from typing import Any, Mapping
 
 from remem.agents.base import HookState, UnsupportedScope
 
@@ -361,7 +361,7 @@ def render(reports: list[AgentReport]) -> str:
     return "\n".join(lines)
 
 
-def to_dict(reports: list[AgentReport]) -> dict:
+def to_dict(reports: list[AgentReport]) -> dict[str, Any]:
     """The --json form. A thin formatter over the same reports `render`
     reads, so the two can never disagree."""
     return {

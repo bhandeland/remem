@@ -164,7 +164,7 @@ class Store(Protocol):
         renamed: list[list[str]],
         conflicts: list[str],
         sidecars: list[str],
-        failures: list[dict],
+        failures: list[dict[str, Any]],
     ) -> None: ...
 
     def latest_memory_run(self, owner_id: UUID, project: str) -> MemoryRun | None: ...
@@ -205,8 +205,8 @@ class Store(Protocol):
         unchanged: int,
         swept: int,
         embedded: int,
-        failures: list[dict],
-        twins: list[dict],
+        failures: list[dict[str, Any]],
+        twins: list[dict[str, Any]],
         embed_error: str | None,
     ) -> None: ...
     #: The newest-started row for one project, finished or not.

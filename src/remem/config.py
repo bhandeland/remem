@@ -7,7 +7,7 @@ import sys
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping
+from typing import Any, Mapping
 
 from platformdirs import user_config_path
 
@@ -93,7 +93,7 @@ def default_config_path() -> Path:
     return user_config_path("remem") / "config.toml"
 
 
-def _read_file(path: Path) -> dict:
+def _read_file(path: Path) -> dict[str, Any]:
     try:
         with path.open("rb") as fh:
             return tomllib.load(fh)

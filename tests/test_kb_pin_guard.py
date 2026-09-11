@@ -60,7 +60,11 @@ def test_pin_raises_when_the_store_reports_it_wrote_nothing(store, owner, monkey
         project="proj",
         origin=Origin.HUMAN,
     )
-    monkeypatch.setattr(store, "pin", lambda *a, **k: False)
+
+    def refuse_pin(*a: object, **k: object) -> bool:
+        return False
+
+    monkeypatch.setattr(store, "pin", refuse_pin)
 
     with pytest.raises(RuntimeError):
         kb.pin(store, owner.id, "kb", entry.id)

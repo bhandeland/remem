@@ -64,13 +64,14 @@ def survivor(entries: list[Entry]) -> Entry:
     edit or ignore, never applied. Trust first, then recency, then id - the
     last so that two runs over unchanged data print the same line.
     """
-    return min(
-        entries,
-        key=lambda e: (
-            _ORIGIN_RANK.get(e.origin, len(_ORIGIN_RANK)),
-            -(e.updated_at or _EPOCH).timestamp(),
-            str(e.id),
-        ),
+    return min(entries, key=_survivor_key)
+
+
+def _survivor_key(entry: Entry) -> tuple[int, float, str]:
+    return (
+        _ORIGIN_RANK.get(entry.origin, len(_ORIGIN_RANK)),
+        -(entry.updated_at or _EPOCH).timestamp(),
+        str(entry.id),
     )
 
 

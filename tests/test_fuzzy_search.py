@@ -218,5 +218,8 @@ def test_mcp_recall_labels_fuzzy_results(live_dsn, monkeypatch, tmp_path):
         title="Postgres connection pooling", body="the pool saturates under load"
     )
 
-    assert recall_tool(query="saturates")[0]["match"] == "exact"
-    assert recall_tool(query="postgres conection pooling")[0]["match"] == "fuzzy"
+    exact = recall_tool(query="saturates")
+    misspelled = recall_tool(query="postgres conection pooling")
+    assert isinstance(exact, list) and isinstance(misspelled, list)
+    assert exact[0]["match"] == "exact"
+    assert misspelled[0]["match"] == "fuzzy"

@@ -13,7 +13,7 @@ import os
 from datetime import datetime, timezone
 from importlib import resources
 from pathlib import Path
-from typing import Mapping
+from typing import Any, Mapping
 
 from remem.agents.base import RECORD_NOTE, HarnessEvent, Identity, InstallReport
 from remem.agents.opencode.install import plugin_dir
@@ -90,7 +90,7 @@ class OpenCodeAdapter:
         """
         return round_trip(self.name, env)
 
-    def identity(self, env: Mapping[str, str], payload: dict) -> Identity:
+    def identity(self, env: Mapping[str, str], payload: dict[str, Any]) -> Identity:
         cwd = payload.get("cwd")
         return Identity(
             agent=self.name,
@@ -103,7 +103,9 @@ class OpenCodeAdapter:
             project=resolve_project(Path(cwd)) if cwd else None,
         )
 
-    def event(self, env: Mapping[str, str], payload: dict) -> HarnessEvent | None:
+    def event(
+        self, env: Mapping[str, str], payload: dict[str, Any]
+    ) -> HarnessEvent | None:
         """Read one opencode plugin payload as an event, or None.
 
         The payload is passed through WHOLE, for the same reason the Claude
