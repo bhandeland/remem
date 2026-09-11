@@ -40,12 +40,28 @@ class Planned:
     tags: list[str]
 
 
+#: What `by_project` uses for a record whose project is `None` (every
+#: legacy prompt group, since `user_prompts` has no project column). Without
+#: this bucket those records simply vanish from the dict and the column
+#: does not reconcile against the created/updated/unchanged total - the real
+#: rehearsal printed 67 against 70 records and said nothing about where the
+#: other three went.
+NO_PROJECT: Final = "(no project)"
+
+
 @dataclass(slots=True)
 class Report:
     created: int = 0
     updated: int = 0
     unchanged: int = 0
     by_kind: dict[str, int] = field(default_factory=dict)
+    #: What project each record is filed under **after this run**, not what
+    #: was planned for it. Those differ whenever `--project` is given on a
+    #: second run: `write.supersede` (see `run()`) carries the *existing*
+    #: entry's project forward unchanged, so a changed or unchanged record
+    #: stays wherever it already was, no matter what `--project` says. This
+    #: dict is built to match that reality - see `run()` - so the printed
+    #: counts can never claim a move that did not happen.
     by_project: dict[str, int] = field(default_factory=dict)
     dry_run: bool = False
     #: Rows `read()` could not map (an unrecognised `kind`), carried through
@@ -88,16 +104,23 @@ def plan(
     return planned
 
 
-#: A source row is one entry, so a tag lookup should return one hit. The cap
-#: is a guard against a namespace collision silently superseding the wrong
-#: entry, not a real expectation.
+#: A source row is one entry, so a tag lookup should return one hit.
+#: `_existing` raises `IdentityCollision` if it gets more than one, so the
+#: limit itself only has to be large enough to see a collision when one
+#: exists - it is not the collision threshold (that is `len(hits) > 1`,
+#: unconditionally), just the query's bound.
 MAX_PER_TAG: Final = 10
 
 
-class SchemaTooOld(Exception):
-    """The database has no `imported` origin, so migration 019 has not been
-    applied. Raised instead of letting psycopg surface an enum error naming a
-    type the user has never heard of."""
+class ImportPreconditionFailed(Exception):
+    """A check `run()` makes before writing anything failed.
+
+    Named for what it means to the caller, not for the one cause it happens
+    to be able to name (a schema behind the code): `_require_origin` raises
+    this for a dropped connection or a permissions error too, and a name
+    that only fit the schema case would tempt a future `except` clause into
+    mishandling those. See `_require_origin` for how the message still
+    tells the two apart."""
 
 
 def _require_origin(store: Store, owner_id: UUID) -> None:
@@ -110,7 +133,7 @@ def _require_origin(store: Store, owner_id: UUID) -> None:
         # connection or permissions error is possible too. Name both the likely
         # cause and the actual error so the user is not misdirected if they are
         # staring at a different failure.
-        raise SchemaTooOld(
+        raise ImportPreconditionFailed(
             f"could not probe the database (likely cause: migration 019 has not "
             f"been applied, which adds the 'imported' origin): {exc}\n"
             f"If the schema is current, check your database connection and try again. "
@@ -143,11 +166,21 @@ def run(
     for item in plan(records, namespace=namespace, project=project):
         kind_name = str(item.record.kind)
         report.by_kind[kind_name] = report.by_kind.get(kind_name, 0) + 1
-        if item.project:
-            report.by_project[item.project] = report.by_project.get(item.project, 0) + 1
 
         tag = identity_tag(namespace, item.record.source_id)
         existing = _existing(store, owner_id, tag)
+
+        # What project the record is filed under once this run is done -
+        # not what `--project` asked for. A create lands exactly where
+        # planned; an update or a no-op does not move, because
+        # `write.supersede` below carries the *existing* entry's project
+        # forward untouched. Computing this here, from the same branch the
+        # write itself takes, is what keeps the report from claiming a
+        # move `run()` never makes - see the `by_project` docstring.
+        actual_project = item.project if existing is None else existing.project
+        project_key = actual_project or NO_PROJECT
+        report.by_project[project_key] = report.by_project.get(project_key, 0) + 1
+
         if existing is None:
             report.created += 1
             if not dry_run:
@@ -168,8 +201,11 @@ def run(
                 # supersede, not store.set_superseded: the replacement is
                 # exactly what we have. Ingest's orphan sweep calls the store
                 # directly only because a deleted heading has none. supersede
-                # carries tags, kind, project and origin across, which is what
-                # keeps the identity tag alive for the next run.
+                # carries tags, kind, project and origin across from the
+                # EXISTING entry, not from `item` - so a `--project` given on
+                # this run does not move an already-imported entry. See
+                # "Importing claude-mem" in CLAUDE.md for the documented
+                # limitation and what to do instead.
                 write.supersede(
                     store,
                     owner_id,
@@ -183,6 +219,17 @@ def run(
     return report
 
 
+class IdentityCollision(Exception):
+    """More than one live imported entry carries the same identity tag.
+
+    One source row should map to one entry - `MAX_PER_TAG`'s docstring names
+    this as the guard it exists for. A collision means two different rows
+    (or two runs under different namespaces) minted the same tag, and
+    picking one of the several live hits to supersede would be guessing
+    which entry is really this row's history. Refuse instead: this is the
+    same posture `store.set_superseded` takes toward an ambiguous `keep`."""
+
+
 def _existing(store: Store, owner_id: UUID, tag: str) -> Entry | None:
     hits = store.search(
         Query(tags=[tag], origins=[Origin.IMPORTED], limit=MAX_PER_TAG),
@@ -190,4 +237,10 @@ def _existing(store: Store, owner_id: UUID, tag: str) -> Entry | None:
     )
     if not hits:
         return None
+    if len(hits) > 1:
+        raise IdentityCollision(
+            f"{len(hits)} live entries carry the tag {tag!r}; expected at "
+            f"most one. Resolve the collision by hand (see `remem dedupe "
+            f"report`) before importing again."
+        )
     return hits[0].entry

@@ -43,6 +43,15 @@ _ORIGIN_RANK = {
     Origin.INGESTED: 3,
     Origin.ARCHIVED: 4,
     Origin.EXTRACTED: 5,
+    # Ranked last, explicitly rather than by falling through to `.get`'s
+    # default: a tool whose judgement remem cannot vouch for, from a store
+    # that is going away, should never outrank remem's own extractor as the
+    # survivor. Omitting it would happen to rank the same (the default is
+    # `len(_ORIGIN_RANK)`, which is exactly one past EXTRACTED), but a table
+    # that enumerates every other origin and silently falls back for this
+    # one is the same shape CLAUDE.md warns about for DEFAULT_ORIGINS - a
+    # deliberate ranking and an unnoticed omission must not look identical.
+    Origin.IMPORTED: 6,
 }
 
 _EPOCH = datetime.fromtimestamp(0, tz=timezone.utc)

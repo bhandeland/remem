@@ -504,13 +504,20 @@ is the whole interface.
   handoffs by default. A `doc` has no such singularity - all fifteen stay
   independently live and independently searchable, which is what a migration
   owes rows that already existed as distinct records on the other side.
-- User prompts become **one entry per session**, not one per prompt.
-  `claude_mem._prompts` groups by `content_session_id` and renders the
+- User prompts become **one entry per session**, not one per prompt, on
+  *both* schemas. `claude_mem._prompts` does the grouping - by
+  `content_session_id` for the legacy `user_prompts` table, by
+  `server_session_id` for a `kind='prompt'` row in the modern
+  `memory_items` table, resolved through the same `_column` name-fallback
+  that already reconciles `project`/`project_name` - and renders the
   ordered numbered list as the body. A single prompt is frequently a slash
   command - not knowledge on its own - and one entry each would be dozens of
   near-empty entries competing in search against real memories. The
   *sequence* of a session's prompts is the signal worth keeping, and that
-  only exists at the session grain.
+  only exists at the session grain. The rule is stated once in `_prompts`
+  and reached from both readers, deliberately: a defect once let the modern
+  reader route every `kind='prompt'` row through the generic per-row mapping
+  instead, exactly what this rule exists to prevent.
 - `Origin.IMPORTED` is in `search.DEFAULT_ORIGINS` (searchable, same as
   `EXTRACTED` and `INGESTED`) and deliberately not in `INJECTED_ORIGINS`
   (never rendered into a context block, same reasoning as `EXTRACTED`) -
@@ -538,6 +545,33 @@ is the whole interface.
   into Postgres, not to decide an ONNX session and a possible ~130MB
   download belong to every import. `remem embed` fills in vectors
   afterwards, and the CLI says so when it created or updated anything.
+- **`--project` only applies when an entry is first created.** A second run
+  over rows that already exist does not move them, even with a different
+  `--project`: the changed-body path goes through `write.supersede`, which
+  carries the *existing* entry's `project` (and `kind`, and `tags`) forward
+  unchanged - the same primitive `remem update --summary` and the memory
+  sync's rename re-tag rely on to keep everything a caller does not restate
+  intact. An unchanged body writes nothing at all, for the same reason. The
+  report reflects this: `by_project` counts where each entry is filed
+  **after** the run, not what `--project` asked for, so it can never claim a
+  move that did not happen. To re-home an import that already ran, either
+  supersede the affected entries by hand or re-import under a fresh
+  `NAMESPACE` so a new identity tag forces fresh creates - there is no
+  in-place "move a batch of imported entries" operation today.
+- A record whose source has no project - every prompt group, legacy or
+  modern, since `_prompts` never reads one - is counted under the literal
+  bucket name `(no project)` in the report rather than being silently
+  omitted from `by_project`: the real rehearsal's own numbers summed to 67
+  against 70 records before this bucket existed, and nothing said where the
+  other three had gone.
+- A v33 database can still carry the pre-33 tables -
+  `memory_items.legacy_observation_id` is direct evidence that in-place
+  migration is one way a v33 database comes to exist, and claude-mem's own
+  migration is not guaranteed to have dropped them. `read()` never reads
+  both: doing so risks double-importing rows the migration already copied
+  into `memory_items`. Instead each leftover legacy table is named in
+  `skipped`, with its row count, exactly as an unrecognised `kind` is -
+  silently dropping them would be the loss `skipped` exists to prevent.
 
 ### Claude Code memory
 

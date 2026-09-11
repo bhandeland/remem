@@ -34,7 +34,7 @@ class SourceRecord:
     title: str
     summary: str | None
     body: str
-    #: Source-specific extras, already namespaced (e.g. `cmem-type:discovery`).
+    #: Source-specific extras, already namespaced (e.g. `<ns>-type:<value>`).
     #: Never prose - see the reader's rendering rules.
     tags: tuple[str, ...] = ()
     created_at: datetime | None = None
@@ -51,5 +51,5 @@ class ReadResult:
 
     records: list[SourceRecord]
     #: One human-readable line per dropped row, naming the table, the row id
-    #: and the reason - e.g. "memory_items m7: unknown kind 'sketch'".
+    #: and the reason - e.g. "<table> <row id>: unknown kind '<value>'".
     skipped: list[str]

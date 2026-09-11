@@ -8,7 +8,7 @@ from remem.backends.postgres.migrate import migrate
 from remem.backends.postgres.store import PostgresStore
 from remem.domain import Kind, Origin, Query
 from remem.importers.base import SourceKind, SourceRecord
-from remem.services.import_ import SchemaTooOld, run
+from remem.services.import_ import ImportPreconditionFailed, run
 
 pytestmark = pytest.mark.db
 
@@ -84,6 +84,94 @@ def test_the_replacement_keeps_the_identity_tag(store, owner):
     assert len(_live(store, owner)) == 1
 
 
+def test_a_second_run_with_a_different_project_does_not_move_the_entry(store, owner):
+    """The spec names 'run again after a mapping is corrected' as an
+    expected workflow, but `write.supersede` carries the OLD entry's
+    project forward - see write.py:163-172 - so a changed body still lands
+    under the original project. `--project` only applies when an entry is
+    first created; CLAUDE.md's 'Importing claude-mem' section documents
+    this. This test pins that the entry genuinely does not move, and the
+    next test pins that the report does not claim it did."""
+    run(store, owner.id, [_record()], namespace="cmem", project="at-workspace")
+
+    run(
+        store,
+        owner.id,
+        [_record(body="an edited body")],
+        namespace="cmem",
+        project="rescued",
+    )
+
+    [hit] = _live(store, owner)
+    assert hit.entry.project == "at-workspace"
+
+
+def test_a_second_run_with_a_different_project_reports_where_entries_land(store, owner):
+    """`by_project` must describe what actually happened, not what
+    `--project` asked for - a reader has no other way to tell that nothing
+    moved."""
+    run(store, owner.id, [_record()], namespace="cmem", project="at-workspace")
+
+    report = run(
+        store,
+        owner.id,
+        [_record(body="an edited body")],
+        namespace="cmem",
+        project="rescued",
+    )
+
+    assert report.updated == 1
+    assert report.by_project == {"at-workspace": 1}
+    assert "rescued" not in report.by_project
+
+
+def test_an_unchanged_second_run_also_reports_the_entrys_real_project(store, owner):
+    run(store, owner.id, [_record()], namespace="cmem", project="at-workspace")
+
+    report = run(store, owner.id, [_record()], namespace="cmem", project="rescued")
+
+    assert report.unchanged == 1
+    assert report.by_project == {"at-workspace": 1}
+
+
+def test_a_record_with_no_project_lands_in_the_no_project_bucket(store, owner):
+    """Legacy prompt groups always carry `project=None` - `_prompts` has no
+    column to read one from. Without a bucket for them, `by_project` simply
+    omits those records and the columns stop reconciling against the total,
+    which is exactly what the real rehearsal's 67-against-70 was."""
+    report = run(
+        store,
+        owner.id,
+        [_record(source_id="prompts:sess-a", project=None)],
+        namespace="cmem",
+        dry_run=True,
+    )
+
+    assert report.by_project == {"(no project)": 1}
+
+
+def test_a_second_live_hit_on_one_identity_tag_is_refused(store, owner, monkeypatch):
+    """`MAX_PER_TAG`'s comment claims a guard against a namespace collision
+    silently superseding the wrong entry - this pins that the guard is real,
+    not just claimed. Simulated by monkeypatching `store.search` to return
+    two hits, since provoking a genuine collision would mean writing two
+    live entries under one identity tag by hand, which is exactly the
+    scenario this guard exists to catch before it can happen for real."""
+    from remem.services.import_ import IdentityCollision
+
+    run(store, owner.id, [_record()], namespace="cmem")
+    real_search = store.search
+
+    def two_hits(*args, **kwargs):
+        hits = real_search(*args, **kwargs)
+        return hits + hits
+
+    monkeypatch.setattr(store, "search", two_hits)
+
+    with pytest.raises(IdentityCollision, match="cmem:m1"):
+        run(store, owner.id, [_record(body="an edited body")], namespace="cmem")
+
+
 def test_a_dry_run_writes_nothing(store, owner):
     report = run(store, owner.id, [_record()], namespace="cmem", dry_run=True)
 
@@ -132,7 +220,7 @@ def test_a_schema_without_the_imported_origin_is_refused_by_name(conn, owner):
     conn.execute("alter type entry_origin rename value 'imported' to 'imported_x'")
     store = PostgresStore(conn)
 
-    with pytest.raises(SchemaTooOld, match="remem db up"):
+    with pytest.raises(ImportPreconditionFailed, match="remem db up"):
         run(store, owner.id, [_record()], namespace="cmem")
 
 
@@ -148,7 +236,7 @@ def test_a_non_schema_probe_failure_surfaces_its_own_error(store, owner, monkeyp
 
     monkeypatch.setattr(store, "search", failing_search)
 
-    with pytest.raises(SchemaTooOld) as exc_info:
+    with pytest.raises(ImportPreconditionFailed) as exc_info:
         run(store, owner.id, [_record()], namespace="cmem")
 
     # The original error text must be visible to the user, not swallowed

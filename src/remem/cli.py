@@ -2237,14 +2237,22 @@ def import_claude_mem(
                 dry_run=dry_run,
                 skipped=result.skipped,
             )
-    except import_.SchemaTooOld as exc:
+    except import_.ImportPreconditionFailed as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(1)
 
     if dry_run:
         typer.echo("Dry run - nothing was written.")
+    # Two lists of the same "name: count" shape, printed back to back, are
+    # indistinguishable without a heading - a claude-mem project genuinely
+    # could be named something kind-shaped. "Projects" names what the
+    # entries are filed under AFTER this run (see the by_project docstring
+    # in import_.py) - not what --project asked for, which a second run
+    # over already-imported rows cannot change.
+    typer.echo("Projects:")
     for name, count in sorted(report.by_project.items()):
         typer.echo(f"  {name}: {count}")
+    typer.echo("Kinds:")
     for name, count in sorted(report.by_kind.items()):
         typer.echo(f"  {name}: {count}")
     typer.echo(
