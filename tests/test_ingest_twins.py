@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import psycopg
 import pytest
@@ -19,6 +19,7 @@ import pytest
 from remem.backends.postgres.store import PostgresStore
 from remem.domain import Entry, Kind, Origin, Principal
 from remem.services import ingest
+from remem.store import Store
 
 
 def _anchor(src: str) -> Entry:
@@ -84,7 +85,9 @@ def _write(root: Path, rel: str) -> None:
 
 
 @pytest.mark.db
-def test_a_new_file_with_a_twin_is_reported_with_its_live_count(store, owner, tmp_path):
+def test_a_new_file_with_a_twin_is_reported_with_its_live_count(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     _write(tmp_path, "notes/docs/a.md")
     _write(tmp_path, "docs/a.md")
     ingest.ingest_file(
@@ -100,7 +103,9 @@ def test_a_new_file_with_a_twin_is_reported_with_its_live_count(store, owner, tm
 
 
 @pytest.mark.db
-def test_a_re_ingest_of_an_existing_file_reports_no_twin(store, owner, tmp_path):
+def test_a_re_ingest_of_an_existing_file_reports_no_twin(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     _write(tmp_path, "docs/a.md")
     ingest.ingest_file(
         store, owner.id, Path("docs/a.md"), project="proj", root=tmp_path
@@ -115,7 +120,9 @@ def test_a_re_ingest_of_an_existing_file_reports_no_twin(store, owner, tmp_path)
 
 
 @pytest.mark.db
-def test_the_twin_check_never_sees_another_owners_chunks(store, owner, other, tmp_path):
+def test_the_twin_check_never_sees_another_owners_chunks(
+    store: PostgresStore, owner: Principal, other: Principal, tmp_path: Path
+) -> None:
     _write(tmp_path, "notes/docs/a.md")
     _write(tmp_path, "docs/a.md")
     ingest.ingest_file(
@@ -131,8 +138,11 @@ def test_the_twin_check_never_sees_another_owners_chunks(store, owner, other, tm
 
 @pytest.mark.db
 def test_a_twin_at_the_chunk_limit_does_not_fail_the_new_files_ingest(
-    store, owner, tmp_path, monkeypatch
-):
+    store: PostgresStore,
+    owner: Principal,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """`_live_chunks` is called twice per new-file check: once for the
     incoming path's own existing chunks, once for the twin's live count.
     A TooManyChunks from the SECOND call is about the twin's file, not the
@@ -148,7 +158,7 @@ def test_a_twin_at_the_chunk_limit_does_not_fail_the_new_files_ingest(
     calls = 0
     real = ingest._live_chunks
 
-    def flaky(store, owner_id, path):
+    def flaky(store: Store, owner_id: UUID, path: Path) -> list[Entry]:
         nonlocal calls
         calls += 1
         if calls == 2:
@@ -168,7 +178,9 @@ def test_a_twin_at_the_chunk_limit_does_not_fail_the_new_files_ingest(
 
 
 @pytest.mark.db
-def test_a_dry_run_still_reports_the_twin(store, owner, tmp_path):
+def test_a_dry_run_still_reports_the_twin(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     _write(tmp_path, "notes/docs/a.md")
     _write(tmp_path, "docs/a.md")
     ingest.ingest_file(

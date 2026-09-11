@@ -7,6 +7,7 @@ from remem.backends.postgres.migrate import migrate
 from remem.backends.postgres.store import PostgresStore
 from remem.domain import Collection, CollectionQuery, Kind, Principal, new_id
 from remem.services.write import remember
+from tests.conftest import found
 
 pytestmark = pytest.mark.db
 
@@ -22,7 +23,9 @@ def owner(store: PostgresStore) -> Principal:
     return store.ensure_principal("brandon")
 
 
-def test_put_and_get_collection_roundtrip(store, owner):
+def test_put_and_get_collection_roundtrip(
+    store: PostgresStore, owner: Principal
+) -> None:
     c = Collection(
         id=new_id(),
         slug="remem-core",
@@ -33,7 +36,7 @@ def test_put_and_get_collection_roundtrip(store, owner):
         query=CollectionQuery(tags=["style"], kinds=[Kind.RULE], project="remem"),
     )
     store.put_collection(c)
-    got = store.get_collection("remem-core", owner.id)
+    got = found(store.get_collection("remem-core", owner.id))
     assert got.title == "remem core"
     assert got.description == "the important bits"
     assert got.query.tags == ["style"]
@@ -41,7 +44,7 @@ def test_put_and_get_collection_roundtrip(store, owner):
     assert got.query.project == "remem"
 
 
-def test_get_collection_is_owner_scoped(store, owner):
+def test_get_collection_is_owner_scoped(store: PostgresStore, owner: Principal) -> None:
     other = store.ensure_principal("someone-else")
     store.put_collection(
         Collection(id=new_id(), slug="s", title="T", owner_id=owner.id)
@@ -49,7 +52,9 @@ def test_get_collection_is_owner_scoped(store, owner):
     assert store.get_collection("s", other.id) is None
 
 
-def test_list_collections_returns_only_mine(store, owner):
+def test_list_collections_returns_only_mine(
+    store: PostgresStore, owner: Principal
+) -> None:
     other = store.ensure_principal("someone-else")
     store.put_collection(
         Collection(id=new_id(), slug="a", title="A", owner_id=owner.id)
@@ -60,7 +65,9 @@ def test_list_collections_returns_only_mine(store, owner):
     assert [c.slug for c in store.list_collections(owner.id)] == ["a"]
 
 
-def test_pin_and_read_back_in_position_order(store, owner):
+def test_pin_and_read_back_in_position_order(
+    store: PostgresStore, owner: Principal
+) -> None:
     c = Collection(id=new_id(), slug="s", title="T", owner_id=owner.id)
     store.put_collection(c)
     first = remember(store, owner.id, title="First", body="b")
@@ -73,7 +80,9 @@ def test_pin_and_read_back_in_position_order(store, owner):
     ]
 
 
-def test_pinning_twice_updates_position_instead_of_erroring(store, owner):
+def test_pinning_twice_updates_position_instead_of_erroring(
+    store: PostgresStore, owner: Principal
+) -> None:
     c = Collection(id=new_id(), slug="s", title="T", owner_id=owner.id)
     store.put_collection(c)
     e = remember(store, owner.id, title="E", body="b")
@@ -82,7 +91,9 @@ def test_pinning_twice_updates_position_instead_of_erroring(store, owner):
     assert len(store.pinned_entries(c.id, owner.id)) == 1
 
 
-def test_slug_uniqueness_is_scoped_per_owner_not_global(store, owner):
+def test_slug_uniqueness_is_scoped_per_owner_not_global(
+    store: PostgresStore, owner: Principal
+) -> None:
     other = store.ensure_principal("someone-else")
     store.put_collection(
         Collection(id=new_id(), slug="core", title="Alice's KB", owner_id=owner.id)
@@ -103,7 +114,9 @@ def test_slug_uniqueness_is_scoped_per_owner_not_global(store, owner):
     assert [c.slug for c in store.list_collections(other.id)] == ["core"]
 
 
-def test_pin_refuses_another_owners_entry(store, owner):
+def test_pin_refuses_another_owners_entry(
+    store: PostgresStore, owner: Principal
+) -> None:
     other = store.ensure_principal("mallory")
     c = Collection(id=new_id(), slug="s", title="T", owner_id=owner.id)
     store.put_collection(c)
@@ -115,7 +128,9 @@ def test_pin_refuses_another_owners_entry(store, owner):
     assert store.pinned_entries(c.id, other.id) == []
 
 
-def test_pin_refuses_another_owners_collection(store, owner):
+def test_pin_refuses_another_owners_collection(
+    store: PostgresStore, owner: Principal
+) -> None:
     other = store.ensure_principal("mallory")
     theirs = Collection(id=new_id(), slug="s", title="T", owner_id=other.id)
     store.put_collection(theirs)

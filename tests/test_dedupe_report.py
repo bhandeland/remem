@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+from uuid import UUID
 
 import psycopg
 import pytest
@@ -23,13 +24,15 @@ def store(conn: psycopg.Connection[Any]) -> PostgresStore:
     return PostgresStore(conn)
 
 
-def _entry(store, owner_id, title, body):
+def _entry(store: PostgresStore, owner_id: UUID, title: str, body: str) -> Entry:
     return store.put_entry(
         Entry(id=new_id(), kind=Kind.NOTE, title=title, body=body, owner_id=owner_id)
     )
 
 
-def test_an_exact_group_is_not_also_reported_as_a_near_pair(store):
+def test_an_exact_group_is_not_also_reported_as_a_near_pair(
+    store: PostgresStore,
+) -> None:
     owner = store.ensure_principal("report-suppress")
     a = _entry(store, owner.id, "a", "same body")
     b = _entry(store, owner.id, "b", "same body")
@@ -44,7 +47,7 @@ def test_an_exact_group_is_not_also_reported_as_a_near_pair(store):
     assert r.near_total == 1
 
 
-def test_coverage_is_reported_when_nothing_is_embedded(store):
+def test_coverage_is_reported_when_nothing_is_embedded(store: PostgresStore) -> None:
     owner = store.ensure_principal("report-coverage")
     _entry(store, owner.id, "a", "one")
     _entry(store, owner.id, "b", "two")

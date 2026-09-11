@@ -42,7 +42,9 @@ def live(
     }
 
 
-def _seed(dsn, *, with_kb, with_handoff, project="remem"):
+def _seed(
+    dsn: str, *, with_kb: bool, with_handoff: bool, project: str = "remem"
+) -> None:
     import psycopg
 
     with psycopg.connect(dsn) as c:
@@ -64,7 +66,7 @@ def _seed(dsn, *, with_kb, with_handoff, project="remem"):
         c.commit()
 
 
-def _payload(cwd):
+def _payload(cwd: Path) -> str:
     return json.dumps({"cwd": str(cwd)})
 
 
@@ -79,7 +81,9 @@ def repo(tmp_path: Path) -> Path:
     return d
 
 
-def test_the_pointer_is_appended_to_the_context_block(live, repo):
+def test_the_pointer_is_appended_to_the_context_block(
+    live: dict[str, str], repo: Path
+) -> None:
     _seed(live["REMEM_DSN"], with_kb=True, with_handoff=True)
     out = hook.session_start(_payload(repo), env=live)
     assert "A note" in out
@@ -87,18 +91,20 @@ def test_the_pointer_is_appended_to_the_context_block(live, repo):
     assert "remem-prime ci" in out
 
 
-def test_the_pointer_appears_with_no_knowledge_base_at_all(live, repo):
+def test_the_pointer_appears_with_no_knowledge_base_at_all(
+    live: dict[str, str], repo: Path
+) -> None:
     _seed(live["REMEM_DSN"], with_kb=False, with_handoff=True)
     out = hook.session_start(_payload(repo), env=live)
     assert "Handoff available: ci" in out
 
 
-def test_no_handoff_means_no_pointer(live, repo):
+def test_no_handoff_means_no_pointer(live: dict[str, str], repo: Path) -> None:
     _seed(live["REMEM_DSN"], with_kb=True, with_handoff=False)
     out = hook.session_start(_payload(repo), env=live)
     assert "Handoff available" not in out
 
 
-def test_nothing_at_all_still_returns_empty(live, repo):
+def test_nothing_at_all_still_returns_empty(live: dict[str, str], repo: Path) -> None:
     _seed(live["REMEM_DSN"], with_kb=False, with_handoff=False)
     assert hook.session_start(_payload(repo), env=live) == ""

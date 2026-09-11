@@ -21,7 +21,7 @@ def env(live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> str:
     return live_dsn
 
 
-def test_remember_then_recall(env):
+def test_remember_then_recall(env: str) -> None:
     from remem.mcp_server import recall_tool, remember_tool
 
     result = remember_tool(title="Postgres tuning", body="raise work_mem")
@@ -36,27 +36,27 @@ def test_remember_then_recall(env):
     assert "snippet" in hits[0]
 
 
-def test_recall_returns_an_empty_list_when_nothing_matches(env):
+def test_recall_returns_an_empty_list_when_nothing_matches(env: str) -> None:
     from remem.mcp_server import recall_tool
 
     assert recall_tool(query="zzzz-no-match-zzzz") == []
 
 
-def test_get_entry_returns_the_full_body(env):
+def test_get_entry_returns_the_full_body(env: str) -> None:
     from remem.mcp_server import get_entry_tool, remember_tool
 
     created = remember_tool(title="T", body="the complete body")
     assert get_entry_tool(entry_id=created["id"])["body"] == "the complete body"
 
 
-def test_get_entry_reports_a_missing_id_without_raising(env):
+def test_get_entry_reports_a_missing_id_without_raising(env: str) -> None:
     from remem.domain import new_id
     from remem.mcp_server import get_entry_tool
 
     assert "error" in get_entry_tool(entry_id=str(new_id()))
 
 
-def test_supersede_hides_the_old_entry_from_recall(env):
+def test_supersede_hides_the_old_entry_from_recall(env: str) -> None:
     from remem.mcp_server import recall_tool, remember_tool, supersede_tool
 
     old = remember_tool(title="Fridays", body="deploy fridays")
@@ -66,7 +66,7 @@ def test_supersede_hides_the_old_entry_from_recall(env):
     assert [h["title"] for h in hits] == ["Tuesdays"]
 
 
-def _legacy_rule(dsn, title):
+def _legacy_rule(dsn: str, title: str) -> str:
     """A rule with no summary - the state the 17 pre-existing rules on this
     machine are in, and which write.remember (what remember_tool calls)
     can no longer produce. Written directly through the store, the same
@@ -93,7 +93,7 @@ def _legacy_rule(dsn, title):
     return str(entry.id)
 
 
-def test_supersede_a_legacy_rule_without_a_summary_reports_an_error(env):
+def test_supersede_a_legacy_rule_without_a_summary_reports_an_error(env: str) -> None:
     from remem.mcp_server import supersede_tool
 
     entry_id = _legacy_rule(env, "A legacy rule")
@@ -104,7 +104,7 @@ def test_supersede_a_legacy_rule_without_a_summary_reports_an_error(env):
     assert "summary" in result["error"]
 
 
-def test_supersede_a_legacy_rule_with_a_summary_succeeds(env):
+def test_supersede_a_legacy_rule_with_a_summary_succeeds(env: str) -> None:
     from remem.mcp_server import supersede_tool
 
     entry_id = _legacy_rule(env, "Another legacy rule")
@@ -126,7 +126,7 @@ def test_supersede_a_legacy_rule_with_a_summary_succeeds(env):
     assert summary == "state the rule in one line"
 
 
-def test_kb_list_and_context(env):
+def test_kb_list_and_context(env: str) -> None:
     from remem.mcp_server import (
         kb_context_tool,
         kb_list_tool,
@@ -152,13 +152,15 @@ def test_kb_list_and_context(env):
     assert "## Rules" in block
 
 
-def test_kb_context_for_an_unknown_slug_returns_a_message_not_an_exception(env):
+def test_kb_context_for_an_unknown_slug_returns_a_message_not_an_exception(
+    env: str,
+) -> None:
     from remem.mcp_server import kb_context_tool
 
     assert "core" not in kb_context_tool(slug="nope")
 
 
-def test_kb_pin_reports_a_nonexistent_entry_without_raising(env):
+def test_kb_pin_reports_a_nonexistent_entry_without_raising(env: str) -> None:
     from remem.domain import new_id
     from remem.mcp_server import kb_pin_tool
     from remem.services import kb
@@ -172,21 +174,21 @@ def test_kb_pin_reports_a_nonexistent_entry_without_raising(env):
     assert "error" in result
 
 
-def test_remember_reports_an_invalid_kind_without_raising(env):
+def test_remember_reports_an_invalid_kind_without_raising(env: str) -> None:
     from remem.mcp_server import remember_tool
 
     result = remember_tool(title="T", body="B", kind="bogus")
     assert "error" in result
 
 
-def test_recall_reports_an_invalid_kind_without_raising(env):
+def test_recall_reports_an_invalid_kind_without_raising(env: str) -> None:
     from remem.mcp_server import recall_tool
 
     result = recall_tool(query="anything", kind="bogus")
     assert "error" in result
 
 
-def test_tools_are_registered_with_the_server(env):
+def test_tools_are_registered_with_the_server(env: str) -> None:
     import asyncio
 
     from remem.mcp_server import mcp

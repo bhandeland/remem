@@ -8,7 +8,7 @@ import pytest
 
 from remem.backends.postgres.migrate import migrate
 from remem.backends.postgres.store import PostgresStore
-from remem.domain import Kind, Origin, Principal, Query
+from remem.domain import Hit, Kind, Origin, Principal, Query
 from remem.services import ingest
 
 pytestmark = pytest.mark.db
@@ -34,7 +34,7 @@ def doc(tmp_path: Path) -> Path:
     return path
 
 
-def _live(store, owner, path):
+def _live(store: PostgresStore, owner: Principal, path: Path) -> list[Hit]:
     return store.search(
         Query(
             tags=[ingest.src_tag(path)],
@@ -45,7 +45,9 @@ def _live(store, owner, path):
     )
 
 
-def test_ingest_writes_an_anchor_and_one_entry_per_heading(store, owner, doc):
+def test_ingest_writes_an_anchor_and_one_entry_per_heading(
+    store: PostgresStore, owner: Principal, doc: Path
+) -> None:
     report = ingest.ingest_file(store, owner.id, doc, project="remem")
 
     assert report.created == 3
@@ -56,7 +58,9 @@ def test_ingest_writes_an_anchor_and_one_entry_per_heading(store, owner, doc):
     assert all(e.project == "remem" for e in entries)
 
 
-def test_every_chunk_carries_its_src_and_sec_tags(store, owner, doc):
+def test_every_chunk_carries_its_src_and_sec_tags(
+    store: PostgresStore, owner: Principal, doc: Path
+) -> None:
     ingest.ingest_file(store, owner.id, doc, project="remem")
 
     entries = {h.entry.title: h.entry for h in _live(store, owner, doc)}
@@ -68,13 +72,17 @@ def test_every_chunk_carries_its_src_and_sec_tags(store, owner, doc):
     assert not [t for t in anchor.tags if t.startswith("sec:")]
 
 
-def test_archive_writes_the_archived_origin(store, owner, doc):
+def test_archive_writes_the_archived_origin(
+    store: PostgresStore, owner: Principal, doc: Path
+) -> None:
     ingest.ingest_file(store, owner.id, doc, project="remem", archive=True)
 
     assert all(h.entry.origin is Origin.ARCHIVED for h in _live(store, owner, doc))
 
 
-def test_re_ingesting_an_unchanged_file_writes_nothing(store, owner, doc):
+def test_re_ingesting_an_unchanged_file_writes_nothing(
+    store: PostgresStore, owner: Principal, doc: Path
+) -> None:
     ingest.ingest_file(store, owner.id, doc, project="remem")
     before = {h.entry.id: h.entry.updated_at for h in _live(store, owner, doc)}
 
@@ -85,7 +93,9 @@ def test_re_ingesting_an_unchanged_file_writes_nothing(store, owner, doc):
     assert after == before
 
 
-def test_an_edited_section_supersedes_only_itself(store, owner, doc):
+def test_an_edited_section_supersedes_only_itself(
+    store: PostgresStore, owner: Principal, doc: Path
+) -> None:
     ingest.ingest_file(store, owner.id, doc, project="remem")
     doc.write_text(DOC.replace("body a", "body a, revised"))
 
@@ -107,7 +117,9 @@ def test_an_edited_section_supersedes_only_itself(store, owner, doc):
     assert len(all_versions) == 2
 
 
-def test_a_new_section_is_created_without_touching_its_neighbours(store, owner, doc):
+def test_a_new_section_is_created_without_touching_its_neighbours(
+    store: PostgresStore, owner: Principal, doc: Path
+) -> None:
     ingest.ingest_file(store, owner.id, doc, project="remem")
     doc.write_text(DOC + "\n## Gamma\n\nbody g\n")
 
@@ -116,7 +128,9 @@ def test_a_new_section_is_created_without_touching_its_neighbours(store, owner, 
     assert (report.created, report.changed, report.unchanged) == (1, 0, 3)
 
 
-def test_dry_run_reports_the_plan_and_writes_nothing(store, owner, doc):
+def test_dry_run_reports_the_plan_and_writes_nothing(
+    store: PostgresStore, owner: Principal, doc: Path
+) -> None:
     report = ingest.ingest_file(store, owner.id, doc, project="remem", dry_run=True)
 
     assert report.created == 3
@@ -124,8 +138,11 @@ def test_dry_run_reports_the_plan_and_writes_nothing(store, owner, doc):
 
 
 def test_too_many_chunks_raises_rather_than_truncating(
-    store, owner, tmp_path, monkeypatch
-):
+    store: PostgresStore,
+    owner: Principal,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(ingest, "MAX_CHUNKS_PER_FILE", 3)
     path = tmp_path / "big.md"
     path.write_text(
@@ -137,8 +154,8 @@ def test_too_many_chunks_raises_rather_than_truncating(
 
 
 def test_a_retitled_document_supersedes_every_chunk_that_carries_the_title(
-    store, owner, doc
-):
+    store: PostgresStore, owner: Principal, doc: Path
+) -> None:
     # The title is part of the embedding text and of the weighted tsvector,
     # so a chunk whose title moved is genuinely found differently and has to
     # supersede. Bodies alone would leave the old titles standing forever:
@@ -153,7 +170,9 @@ def test_a_retitled_document_supersedes_every_chunk_that_carries_the_title(
     assert titles == {"Ingest design", "Ingest design § Alpha", "Ingest design § Beta"}
 
 
-def test_a_section_title_is_taken_from_the_h1_not_the_filename(store, owner, tmp_path):
+def test_a_section_title_is_taken_from_the_h1_not_the_filename(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     path = tmp_path / "2026-09-01-doc-ingest-design.md"
     path.write_text(DOC)
 

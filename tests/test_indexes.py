@@ -24,14 +24,16 @@ def store(conn: psycopg.Connection[Any]) -> PostgresStore:
     return PostgresStore(conn)
 
 
-def _indexdef(conn, name: str) -> str | None:
+def _indexdef(conn: psycopg.Connection[Any], name: str) -> str | None:
     row = conn.execute(
         "select indexdef from pg_indexes where indexname = %s", (name,)
     ).fetchone()
     return row[0] if row else None
 
 
-def test_btree_gin_is_installed(store, conn):
+def test_btree_gin_is_installed(
+    store: PostgresStore, conn: psycopg.Connection[Any]
+) -> None:
     """Required to mix the scalar owner_id with the tsvector in one GIN index."""
     assert (
         conn.execute(
@@ -41,7 +43,9 @@ def test_btree_gin_is_installed(store, conn):
     )
 
 
-def test_search_index_covers_owner_and_excludes_superseded(store, conn):
+def test_search_index_covers_owner_and_excludes_superseded(
+    store: PostgresStore, conn: psycopg.Connection[Any]
+) -> None:
     definition = _indexdef(conn, "entries_owner_search_live_idx")
     assert definition is not None
     assert "gin" in definition.lower()
@@ -50,7 +54,9 @@ def test_search_index_covers_owner_and_excludes_superseded(store, conn):
     assert "superseded_by IS NULL" in definition
 
 
-def test_recent_index_is_ordered_and_excludes_superseded(store, conn):
+def test_recent_index_is_ordered_and_excludes_superseded(
+    store: PostgresStore, conn: psycopg.Connection[Any]
+) -> None:
     definition = _indexdef(conn, "entries_owner_recent_idx")
     assert definition is not None
     assert "owner_id" in definition
@@ -58,7 +64,9 @@ def test_recent_index_is_ordered_and_excludes_superseded(store, conn):
     assert "superseded_by IS NULL" in definition
 
 
-def test_listing_query_actually_uses_the_ordered_index(store, conn):
+def test_listing_query_actually_uses_the_ordered_index(
+    store: PostgresStore, conn: psycopg.Connection[Any]
+) -> None:
     """The planner must satisfy ORDER BY from the index, not by sorting.
 
     This is the path `remem search` with no query and every `kb resolve` take.

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any
+from uuid import UUID
 
 from remem.domain import (
     DedupeReport,
@@ -19,7 +20,12 @@ from remem.services.dedupe import render, suppress, survivor
 OWNER = new_id()
 
 
-def _entry(title, origin=Origin.AGENT, updated="2026-01-01", eid=None):
+def _entry(
+    title: str,
+    origin: Origin = Origin.AGENT,
+    updated: str = "2026-01-01",
+    eid: UUID | None = None,
+) -> Entry:
     return Entry(
         id=eid or new_id(),
         kind=Kind.NOTE,

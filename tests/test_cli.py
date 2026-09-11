@@ -28,13 +28,13 @@ def env(live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> str:
     return live_dsn
 
 
-def test_whoami_reports_the_handle(env):
+def test_whoami_reports_the_handle(env: str) -> None:
     result = runner.invoke(app, ["whoami"])
     assert result.exit_code == 0
     assert "brandon" in result.stdout
 
 
-def test_remember_then_search_finds_it(env):
+def test_remember_then_search_finds_it(env: str) -> None:
     r = runner.invoke(
         app,
         [
@@ -55,7 +55,7 @@ def test_remember_then_search_finds_it(env):
     assert payload[0]["project"] == "remem"
 
 
-def test_remember_reads_the_body_from_stdin(env):
+def test_remember_reads_the_body_from_stdin(env: str) -> None:
     r = runner.invoke(
         app, ["remember", "From stdin", "--body", "-"], input="piped body text"
     )
@@ -64,13 +64,13 @@ def test_remember_reads_the_body_from_stdin(env):
     assert json.loads(s.stdout)[0]["title"] == "From stdin"
 
 
-def test_search_json_is_a_list_even_when_empty(env):
+def test_search_json_is_a_list_even_when_empty(env: str) -> None:
     s = runner.invoke(app, ["search", "nothing-matches-this", "--json"])
     assert s.exit_code == 0
     assert json.loads(s.stdout) == []
 
 
-def test_get_prints_the_full_body(env):
+def test_get_prints_the_full_body(env: str) -> None:
     runner.invoke(app, ["remember", "T", "--body", "the whole body"])
     s = runner.invoke(app, ["search", "whole", "--json"])
     entry_id = json.loads(s.stdout)[0]["id"]
@@ -78,14 +78,14 @@ def test_get_prints_the_full_body(env):
     assert "the whole body" in g.stdout
 
 
-def test_get_with_an_unknown_id_exits_nonzero(env):
+def test_get_with_an_unknown_id_exits_nonzero(env: str) -> None:
     from remem.domain import new_id
 
     g = runner.invoke(app, ["get", str(new_id())])
     assert g.exit_code != 0
 
 
-def test_supersede_replaces_and_hides_the_old_entry(env):
+def test_supersede_replaces_and_hides_the_old_entry(env: str) -> None:
     runner.invoke(app, ["remember", "Fridays", "--body", "deploy fridays"])
     s = runner.invoke(app, ["search", "fridays", "--json"])
     old_id = json.loads(s.stdout)[0]["id"]
@@ -98,7 +98,7 @@ def test_supersede_replaces_and_hides_the_old_entry(env):
     assert titles == ["Tuesdays"]
 
 
-def test_kb_new_list_pin_and_show(env):
+def test_kb_new_list_pin_and_show(env: str) -> None:
     runner.invoke(
         app,
         [
@@ -125,17 +125,17 @@ def test_kb_new_list_pin_and_show(env):
     assert "## Rules" in shown.stdout
 
 
-def test_kb_show_with_an_unknown_slug_exits_nonzero(env):
+def test_kb_show_with_an_unknown_slug_exits_nonzero(env: str) -> None:
     assert runner.invoke(app, ["kb", "show", "nope"]).exit_code != 0
 
 
-def test_db_status_reports_applied_migrations(env):
+def test_db_status_reports_applied_migrations(env: str) -> None:
     r = runner.invoke(app, ["db", "status"])
     assert r.exit_code == 0
     assert "001_initial" in r.stdout
 
 
-def test_search_filters_by_kind(env):
+def test_search_filters_by_kind(env: str) -> None:
     runner.invoke(
         app,
         [
@@ -154,7 +154,7 @@ def test_search_filters_by_kind(env):
     assert [x["title"] for x in json.loads(s.stdout)] == ["R"]
 
 
-def test_kb_pin_with_an_unknown_entry_exits_cleanly(env):
+def test_kb_pin_with_an_unknown_entry_exits_cleanly(env: str) -> None:
     from remem.domain import new_id
 
     runner.invoke(app, ["kb", "new", "core", "--title", "Core"])
@@ -165,22 +165,22 @@ def test_kb_pin_with_an_unknown_entry_exits_cleanly(env):
     assert r.exception is None or isinstance(r.exception, SystemExit)
 
 
-def test_get_with_a_malformed_id_exits_cleanly(env):
+def test_get_with_a_malformed_id_exits_cleanly(env: str) -> None:
     r = runner.invoke(app, ["get", "abc"])
     assert r.exit_code != 0
     assert "not a valid entry id" in r.stderr
     assert "Traceback" not in r.stdout + r.stderr
 
 
-def test_supersede_with_a_malformed_id_exits_cleanly(env):
+def test_supersede_with_a_malformed_id_exits_cleanly(env: str) -> None:
     r = runner.invoke(app, ["supersede", "abc", "--title", "T", "--body", "b"])
     assert r.exit_code != 0
     assert "not a valid entry id" in r.stderr
 
 
 def test_commands_report_an_unreachable_postgres_without_a_traceback(
-    monkeypatch, tmp_path
-):
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     monkeypatch.setenv("REMEM_DSN", "postgresql://remem@127.0.0.1:1/remem")
     monkeypatch.setenv("REMEM_CONFIG", str(tmp_path / "none.toml"))
     r = runner.invoke(app, ["search", "anything"])
@@ -212,8 +212,8 @@ def unmigrated_dsn() -> Iterator[str]:
 
 
 def test_db_status_on_an_unmigrated_database_reports_pending(
-    unmigrated_dsn, monkeypatch, tmp_path
-):
+    unmigrated_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     monkeypatch.setenv("REMEM_DSN", unmigrated_dsn)
     monkeypatch.setenv("REMEM_CONFIG", str(tmp_path / "none.toml"))
     r = runner.invoke(app, ["db", "status"])
@@ -224,8 +224,8 @@ def test_db_status_on_an_unmigrated_database_reports_pending(
 
 
 def test_db_migrate_on_an_unmigrated_database_applies_it(
-    unmigrated_dsn, monkeypatch, tmp_path
-):
+    unmigrated_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     monkeypatch.setenv("REMEM_DSN", unmigrated_dsn)
     monkeypatch.setenv("REMEM_CONFIG", str(tmp_path / "none.toml"))
     r = runner.invoke(app, ["db", "migrate"])
@@ -237,7 +237,9 @@ def test_db_migrate_on_an_unmigrated_database_applies_it(
     assert "Applied:   001_initial" in again.stdout
 
 
-def test_install_with_project_scope_exits_nonzero(monkeypatch, tmp_path):
+def test_install_with_project_scope_exits_nonzero(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """Never touches the real home: Path.home() is redirected, and the scope
     is rejected before any file is written anyway."""
     import pathlib
@@ -252,7 +254,7 @@ def test_install_with_project_scope_exits_nonzero(monkeypatch, tmp_path):
     assert "Traceback" not in r.stdout + r.stderr
 
 
-def test_verify_reruns_the_install_round_trip_without_reinstalling(env):
+def test_verify_reruns_the_install_round_trip_without_reinstalling(env: str) -> None:
     """`remem verify` is the re-runnable half of install's last step - a
     user who fixed the database, or just wants to check, should not have to
     reinstall to find out whether recording actually works."""
@@ -262,13 +264,15 @@ def test_verify_reruns_the_install_round_trip_without_reinstalling(env):
     assert r.stderr == ""
 
 
-def test_verify_reports_an_unknown_agent(monkeypatch):
+def test_verify_reports_an_unknown_agent(monkeypatch: pytest.MonkeyPatch) -> None:
     r = runner.invoke(app, ["verify", "--agent", "no-such-agent"])
     assert r.exit_code != 0
     assert "no-such-agent" in r.stderr
 
 
-def test_verify_exits_nonzero_when_it_cannot_prove_anything(monkeypatch):
+def test_verify_exits_nonzero_when_it_cannot_prove_anything(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Unlike install(), which folds a failed verification into a warning
     and finishes, `verify` is typed by a human asking "does this work?" -
     a report full of warnings must not still say yes."""
@@ -278,19 +282,19 @@ def test_verify_exits_nonzero_when_it_cannot_prove_anything(monkeypatch):
     assert "warning" in r.stderr
 
 
-def test_kb_new_without_a_query_warns(env):
+def test_kb_new_without_a_query_warns(env: str) -> None:
     r = runner.invoke(app, ["kb", "new", "bare", "--title", "Bare"])
     assert r.exit_code == 0
     assert "--project" in r.stderr and "--tag" in r.stderr
 
 
-def test_kb_new_with_a_project_does_not_warn(env):
+def test_kb_new_with_a_project_does_not_warn(env: str) -> None:
     r = runner.invoke(app, ["kb", "new", "proj", "--title", "P", "--project", "myapp"])
     assert r.exit_code == 0
     assert r.stderr.strip() == ""
 
 
-def _summary_of(dsn, entry_id):
+def _summary_of(dsn: str, entry_id: str) -> str | None:
     """Read the stored summary directly.
 
     No CLI surface prints it - the summary exists to be exported into a
@@ -306,7 +310,7 @@ def _summary_of(dsn, entry_id):
     return summary
 
 
-def test_remember_stores_a_summary(env):
+def test_remember_stores_a_summary(env: str) -> None:
     r = runner.invoke(
         app,
         ["remember", "Has a summary", "--body", "b", "--summary", "one line about it"],
@@ -315,7 +319,7 @@ def test_remember_stores_a_summary(env):
     assert _summary_of(env, r.stdout.strip()) == "one line about it"
 
 
-def test_rule_stores_a_summary(env):
+def test_rule_stores_a_summary(env: str) -> None:
     r = runner.invoke(
         app,
         [
@@ -331,7 +335,7 @@ def test_rule_stores_a_summary(env):
     assert _summary_of(env, r.stdout.strip()) == "why the rule exists"
 
 
-def test_supersede_can_correct_a_summary(env):
+def test_supersede_can_correct_a_summary(env: str) -> None:
     first = runner.invoke(
         app, ["remember", "Original", "--body", "b", "--summary", "the old one"]
     )
@@ -354,7 +358,7 @@ def test_supersede_can_correct_a_summary(env):
     assert _summary_of(env, second.stdout.strip()) == "the new one"
 
 
-def test_supersede_without_a_summary_carries_the_old_one(env):
+def test_supersede_without_a_summary_carries_the_old_one(env: str) -> None:
     # supersede's contract is that the replacement inherits everything the
     # caller did not restate. Adding the flag must not turn "omitted" into
     # "clear it" - that would silently empty the frontmatter description of
@@ -379,7 +383,7 @@ def test_supersede_without_a_summary_carries_the_old_one(env):
     assert _summary_of(env, second.stdout.strip()) == "kept across the correction"
 
 
-def test_search_json_carries_the_summary(env):
+def test_search_json_carries_the_summary(env: str) -> None:
     r = runner.invoke(
         app,
         [
@@ -396,7 +400,7 @@ def test_search_json_carries_the_summary(env):
     assert json.loads(s.stdout)[0]["summary"] == "the one-line version"
 
 
-def test_get_json_carries_the_summary(env):
+def test_get_json_carries_the_summary(env: str) -> None:
     runner.invoke(
         app, ["remember", "Gettable", "--body", "body", "--summary", "read me back"]
     )
@@ -406,7 +410,7 @@ def test_get_json_carries_the_summary(env):
     assert json.loads(g.stdout)["summary"] == "read me back"
 
 
-def test_the_summary_key_is_present_and_null_when_there_is_none(env):
+def test_the_summary_key_is_present_and_null_when_there_is_none(env: str) -> None:
     # A key that appears only sometimes makes every consumer write a
     # membership test; nullable is the honest shape for a nullable column.
     runner.invoke(app, ["remember", "Unsummarised", "--body", "body"])
@@ -414,7 +418,7 @@ def test_the_summary_key_is_present_and_null_when_there_is_none(env):
     assert json.loads(s.stdout)[0]["summary"] is None
 
 
-def test_get_shows_the_summary_above_the_body(env):
+def test_get_shows_the_summary_above_the_body(env: str) -> None:
     runner.invoke(
         app, ["remember", "Printable", "--body", "the body", "--summary", "the gist"]
     )
@@ -425,7 +429,7 @@ def test_get_shows_the_summary_above_the_body(env):
     assert g.stdout.index("the gist") < g.stdout.index("the body")
 
 
-def test_get_prints_no_summary_line_when_there_is_none(env):
+def test_get_prints_no_summary_line_when_there_is_none(env: str) -> None:
     runner.invoke(app, ["remember", "Bare", "--body", "just a body"])
     s = runner.invoke(app, ["search", "Bare", "--json"])
     entry_id = json.loads(s.stdout)[0]["id"]
@@ -433,7 +437,7 @@ def test_get_prints_no_summary_line_when_there_is_none(env):
     assert g.stdout == "# Bare\n\njust a body\n"
 
 
-def _legacy_rule(dsn, title):
+def _legacy_rule(dsn: str, title: str) -> str:
     """A rule with no summary, written the way the 17 pre-existing rules on
     this machine were: before RuleNeedsSummary existed, or by any path that
     bypasses write.remember. Going through the CLI can't produce this state
@@ -461,7 +465,7 @@ def _legacy_rule(dsn, title):
     return str(entry.id)
 
 
-def test_supersede_a_legacy_rule_without_a_summary_names_the_flag(env):
+def test_supersede_a_legacy_rule_without_a_summary_names_the_flag(env: str) -> None:
     entry_id = _legacy_rule(env, "A legacy rule")
     r = runner.invoke(
         app,
@@ -471,7 +475,7 @@ def test_supersede_a_legacy_rule_without_a_summary_names_the_flag(env):
     assert "--summary" in r.stderr
 
 
-def test_supersede_a_legacy_rule_with_a_summary_succeeds(env):
+def test_supersede_a_legacy_rule_with_a_summary_succeeds(env: str) -> None:
     entry_id = _legacy_rule(env, "Another legacy rule")
     r = runner.invoke(
         app,
@@ -490,7 +494,7 @@ def test_supersede_a_legacy_rule_with_a_summary_succeeds(env):
     assert _summary_of(env, r.stdout.strip()) == "state the rule in one line"
 
 
-def test_remember_kind_rule_without_a_summary_names_the_flag(env):
+def test_remember_kind_rule_without_a_summary_names_the_flag(env: str) -> None:
     """`remem remember --kind rule` used to exit 1 with a bare traceback
     and nothing on stdout or stderr - `remem rule` (the shorthand) already
     caught this and named --summary, so the two commands gave the same
@@ -502,7 +506,7 @@ def test_remember_kind_rule_without_a_summary_names_the_flag(env):
     assert "--summary" in r.stderr
 
 
-def test_update_summary_empty_on_a_rule_names_the_flag(env):
+def test_update_summary_empty_on_a_rule_names_the_flag(env: str) -> None:
     r = runner.invoke(
         app, ["rule", "A rule", "--body", "the case", "--summary", "do the thing"]
     )

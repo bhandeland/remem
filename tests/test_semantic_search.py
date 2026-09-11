@@ -8,6 +8,7 @@ reader can verify by eye.
 """
 
 from typing import Any
+from uuid import UUID
 
 import psycopg
 import pytest
@@ -27,7 +28,9 @@ def store(conn: psycopg.Connection[Any]) -> PostgresStore:
     return PostgresStore(conn)
 
 
-def _entry(store, owner_id, title, body="body", **kw):
+def _entry(
+    store: PostgresStore, owner_id: UUID, title: str, body: str = "body", **kw: Any
+):
     return store.put_entry(
         Entry(
             id=new_id(), kind=Kind.NOTE, title=title, body=body, owner_id=owner_id, **kw
@@ -35,7 +38,7 @@ def _entry(store, owner_id, title, body="body", **kw):
     )
 
 
-def test_ranks_by_cosine_similarity(store):
+def test_ranks_by_cosine_similarity(store: PostgresStore) -> None:
     owner = store.ensure_principal("sem-rank")
     near = _entry(store, owner.id, "near")
     far = _entry(store, owner.id, "far")
@@ -51,7 +54,7 @@ def test_ranks_by_cosine_similarity(store):
     assert hits[0].rank == pytest.approx(1.0)
 
 
-def test_threshold_excludes_weak_matches(store):
+def test_threshold_excludes_weak_matches(store: PostgresStore) -> None:
     owner = store.ensure_principal("sem-threshold")
     entry = _entry(store, owner.id, "orthogonal")
     store.put_vector(entry.id, MODEL, 2, [0.0, 1.0], owner.id)
@@ -62,7 +65,7 @@ def test_threshold_excludes_weak_matches(store):
     assert hits == []
 
 
-def test_never_crosses_owners(store):
+def test_never_crosses_owners(store: PostgresStore) -> None:
     mine = store.ensure_principal("sem-mine")
     yours = store.ensure_principal("sem-yours")
     theirs = _entry(store, yours.id, "not yours")
@@ -74,7 +77,7 @@ def test_never_crosses_owners(store):
     assert hits == []
 
 
-def test_applies_the_same_filters_as_other_tiers(store):
+def test_applies_the_same_filters_as_other_tiers(store: PostgresStore) -> None:
     owner = store.ensure_principal("sem-filters")
     a = _entry(store, owner.id, "in project", project="alpha")
     b = _entry(store, owner.id, "other project", project="beta")
@@ -91,7 +94,7 @@ def test_applies_the_same_filters_as_other_tiers(store):
     assert [h.entry.id for h in hits] == [a.id]
 
 
-def test_ignores_vectors_from_another_model(store):
+def test_ignores_vectors_from_another_model(store: PostgresStore) -> None:
     # Two models coexisting is the normal state during a re-embed. A search
     # must see exactly one of them, or the ranking is comparing numbers from
     # different spaces - which produces plausible nonsense rather than an
@@ -106,7 +109,7 @@ def test_ignores_vectors_from_another_model(store):
     assert hits == []
 
 
-def test_entries_missing_vectors_lists_only_unembedded(store):
+def test_entries_missing_vectors_lists_only_unembedded(store: PostgresStore) -> None:
     owner = store.ensure_principal("sem-missing")
     done = _entry(store, owner.id, "already embedded")
     todo = _entry(store, owner.id, "not yet")
@@ -116,7 +119,7 @@ def test_entries_missing_vectors_lists_only_unembedded(store):
     assert [e.id for e in missing] == [todo.id]
 
 
-def test_entries_missing_vectors_is_per_model(store):
+def test_entries_missing_vectors_is_per_model(store: PostgresStore) -> None:
     # Changing model makes every entry need work again. That is the point of
     # keying on model, and it is what makes a re-embed a normal operation
     # rather than a migration.
@@ -128,7 +131,7 @@ def test_entries_missing_vectors_is_per_model(store):
     assert [e.id for e in missing] == [entry.id]
 
 
-def test_put_vector_refuses_another_owners_entry(store):
+def test_put_vector_refuses_another_owners_entry(store: PostgresStore) -> None:
     from remem.store import NotOwner
 
     mine = store.ensure_principal("put-mine")
@@ -139,7 +142,7 @@ def test_put_vector_refuses_another_owners_entry(store):
         store.put_vector(theirs.id, MODEL, 2, [1.0, 0.0], mine.id)
 
 
-def test_put_vector_replaces_the_row_for_the_same_model(store):
+def test_put_vector_replaces_the_row_for_the_same_model(store: PostgresStore) -> None:
     owner = store.ensure_principal("put-replace")
     entry = _entry(store, owner.id, "re-embedded")
     store.put_vector(entry.id, MODEL, 2, [1.0, 0.0], owner.id)

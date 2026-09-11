@@ -46,7 +46,7 @@ def wheel_names(tmp_path_factory: pytest.TempPathFactory) -> set[str]:
 
 
 @pytest.mark.slow
-def test_the_wheel_ships_every_migration(wheel_names):
+def test_the_wheel_ships_every_migration(wheel_names: set[str]) -> None:
     expected = {
         f"remem/backends/postgres/migrations/{p.name}" for p in MIGRATIONS.glob("*.sql")
     }
@@ -55,7 +55,7 @@ def test_the_wheel_ships_every_migration(wheel_names):
 
 
 @pytest.mark.slow
-def test_the_wheel_ships_every_skill(wheel_names):
+def test_the_wheel_ships_every_skill(wheel_names: set[str]) -> None:
     expected = {
         # Skills are a directory of arbitrary supporting files, not just
         # SKILL.md, so compare every file rather than just the manifests.
@@ -68,9 +68,9 @@ def test_the_wheel_ships_every_skill(wheel_names):
 
 
 @pytest.mark.slow
-def test_the_wheel_ships_the_opencode_plugin(wheel_names):
+def test_the_wheel_ships_the_opencode_plugin(wheel_names: set[str]):
     # plugin.js is read at install time via `resources.files()`
-    # (agents/opencode/adapter.py), the exact same trap the install tests
+    # (agents/opencode/adapter.py) -> None, the exact same trap the install tests
     # fall into for migrations and skills under an editable install: it
     # resolves straight back to the source tree and stays green even if the
     # wheel shipped none of it.
@@ -79,7 +79,7 @@ def test_the_wheel_ships_the_opencode_plugin(wheel_names):
 
 
 @pytest.mark.slow
-def test_the_wheel_ships_the_console_script(wheel_names):
+def test_the_wheel_ships_the_console_script(wheel_names: set[str]) -> None:
     # The MCP server and both hooks are registered as a bare `remem`; without
     # the entry point the generated Claude Code config silently does nothing.
     assert any(n.endswith(".dist-info/entry_points.txt") for n in wheel_names)

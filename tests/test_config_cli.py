@@ -32,7 +32,7 @@ def _clean_environment(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(key, raising=False)
 
 
-def _env(tmp_path, **extra):
+def _env(tmp_path: Path, **extra: str) -> dict[str, str]:
     """Point both targets at a temp dir and keep the real home untouched."""
     return {
         "REMEM_CONFIG": str(tmp_path / "config.toml"),
@@ -41,7 +41,7 @@ def _env(tmp_path, **extra):
     }
 
 
-def test_set_writes_a_claude_code_key(tmp_path):
+def test_set_writes_a_claude_code_key(tmp_path: Path) -> None:
     result = runner.invoke(
         app,
         ["config", "set", "BASH_DEFAULT_TIMEOUT_MS", "10m"],
@@ -54,7 +54,7 @@ def test_set_writes_a_claude_code_key(tmp_path):
     assert "600000" in result.stdout
 
 
-def test_set_writes_a_remem_key(tmp_path):
+def test_set_writes_a_remem_key(tmp_path: Path) -> None:
     result = runner.invoke(
         app, ["config", "set", "REMEM_MAX_CHARS", "8000"], env=_env(tmp_path)
     )
@@ -63,13 +63,15 @@ def test_set_writes_a_remem_key(tmp_path):
     assert data["max_chars"] == 8000
 
 
-def test_set_rejects_an_unknown_key_with_a_nonzero_exit(tmp_path):
+def test_set_rejects_an_unknown_key_with_a_nonzero_exit(tmp_path: Path) -> None:
     result = runner.invoke(app, ["config", "set", "NOPE", "1"], env=_env(tmp_path))
     assert result.exit_code == 1
     assert "NOPE" in result.output
 
 
-def test_set_leaves_the_file_untouched_when_the_value_is_refused(tmp_path):
+def test_set_leaves_the_file_untouched_when_the_value_is_refused(
+    tmp_path: Path,
+) -> None:
     path = tmp_path / "claude" / "settings.json"
     runner.invoke(
         app,
@@ -88,7 +90,7 @@ def test_set_leaves_the_file_untouched_when_the_value_is_refused(tmp_path):
     assert path.read_bytes() == before
 
 
-def test_set_warns_when_an_export_shadows_a_remem_key(tmp_path):
+def test_set_warns_when_an_export_shadows_a_remem_key(tmp_path: Path) -> None:
     result = runner.invoke(
         app,
         ["config", "set", "REMEM_MAX_CHARS", "8000"],
@@ -98,7 +100,7 @@ def test_set_warns_when_an_export_shadows_a_remem_key(tmp_path):
     assert "will not take effect" in result.output
 
 
-def test_get_prints_the_effective_value(tmp_path):
+def test_get_prints_the_effective_value(tmp_path: Path) -> None:
     runner.invoke(app, ["config", "set", "REMEM_MAX_CHARS", "8000"], env=_env(tmp_path))
     result = runner.invoke(
         app, ["config", "get", "REMEM_MAX_CHARS"], env=_env(tmp_path)
@@ -107,7 +109,7 @@ def test_get_prints_the_effective_value(tmp_path):
     assert "8000" in result.stdout
 
 
-def test_unset_removes_the_key(tmp_path):
+def test_unset_removes_the_key(tmp_path: Path) -> None:
     runner.invoke(
         app,
         ["config", "set", "BASH_DEFAULT_TIMEOUT_MS", "600000"],
@@ -121,7 +123,7 @@ def test_unset_removes_the_key(tmp_path):
     assert "BASH_DEFAULT_TIMEOUT_MS" not in settings["env"]
 
 
-def test_list_shows_keys_values_and_sources(tmp_path):
+def test_list_shows_keys_values_and_sources(tmp_path: Path) -> None:
     runner.invoke(app, ["config", "set", "REMEM_MAX_CHARS", "8000"], env=_env(tmp_path))
     result = runner.invoke(app, ["config", "list"], env=_env(tmp_path))
     assert result.exit_code == 0
@@ -132,12 +134,12 @@ def test_list_shows_keys_values_and_sources(tmp_path):
     assert "default" in result.stdout
 
 
-def test_list_surfaces_a_variables_note(tmp_path):
+def test_list_surfaces_a_variables_note(tmp_path: Path) -> None:
     result = runner.invoke(app, ["config", "list"], env=_env(tmp_path))
     assert "lower" in result.stdout
 
 
-def test_an_unknown_agent_is_refused_cleanly(tmp_path):
+def test_an_unknown_agent_is_refused_cleanly(tmp_path: Path) -> None:
     # Not a traceback: registry.get already names what is registered.
     result = runner.invoke(
         app, ["config", "list", "--agent", "nope"], env=_env(tmp_path)
@@ -147,7 +149,7 @@ def test_an_unknown_agent_is_refused_cleanly(tmp_path):
     assert "claude-code" in result.output
 
 
-def test_config_works_with_postgres_unreachable(tmp_path):
+def test_config_works_with_postgres_unreachable(tmp_path: Path) -> None:
     # No command in this group may open a session. A bad DSN must not matter.
     result = runner.invoke(
         app,
@@ -157,7 +159,7 @@ def test_config_works_with_postgres_unreachable(tmp_path):
     assert result.exit_code == 0
 
 
-def test_set_strips_whitespace_on_a_non_duration_integer(tmp_path):
+def test_set_strips_whitespace_on_a_non_duration_integer(tmp_path: Path) -> None:
     # coerce's plain-integer branch (var.duration is False) had the same
     # isdigit()-without-strip gap as parse_duration - fixed alongside it so a
     # duration key and a non-duration key don't disagree on an
@@ -172,7 +174,7 @@ def test_set_strips_whitespace_on_a_non_duration_integer(tmp_path):
     assert settings["env"]["BASH_MAX_OUTPUT_LENGTH"] == "30000"
 
 
-def test_set_strips_whitespace_before_parsing_a_duration(tmp_path):
+def test_set_strips_whitespace_before_parsing_a_duration(tmp_path: Path) -> None:
     # parse_duration's plain-integer fast path uses raw.isdigit() without
     # stripping, so an unstripped " 600000 " misses it and falls into the
     # suffix regex, which then rejects it. CLI input is the one path that can
@@ -188,7 +190,7 @@ def test_set_strips_whitespace_before_parsing_a_duration(tmp_path):
     assert settings["env"]["BASH_DEFAULT_TIMEOUT_MS"] == "600000"
 
 
-def test_set_refuses_a_non_numeric_fuzzy_threshold(tmp_path):
+def test_set_refuses_a_non_numeric_fuzzy_threshold(tmp_path: Path) -> None:
     # The end-to-end shape of the bug: the value used to be written verbatim
     # and then discarded by config.load(), so `set` reported success and
     # nothing changed.
@@ -201,7 +203,7 @@ def test_set_refuses_a_non_numeric_fuzzy_threshold(tmp_path):
     assert not (tmp_path / "config.toml").exists()
 
 
-def test_set_writes_a_fuzzy_threshold_as_a_toml_float(tmp_path):
+def test_set_writes_a_fuzzy_threshold_as_a_toml_float(tmp_path: Path) -> None:
     # A quoted "0.45" would be thrown away by config.load()'s float() guard
     # in exactly the way a bare string value was.
     result = runner.invoke(
@@ -214,7 +216,7 @@ def test_set_writes_a_fuzzy_threshold_as_a_toml_float(tmp_path):
     assert data["fuzzy_threshold"] == 0.45
 
 
-def test_set_refuses_an_empty_value_on_a_remem_integer(tmp_path):
+def test_set_refuses_an_empty_value_on_a_remem_integer(tmp_path: Path) -> None:
     result = runner.invoke(
         app, ["config", "set", "REMEM_MAX_CHARS", ""], env=_env(tmp_path)
     )
@@ -223,7 +225,7 @@ def test_set_refuses_an_empty_value_on_a_remem_integer(tmp_path):
     assert not (tmp_path / "config.toml").exists()
 
 
-def test_set_reports_where_the_remem_backup_went(tmp_path):
+def test_set_reports_where_the_remem_backup_went(tmp_path: Path) -> None:
     # Rewriting config.toml loses comments and formatting. The backup lands
     # beside the file under a timestamped name the user has no reason to
     # guess, so a safety net nobody is told about is most of the way to no
@@ -239,7 +241,7 @@ def test_set_reports_where_the_remem_backup_went(tmp_path):
     assert str(backups[0]) in result.stdout
 
 
-def test_set_reports_where_the_agent_backup_went(tmp_path):
+def test_set_reports_where_the_agent_backup_went(tmp_path: Path) -> None:
     path = tmp_path / "claude" / "settings.json"
     path.parent.mkdir()
     path.write_text('{"env": {"BASH_MAX_OUTPUT_LENGTH": "1000"}}')
@@ -254,7 +256,7 @@ def test_set_reports_where_the_agent_backup_went(tmp_path):
     assert str(backups[0]) in result.stdout
 
 
-def test_unset_reports_where_the_backup_went(tmp_path):
+def test_unset_reports_where_the_backup_went(tmp_path: Path) -> None:
     runner.invoke(app, ["config", "set", "REMEM_MAX_CHARS", "8000"], env=_env(tmp_path))
     result = runner.invoke(
         app, ["config", "unset", "REMEM_MAX_CHARS"], env=_env(tmp_path)
@@ -263,7 +265,7 @@ def test_unset_reports_where_the_backup_went(tmp_path):
     assert "Backed up to" in result.stdout
 
 
-def test_set_says_nothing_about_a_backup_when_there_was_no_file(tmp_path):
+def test_set_says_nothing_about_a_backup_when_there_was_no_file(tmp_path: Path) -> None:
     # Nothing to lose on a first write, so nothing to report.
     result = runner.invoke(
         app, ["config", "set", "REMEM_MAX_CHARS", "8000"], env=_env(tmp_path)
@@ -298,8 +300,8 @@ def other_agent(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_set_on_a_second_agent_writes_that_agents_file(
-    tmp_path, other_agent, monkeypatch
-):
+    tmp_path: Path, other_agent: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
     # Before the probes moved into the service, --agent picked the table but
     # the settings path was always Claude Code's, so this value would have
     # landed in ~/.claude/settings.json - silent, and wrong in the direction
@@ -317,8 +319,8 @@ def test_set_on_a_second_agent_writes_that_agents_file(
 
 
 def test_a_claude_code_key_is_unknown_to_another_agent(
-    tmp_path, other_agent, monkeypatch
-):
+    tmp_path: Path, other_agent: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
     other = tmp_path / "other-settings.json"
     monkeypatch.setenv("OTHER_SETTINGS", str(other))
     result = runner.invoke(
@@ -330,7 +332,7 @@ def test_a_claude_code_key_is_unknown_to_another_agent(
     assert not other.exists()
 
 
-def test_an_unknown_key_error_is_not_wrapped_in_quotes(tmp_path):
+def test_an_unknown_key_error_is_not_wrapped_in_quotes(tmp_path: Path) -> None:
     # UnknownSetting subclasses KeyError, whose str() is the repr of its
     # argument. Stripping quotes off both ends of that would also eat a
     # closing quote from a message that legitimately ends in a quoted key.

@@ -1,3 +1,6 @@
+from typing import Any
+
+import psycopg
 import pytest
 
 from remem.backends.postgres.migrate import (
@@ -5,28 +8,29 @@ from remem.backends.postgres.migrate import (
     migrate,
     pending_versions,
 )
+from tests.conftest import one
 
 pytestmark = pytest.mark.db
 
 
-def test_migrate_applies_all_pending(conn):
+def test_migrate_applies_all_pending(conn: psycopg.Connection[Any]) -> None:
     applied = migrate(conn)
     assert "001_initial" in applied
     assert pending_versions(conn) == []
 
 
-def test_migrate_is_idempotent(conn):
+def test_migrate_is_idempotent(conn: psycopg.Connection[Any]) -> None:
     migrate(conn)
     second = migrate(conn)
     assert second == []
 
 
-def test_migrate_records_versions(conn):
+def test_migrate_records_versions(conn: psycopg.Connection[Any]) -> None:
     migrate(conn)
     assert "001_initial" in applied_versions(conn)
 
 
-def test_schema_has_the_expected_tables(conn):
+def test_schema_has_the_expected_tables(conn: psycopg.Connection[Any]) -> None:
     migrate(conn)
     rows = conn.execute(
         "select table_name from information_schema.tables where table_schema = 'public'"
@@ -35,7 +39,7 @@ def test_schema_has_the_expected_tables(conn):
     assert {"principals", "entries", "collections", "collection_members"} <= names
 
 
-def test_generated_search_column_is_populated(conn):
+def test_generated_search_column_is_populated(conn: psycopg.Connection[Any]) -> None:
     migrate(conn)
     conn.execute(
         "insert into principals (id, handle) values "
@@ -47,8 +51,10 @@ def test_generated_search_column_is_populated(conn):
         " 'raise work_mem for big sorts',"
         " '00000000-0000-7000-8000-000000000001')"
     )
-    row = conn.execute(
-        "select count(*) from entries "
-        "where search @@ websearch_to_tsquery('english', 'work_mem')"
-    ).fetchone()
+    row = one(
+        conn.execute(
+            "select count(*) from entries "
+            "where search @@ websearch_to_tsquery('english', 'work_mem')"
+        )
+    )
     assert row[0] == 1

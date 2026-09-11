@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, NoReturn
+from uuid import UUID
 
 import psycopg
 import pytest
@@ -13,6 +14,7 @@ from remem.backends.postgres.store import PostgresStore
 from remem.domain import CollectionQuery, MemoryTrigger
 from remem.services import kb
 from remem.services import memory as memory_service
+from tests.conftest import found
 
 pytestmark = pytest.mark.db
 
@@ -23,7 +25,7 @@ def store(conn: psycopg.Connection[Any]) -> PostgresStore:
     return PostgresStore(conn)
 
 
-def _designate(store, owner_id, project, directory):
+def _designate(store: PostgresStore, owner_id: UUID, project: str, directory: Path):
     """Designate `project`, recording `directory` as its working dir.
 
     The collection has to exist first - `memory.designate` calls `kb.get`
@@ -44,7 +46,7 @@ def _designate(store, owner_id, project, directory):
     )
 
 
-def test_a_dry_run_records_nothing(store, tmp_path):
+def test_a_dry_run_records_nothing(store: PostgresStore, tmp_path: Path) -> None:
     """A dry run changes nothing, so 'last run' must not describe it."""
     owner = store.ensure_principal("run-dry")
     _designate(store, owner.id, "p", tmp_path)
@@ -54,7 +56,9 @@ def test_a_dry_run_records_nothing(store, tmp_path):
     assert store.latest_memory_run(owner.id, "p") is None
 
 
-def test_a_real_run_is_recorded_and_finished(store, tmp_path):
+def test_a_real_run_is_recorded_and_finished(
+    store: PostgresStore, tmp_path: Path
+) -> None:
     owner = store.ensure_principal("run-real")
     _designate(store, owner.id, "p", tmp_path)
 
@@ -66,7 +70,7 @@ def test_a_real_run_is_recorded_and_finished(store, tmp_path):
     assert run.trigger is MemoryTrigger.MANUAL
 
 
-def test_the_trigger_is_recorded_as_given(store, tmp_path):
+def test_the_trigger_is_recorded_as_given(store: PostgresStore, tmp_path: Path) -> None:
     """'auto' has no caller yet; the column is why this table exists."""
     owner = store.ensure_principal("run-auto")
     _designate(store, owner.id, "p", tmp_path)
@@ -75,10 +79,12 @@ def test_the_trigger_is_recorded_as_given(store, tmp_path):
         store, owner.id, project="p", directory=tmp_path, trigger=MemoryTrigger.AUTO
     )
 
-    assert store.latest_memory_run(owner.id, "p").trigger is MemoryTrigger.AUTO
+    assert found(store.latest_memory_run(owner.id, "p")).trigger is MemoryTrigger.AUTO
 
 
-def test_an_exception_is_recorded_and_re_raised(store, tmp_path, monkeypatch):
+def test_an_exception_is_recorded_and_re_raised(
+    store: PostgresStore, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     owner = store.ensure_principal("run-boom")
     _designate(store, owner.id, "p", tmp_path)
 
@@ -90,12 +96,14 @@ def test_an_exception_is_recorded_and_re_raised(store, tmp_path, monkeypatch):
     with pytest.raises(OSError):
         memory_service.sync(store, owner.id, project="p", directory=tmp_path)
 
-    run = store.latest_memory_run(owner.id, "p")
+    run = found(store.latest_memory_run(owner.id, "p"))
     assert run.finished_at is not None
     assert run.failures == [{"name": "*", "reason": "disk gone"}]
 
 
-def test_an_undesignated_project_records_no_run(store, tmp_path):
+def test_an_undesignated_project_records_no_run(
+    store: PostgresStore, tmp_path: Path
+) -> None:
     owner = store.ensure_principal("run-undesignated")
     with pytest.raises(memory_service.NotDesignated):
         memory_service.sync(store, owner.id, project="p", directory=tmp_path)

@@ -9,7 +9,7 @@ itself only through REMEM_HOOK_DEBUG on stderr.
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +17,7 @@ import psycopg
 import pytest
 from typer.testing import CliRunner
 
+from remem.agents.base import Identity
 from remem.agents.claude_code.adapter import ClaudeCodeAdapter
 from remem.agents.cursor.adapter import ROOT_KEY, CursorAdapter
 from remem.backends.postgres.migrate import migrate
@@ -61,7 +62,7 @@ def repo(tmp_path: Path) -> Path:
     return root
 
 
-def _seed_kb(dsn, *, project="myrepo"):
+def _seed_kb(dsn: str, *, project: str = "myrepo") -> None:
     """A knowledge base whose slug matches `repo`'s directory name, with one
     rule in it - so a test can assert the command's stdout actually carries
     that rule, not merely that the command ran without crashing."""
@@ -91,14 +92,16 @@ def _seed_kb(dsn, *, project="myrepo"):
         c.commit()
 
 
-def test_context_exits_zero_on_garbage_stdin(env):
+def test_context_exits_zero_on_garbage_stdin(env: str) -> None:
     """Fail-soft: malformed stdin must not be why the block is missing."""
     result = runner.invoke(app, ["hook", "context"], input="not json")
     assert result.exit_code == 0
     assert result.stdout == ""
 
 
-def test_context_explains_garbage_stdin_under_hook_debug(env, monkeypatch):
+def test_context_explains_garbage_stdin_under_hook_debug(
+    env: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("REMEM_HOOK_DEBUG", "1")
     result = runner.invoke(app, ["hook", "context"], input="not json")
     assert result.exit_code == 0
@@ -106,7 +109,7 @@ def test_context_explains_garbage_stdin_under_hook_debug(env, monkeypatch):
     assert "not valid JSON" in result.stderr
 
 
-def test_context_exits_zero_for_an_unknown_agent(env, repo):
+def test_context_exits_zero_for_an_unknown_agent(env: str, repo: Path) -> None:
     result = runner.invoke(
         app,
         ["hook", "context", "--agent", "no-such-agent"],
@@ -116,7 +119,9 @@ def test_context_exits_zero_for_an_unknown_agent(env, repo):
     assert result.stdout == ""
 
 
-def test_context_explains_an_unknown_agent_under_hook_debug(env, monkeypatch, repo):
+def test_context_explains_an_unknown_agent_under_hook_debug(
+    env: str, monkeypatch: pytest.MonkeyPatch, repo: Path
+) -> None:
     monkeypatch.setenv("REMEM_HOOK_DEBUG", "1")
     result = runner.invoke(
         app,
@@ -128,7 +133,7 @@ def test_context_explains_an_unknown_agent_under_hook_debug(env, monkeypatch, re
     assert "no-such-agent" in result.stderr
 
 
-def test_context_exits_zero_when_the_payload_carries_no_cwd(env):
+def test_context_exits_zero_when_the_payload_carries_no_cwd(env: str) -> None:
     """No cwd means identity.project is None - an ordinary "cannot place
     this session" answer, not an error."""
     result = runner.invoke(
@@ -138,7 +143,9 @@ def test_context_exits_zero_when_the_payload_carries_no_cwd(env):
     assert result.stdout == ""
 
 
-def test_context_explains_a_missing_cwd_under_hook_debug(env, monkeypatch):
+def test_context_explains_a_missing_cwd_under_hook_debug(
+    env: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("REMEM_HOOK_DEBUG", "1")
     result = runner.invoke(
         app, ["hook", "context"], input=json.dumps({"session_id": "x"})
@@ -148,12 +155,16 @@ def test_context_explains_a_missing_cwd_under_hook_debug(env, monkeypatch):
     assert "no project" in result.stderr.lower() or "cwd" in result.stderr.lower()
 
 
-def test_an_adapter_whose_identity_capability_raises_degrades(env, monkeypatch, repo):
+def test_an_adapter_whose_identity_capability_raises_degrades(
+    env: str, monkeypatch: pytest.MonkeyPatch, repo: Path
+) -> None:
     """Same contract as event()/env_settings()/settings_path(): a broken
     third-party adapter must never be why the block is missing for
     everyone - it just costs the block, silently."""
 
-    def boom(self, env, payload):
+    def boom(
+        self: ClaudeCodeAdapter, env: Mapping[str, str], payload: dict[str, Any]
+    ) -> Identity:
         raise RuntimeError("boom")
 
     monkeypatch.setattr(ClaudeCodeAdapter, "identity", boom)
@@ -167,11 +178,13 @@ def test_an_adapter_whose_identity_capability_raises_degrades(env, monkeypatch, 
 
 
 def test_an_adapter_whose_identity_capability_raises_explains_itself(
-    env, monkeypatch, repo
-):
+    env: str, monkeypatch: pytest.MonkeyPatch, repo: Path
+) -> None:
     monkeypatch.setenv("REMEM_HOOK_DEBUG", "1")
 
-    def boom(self, env, payload):
+    def boom(
+        self: ClaudeCodeAdapter, env: Mapping[str, str], payload: dict[str, Any]
+    ) -> Identity:
         raise RuntimeError("boom")
 
     monkeypatch.setattr(ClaudeCodeAdapter, "identity", boom)
@@ -185,7 +198,9 @@ def test_an_adapter_whose_identity_capability_raises_explains_itself(
     assert "boom" in result.stderr
 
 
-def test_context_prints_the_knowledge_base_for_the_session(env, repo):
+def test_context_prints_the_knowledge_base_for_the_session(
+    env: str, repo: Path
+) -> None:
     """The happy path: this is the command's only reason to exist, and
     nothing above pins it - every other test here uses a repo with no
     knowledge base, so a deleted `typer.echo(...)` would leave them all
@@ -203,7 +218,9 @@ def test_context_prints_the_knowledge_base_for_the_session(env, repo):
     assert "Run ruff linter" in result.stdout
 
 
-def test_context_reads_a_named_agent_and_matches_the_default(env, repo):
+def test_context_reads_a_named_agent_and_matches_the_default(
+    env: str, repo: Path
+) -> None:
     """The opencode adapter reads sessionID, not session_id - a payload
     shape difference `--agent` exists to absorb. This is the injection-half
     equivalent of `remem record event`'s --agent tests: with a knowledge
@@ -231,15 +248,20 @@ def test_context_reads_a_named_agent_and_matches_the_default(env, repo):
 
 
 def test_an_adapter_whose_inject_capability_raises_degrades_to_stdout(
-    env, monkeypatch, repo
-):
+    env: str, monkeypatch: pytest.MonkeyPatch, repo: Path
+) -> None:
     """Same contract as identity()/event()/env_settings()/settings_path(): a
     broken inject() must not be why the block never reaches the harness -
     it just falls back to the stdout path every other adapter already
     uses."""
     _seed_kb(env, project=repo.name)
 
-    def boom(self, block, payload, note=None):
+    def boom(
+        self: CursorAdapter,
+        block: str,
+        payload: dict[str, Any],
+        note: Callable[[str], None] | None = None,
+    ) -> str | None:
         raise RuntimeError("boom")
 
     monkeypatch.setattr(CursorAdapter, "inject", boom)
@@ -253,12 +275,17 @@ def test_an_adapter_whose_inject_capability_raises_degrades_to_stdout(
 
 
 def test_an_adapter_whose_inject_capability_raises_explains_itself(
-    env, monkeypatch, repo
-):
+    env: str, monkeypatch: pytest.MonkeyPatch, repo: Path
+) -> None:
     monkeypatch.setenv("REMEM_HOOK_DEBUG", "1")
     _seed_kb(env, project=repo.name)
 
-    def boom(self, block, payload, note=None):
+    def boom(
+        self: CursorAdapter,
+        block: str,
+        payload: dict[str, Any],
+        note: Callable[[str], None] | None = None,
+    ) -> str | None:
         raise RuntimeError("boom")
 
     monkeypatch.setattr(CursorAdapter, "inject", boom)
@@ -272,7 +299,9 @@ def test_an_adapter_whose_inject_capability_raises_explains_itself(
     assert "boom" in result.stderr
 
 
-def test_an_adapter_with_inject_does_not_print_the_block_to_stdout(env, repo):
+def test_an_adapter_with_inject_does_not_print_the_block_to_stdout(
+    env: str, repo: Path
+) -> None:
     """Cursor cannot read stdout - printing the block there anyway would be
     noise nobody reads, not a useful fallback. inject() being present and
     succeeding means delivery already happened, so stdout stays empty and
@@ -301,11 +330,11 @@ def test_an_adapter_with_inject_does_not_print_the_block_to_stdout(env, repo):
 # which makes it the one trigger all three share.
 
 
-def _spy(monkeypatch):
+def _spy(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
     """Patch the spawn where `hook context` looks it up, and record calls."""
     calls: list[dict[str, Any]] = []
 
-    def fake(env):
+    def fake(env: Mapping[str, str]) -> bool:
         calls.append(dict(env))
         return True
 
@@ -313,7 +342,9 @@ def _spy(monkeypatch):
     return calls
 
 
-def test_context_spawns_the_extraction_processor(env, repo, monkeypatch):
+def test_context_spawns_the_extraction_processor(
+    env: str, repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     calls = _spy(monkeypatch)
     _seed_kb(env)
     result = runner.invoke(
@@ -325,7 +356,9 @@ def test_context_spawns_the_extraction_processor(env, repo, monkeypatch):
     assert len(calls) == 1
 
 
-def test_context_spawns_the_processor_even_when_no_project_resolves(env, monkeypatch):
+def test_context_spawns_the_processor_even_when_no_project_resolves(
+    env: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """The backlog is global, not this session's project.
 
     `remem events process` works off every extractable session for the
@@ -340,7 +373,9 @@ def test_context_spawns_the_processor_even_when_no_project_resolves(env, monkeyp
     assert len(calls) == 1
 
 
-def test_context_spawns_the_memory_sync(env, repo, monkeypatch):
+def test_context_spawns_the_memory_sync(
+    env: str, repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """The third spawn, from the same `finally` and for the same reason.
 
     A designated project's memory directory goes stale otherwise, and
@@ -365,7 +400,9 @@ def test_context_spawns_the_memory_sync(env, repo, monkeypatch):
     assert len(calls) == 1
 
 
-def test_context_spawns_the_memory_sync_even_when_no_project_resolves(env, monkeypatch):
+def test_context_spawns_the_memory_sync_even_when_no_project_resolves(
+    env: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """In the `finally`, like its two siblings, so every early return
     reaches it - unusable stdin included."""
     calls: list[dict[str, Any]] = []
@@ -380,7 +417,9 @@ def test_context_spawns_the_memory_sync_even_when_no_project_resolves(env, monke
     assert len(calls) == 1
 
 
-def test_spawn_process_refuses_to_run_inside_the_extractor(monkeypatch):
+def test_spawn_process_refuses_to_run_inside_the_extractor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """The recursion guard, exercised directly on the shared helper.
 
     The extractor spawns `claude -p`, whose own hooks would otherwise spawn
@@ -393,20 +432,22 @@ def test_spawn_process_refuses_to_run_inside_the_extractor(monkeypatch):
     from remem import hookio
     from remem.extract.base import CHILD_ENV_VAR
 
-    def explode(*a, **k):
+    def explode(*a: object, **k: object) -> None:
         raise AssertionError("spawned a processor inside the extractor")
 
     monkeypatch.setattr("subprocess.Popen", explode)
     assert hookio.spawn_process({CHILD_ENV_VAR: "1"}) is False
 
 
-def test_spawn_process_launches_the_processor_detached(monkeypatch):
+def test_spawn_process_launches_the_processor_detached(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """The guard must not be the only reason it ever returns False."""
     from remem import hookio
 
     seen: dict[str, Any] = {}
 
-    def fake_popen(argv, **kwargs):
+    def fake_popen(argv: Sequence[str], **kwargs: object) -> object:
         seen["argv"] = argv
         seen["kwargs"] = kwargs
         return object()

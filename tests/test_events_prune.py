@@ -11,6 +11,7 @@ import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 import psycopg
 import pytest
@@ -21,6 +22,7 @@ from remem.backends.postgres.store import PostgresStore
 from remem.cli import app
 from remem.domain import Event, EventKind, JobStatus, Principal, SessionRef, new_id
 from remem.services import events, write
+from tests.conftest import found
 
 runner = CliRunner()
 
@@ -40,7 +42,14 @@ def owner(store: PostgresStore) -> Principal:
     return store.ensure_principal("brandon")
 
 
-def an_event(owner, *, at=NOW, tool="Bash", session="s1", payload=None):
+def an_event(
+    owner: Principal,
+    *,
+    at: datetime = NOW,
+    tool: str = "Bash",
+    session: str = "s1",
+    payload: dict[str, Any] | None = None,
+) -> Event:
     return Event(
         id=new_id(),
         owner_id=owner.id,
@@ -54,7 +63,9 @@ def an_event(owner, *, at=NOW, tool="Bash", session="s1", payload=None):
     )
 
 
-def _mark_done(store, owner, session_id, covers_through):
+def _mark_done(
+    store: PostgresStore, owner: Principal, session_id: str, covers_through: datetime
+) -> None:
     """Give a session a done extract job with the given watermark, the same
     way `process` would after actually extracting it."""
     job = store.claim_extract_job(
@@ -70,7 +81,9 @@ def _mark_done(store, owner, session_id, covers_through):
     store.finish_extract_job(job.id, owner.id, JobStatus.DONE, None, 0, covers_through)
 
 
-def test_prune_without_a_window_is_refused_at_the_cli(live_dsn, monkeypatch, tmp_path):
+def test_prune_without_a_window_is_refused_at_the_cli(
+    live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     monkeypatch.setenv("REMEM_DSN", live_dsn)
     monkeypatch.setenv("REMEM_USER_ID", "brandon")
     monkeypatch.setenv("REMEM_CONFIG", str(tmp_path / "none.toml"))
@@ -79,7 +92,9 @@ def test_prune_without_a_window_is_refused_at_the_cli(live_dsn, monkeypatch, tmp
     assert "--before" in result.stdout + str(result.stderr)
 
 
-def test_prune_refuses_unextracted_events(store, owner):
+def test_prune_refuses_unextracted_events(
+    store: PostgresStore, owner: Principal
+) -> None:
     old = an_event(owner, at=NOW - timedelta(days=40))
     store.put_event(old)
 
@@ -91,7 +106,9 @@ def test_prune_refuses_unextracted_events(store, owner):
     assert [e.id for e in remaining] == [old.id]
 
 
-def test_force_deletes_unextracted_events(store, owner):
+def test_force_deletes_unextracted_events(
+    store: PostgresStore, owner: Principal
+) -> None:
     store.put_event(an_event(owner, at=NOW - timedelta(days=40)))
 
     report = events.prune(store, owner.id, before=NOW, force=True)
@@ -100,11 +117,13 @@ def test_force_deletes_unextracted_events(store, owner):
     assert store.events_for_session(owner.id, "remem", "claude-code", "s1") == []
 
 
-def test_prune_leaves_entries_and_provenance_intact(store, owner):
+def test_prune_leaves_entries_and_provenance_intact(
+    store: PostgresStore, owner: Principal
+) -> None:
     entry = write.remember(store, owner.id, title="t", body="b")
     event = store.put_event(an_event(owner, at=NOW - timedelta(days=40)))
     store.link_entry_events(entry.id, [event], owner.id)
-    _mark_done(store, owner, "s1", covers_through=event.occurred_at)
+    _mark_done(store, owner, "s1", covers_through=found(event.occurred_at))
 
     report = events.prune(store, owner.id, before=NOW)
 
@@ -115,7 +134,9 @@ def test_prune_leaves_entries_and_provenance_intact(store, owner):
     ]
 
 
-def test_prune_reports_what_it_left_dangling(store, owner):
+def test_prune_reports_what_it_left_dangling(
+    store: PostgresStore, owner: Principal
+) -> None:
     entry = write.remember(store, owner.id, title="t", body="b")
     old_events = [
         store.put_event(an_event(owner, at=NOW - timedelta(days=40, minutes=i)))
@@ -130,7 +151,9 @@ def test_prune_reports_what_it_left_dangling(store, owner):
     assert report.dangling == 3
 
 
-def test_events_inside_the_window_are_kept(store, owner):
+def test_events_inside_the_window_are_kept(
+    store: PostgresStore, owner: Principal
+) -> None:
     store.put_event(an_event(owner, at=NOW - timedelta(days=40)))
     recent = store.put_event(an_event(owner, at=NOW - timedelta(days=1), session="s1"))
     _mark_done(store, owner, "s1", covers_through=NOW)
@@ -142,7 +165,9 @@ def test_events_inside_the_window_are_kept(store, owner):
     assert [e.id for e in remaining] == [recent.id]
 
 
-def test_a_mixed_window_prunes_what_it_can_without_refusing(store, owner):
+def test_a_mixed_window_prunes_what_it_can_without_refusing(
+    store: PostgresStore, owner: Principal
+) -> None:
     """One session already extracted, one still not: the extracted session's
     events go, the other is silently skipped, and the run succeeds - a
     refusal is reserved for a run that would otherwise delete nothing at
@@ -153,7 +178,7 @@ def test_a_mixed_window_prunes_what_it_can_without_refusing(store, owner):
     unextracted = store.put_event(
         an_event(owner, at=NOW - timedelta(days=40), session="stuck")
     )
-    _mark_done(store, owner, "done", covers_through=extracted.occurred_at)
+    _mark_done(store, owner, "done", covers_through=found(extracted.occurred_at))
 
     report = events.prune(store, owner.id, before=NOW)
 
@@ -166,7 +191,9 @@ def test_a_mixed_window_prunes_what_it_can_without_refusing(store, owner):
     ] == [unextracted.id]
 
 
-def test_prune_never_reaches_across_owners(store, owner):
+def test_prune_never_reaches_across_owners(
+    store: PostgresStore, owner: Principal
+) -> None:
     """`prune_events` is the only owner-wide DELETE in the codebase, and its
     window is a timestamp - the owner predicate in the `scoped` CTE is the
     entire thing standing between one principal's retention run and every
@@ -174,8 +201,8 @@ def test_prune_never_reaches_across_owners(store, owner):
     other = store.ensure_principal("someone-else")
     mine = store.put_event(an_event(owner, at=NOW - timedelta(days=40)))
     theirs = store.put_event(an_event(other, at=NOW - timedelta(days=40)))
-    _mark_done(store, owner, "s1", covers_through=mine.occurred_at)
-    _mark_done(store, other, "s1", covers_through=theirs.occurred_at)
+    _mark_done(store, owner, "s1", covers_through=found(mine.occurred_at))
+    _mark_done(store, other, "s1", covers_through=found(theirs.occurred_at))
 
     report = events.prune(store, owner.id, before=NOW)
 
@@ -185,13 +212,13 @@ def test_prune_never_reaches_across_owners(store, owner):
     assert [e.id for e in survived] == [theirs.id]
 
 
-def _seed_prunable(dsn):
+def _seed_prunable(dsn: str) -> UUID:
     """One old, already-extracted event, committed - ready to be deleted."""
     with psycopg.connect(dsn) as c:
         store = PostgresStore(c)
         owner = store.ensure_principal("brandon")
         event = store.put_event(an_event(owner, at=NOW - timedelta(days=40)))
-        _mark_done(store, owner, "s1", covers_through=event.occurred_at)
+        _mark_done(store, owner, "s1", covers_through=found(event.occurred_at))
         c.commit()
         return owner.id
 
@@ -207,7 +234,7 @@ def cli_env(live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> s
     return live_dsn
 
 
-def test_prune_deletes_through_the_cli(cli_env):
+def test_prune_deletes_through_the_cli(cli_env: str) -> None:
     """The refusal paths were the only ones the CLI covered. This is the run
     that actually commits a delete - the whole reason the command exists, and
     the one whose rows do not come back."""
@@ -222,7 +249,7 @@ def test_prune_deletes_through_the_cli(cli_env):
         assert store.events_for_session(owner_id, "remem", "claude-code", "s1") == []
 
 
-def test_prune_json_reports_all_three_counts_and_the_scope(cli_env):
+def test_prune_json_reports_all_three_counts_and_the_scope(cli_env: str) -> None:
     """--json is what a cron wrapper reads, so every count the human line
     prints has to be in it - a silently absent `dangling` reads as zero.
 
@@ -244,7 +271,7 @@ def test_prune_json_reports_all_three_counts_and_the_scope(cli_env):
     }
 
 
-def test_prune_json_names_the_project_when_scoped(cli_env):
+def test_prune_json_names_the_project_when_scoped(cli_env: str) -> None:
     with psycopg.connect(cli_env) as c:
         store = PostgresStore(c)
         _seed_two_projects(store, store.ensure_principal("brandon"))
@@ -266,12 +293,12 @@ def test_prune_json_names_the_project_when_scoped(cli_env):
         ("90m", timedelta(minutes=90)),
     ],
 )
-def test_window_parsing(text, expected):
+def test_window_parsing(text: str, expected: timedelta) -> None:
     assert events.parse_window(text) == expected
 
 
 @pytest.mark.parametrize("text", ["", "30", "d30", "-5d", "30 days", "0d"])
-def test_a_window_that_does_not_parse_is_refused(text):
+def test_a_window_that_does_not_parse_is_refused(text: str) -> None:
     """Including "30" with no unit. Guessing a unit for a bare number is how
     a user who meant 30 days deletes 30 minutes' worth - or everything."""
     with pytest.raises(events.BadWindow):
@@ -290,13 +317,21 @@ def test_a_window_that_does_not_parse_is_refused(text):
 # want kept"); the flag simply never got written.
 
 
-def an_event_in(owner, project, *, at=NOW, session="s1"):
+def an_event_in(
+    owner: Principal, project: str, *, at: datetime = NOW, session: str = "s1"
+) -> Event:
     e = an_event(owner, at=at, session=session)
     e.project = project
     return e
 
 
-def _mark_done_in(store, owner, project, session_id, covers_through):
+def _mark_done_in(
+    store: PostgresStore,
+    owner: Principal,
+    project: str,
+    session_id: str,
+    covers_through: datetime,
+) -> None:
     job = store.claim_extract_job(
         owner.id,
         SessionRef(
@@ -310,15 +345,17 @@ def _mark_done_in(store, owner, project, session_id, covers_through):
     store.finish_extract_job(job.id, owner.id, JobStatus.DONE, None, 0, covers_through)
 
 
-def _seed_two_projects(store, owner):
+def _seed_two_projects(store: PostgresStore, owner: Principal) -> datetime:
     old = NOW - timedelta(days=40)
     for project, session in (("remem", "s1"), ("client-work", "s2")):
         e = store.put_event(an_event_in(owner, project, at=old, session=session))
-        _mark_done_in(store, owner, project, session, e.occurred_at)
+        _mark_done_in(store, owner, project, session, found(e.occurred_at))
     return old
 
 
-def test_prune_scoped_to_a_project_leaves_every_other_project_alone(store, owner):
+def test_prune_scoped_to_a_project_leaves_every_other_project_alone(
+    store: PostgresStore, owner: Principal
+) -> None:
     """The point of the flag. Dropping one project must not be a reason to
     lose another's history."""
     _seed_two_projects(store, owner)
@@ -332,7 +369,9 @@ def test_prune_scoped_to_a_project_leaves_every_other_project_alone(store, owner
     assert store.events_for_session(owner.id, "client-work", "claude-code", "s2") == []
 
 
-def test_prune_without_a_project_still_spans_them_all(store, owner):
+def test_prune_without_a_project_still_spans_them_all(
+    store: PostgresStore, owner: Principal
+) -> None:
     """The existing behaviour is the default and is unchanged - the flag
     narrows, it never becomes a required argument."""
     _seed_two_projects(store, owner)
@@ -342,7 +381,9 @@ def test_prune_without_a_project_still_spans_them_all(store, owner):
     assert report.deleted == 2
 
 
-def test_a_project_with_nothing_in_the_window_deletes_nothing(store, owner):
+def test_a_project_with_nothing_in_the_window_deletes_nothing(
+    store: PostgresStore, owner: Principal
+) -> None:
     """A typo in a project name must be a no-op, not a wildcard."""
     _seed_two_projects(store, owner)
 
@@ -354,7 +395,9 @@ def test_a_project_with_nothing_in_the_window_deletes_nothing(store, owner):
     assert store.events_for_session(owner.id, "remem", "claude-code", "s1") != []
 
 
-def test_the_unextracted_refusal_is_scoped_to_the_project_too(store, owner):
+def test_the_unextracted_refusal_is_scoped_to_the_project_too(
+    store: PostgresStore, owner: Principal
+) -> None:
     """kept_unextracted counts the window, so it has to respect the same
     scope - otherwise pruning one project is refused because of raw
     belonging to a different one, with no way to tell why."""
@@ -372,7 +415,7 @@ def test_the_unextracted_refusal_is_scoped_to_the_project_too(store, owner):
     assert report.kept_unextracted == 0
 
 
-def test_prune_project_still_requires_a_window(cli_env):
+def test_prune_project_still_requires_a_window(cli_env: str) -> None:
     """--project narrows the blast radius; it does not buy an exemption
     from the rule that the window is always typed."""
     result = runner.invoke(app, ["events", "prune", "--project", "remem"])
@@ -381,7 +424,7 @@ def test_prune_project_still_requires_a_window(cli_env):
     assert "--before is required" in (result.stdout + str(result.stderr))
 
 
-def test_prune_project_through_the_cli(cli_env):
+def test_prune_project_through_the_cli(cli_env: str) -> None:
     """The flag reaches the service, and the run commits."""
     with psycopg.connect(cli_env) as c:
         store = PostgresStore(c)
@@ -403,7 +446,7 @@ def test_prune_project_through_the_cli(cli_env):
         assert store.events_for_session(owner_id, "remem", "claude-code", "s1") != []
 
 
-def test_the_cli_says_which_project_it_pruned(cli_env):
+def test_the_cli_says_which_project_it_pruned(cli_env: str) -> None:
     """A destructive command that does not name its scope leaves the user
     guessing whether it hit everything."""
     with psycopg.connect(cli_env) as c:

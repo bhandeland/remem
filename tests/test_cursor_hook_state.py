@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
+from typing import Any
+
+import pytest
 
 from remem.agents.cursor.adapter import CursorAdapter
 
@@ -10,14 +14,14 @@ RECORD = "remem record event --agent cursor"
 CONTEXT = "remem hook context --agent cursor"
 
 
-def write_hooks(home, hooks):
+def write_hooks(home: Path, hooks: dict[str, Any]) -> Path:
     path = home / ".cursor" / "hooks.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({"version": 1, "hooks": hooks}))
     return path
 
 
-def test_a_missing_message_hook_is_reported(tmp_path):
+def test_a_missing_message_hook_is_reported(tmp_path: Path) -> None:
     write_hooks(
         tmp_path,
         {
@@ -30,7 +34,7 @@ def test_a_missing_message_hook_is_reported(tmp_path):
     assert state.found["afterAgentResponse"] == ()
 
 
-def test_another_tool_s_cursor_hook_is_left_out_of_the_report(tmp_path):
+def test_another_tool_s_cursor_hook_is_left_out_of_the_report(tmp_path: Path) -> None:
     write_hooks(
         tmp_path,
         {
@@ -41,7 +45,7 @@ def test_another_tool_s_cursor_hook_is_left_out_of_the_report(tmp_path):
     assert state.found["postToolUse"] == (RECORD,)
 
 
-def test_both_message_hooks_are_required(tmp_path):
+def test_both_message_hooks_are_required(tmp_path: Path) -> None:
     """Marked optional in the first draft, on the grounds that losing them
     costs extraction quality rather than recording. 8cb186c measured that
     distinction away: a fragment of a session returned nothing in three
@@ -56,13 +60,15 @@ def test_both_message_hooks_are_required(tmp_path):
     }
 
 
-def test_no_hooks_file_is_an_answer_not_an_error(tmp_path):
+def test_no_hooks_file_is_an_answer_not_an_error(tmp_path: Path) -> None:
     state = CursorAdapter().hook_state("user", tmp_path, {})
     assert state.exists is False
     assert all(v == () for v in state.found.values())
 
 
-def test_project_scope_reads_the_repository_s_own_hooks_file(tmp_path, monkeypatch):
+def test_project_scope_reads_the_repository_s_own_hooks_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Cursor is the one adapter with two real scopes, and hooks_path
     resolves project scope from cwd - so the check has to look where the
     install wrote, not where the user's home is."""
@@ -77,7 +83,7 @@ def test_project_scope_reads_the_repository_s_own_hooks_file(tmp_path, monkeypat
     assert state.path == path
 
 
-def test_a_missing_hooks_file_still_names_the_path_examined(tmp_path):
+def test_a_missing_hooks_file_still_names_the_path_examined(tmp_path: Path) -> None:
     state = CursorAdapter().hook_state("user", tmp_path, {})
     assert state.path == tmp_path / ".cursor" / "hooks.json"
     assert state.exists is False

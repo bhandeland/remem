@@ -11,6 +11,7 @@ look like one that was never recorded at all.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 
 import psycopg
@@ -30,6 +31,7 @@ from remem.domain import (
     new_id,
 )
 from remem.services import events, extraction, ingest, record, write
+from tests.conftest import found
 
 runner = CliRunner()
 
@@ -50,7 +52,14 @@ def owner(store: PostgresStore) -> Principal:
     return store.ensure_principal("brandon")
 
 
-def an_event(owner, *, at=NOW, harness="claude-code", session="s1", tool="Bash"):
+def an_event(
+    owner: Principal,
+    *,
+    at: datetime = NOW,
+    harness: str = "claude-code",
+    session: str = "s1",
+    tool: str = "Bash",
+):
     return Event(
         id=new_id(),
         owner_id=owner.id,
@@ -64,7 +73,13 @@ def an_event(owner, *, at=NOW, harness="claude-code", session="s1", tool="Bash")
     )
 
 
-def _mark_done(store, owner, session_id, covers_through, harness="claude-code"):
+def _mark_done(
+    store: PostgresStore,
+    owner: Principal,
+    session_id: str,
+    covers_through: datetime,
+    harness: str = "claude-code",
+):
     """Give a session a done extract job with the given watermark, the same
     way `process` would after actually extracting it."""
     job = store.claim_extract_job(
@@ -80,7 +95,9 @@ def _mark_done(store, owner, session_id, covers_through, harness="claude-code"):
     store.finish_extract_job(job.id, owner.id, JobStatus.DONE, None, 0, covers_through)
 
 
-def test_status_reports_a_harness_that_has_recorded_nothing(store, owner):
+def test_status_reports_a_harness_that_has_recorded_nothing(
+    store: PostgresStore, owner: Principal
+) -> None:
     """The failure this whole command exists for.
 
     An adapter wired to hook names its harness never emits records nothing
@@ -97,7 +114,9 @@ def test_status_reports_a_harness_that_has_recorded_nothing(store, owner):
     assert "no events" in events.render(report)
 
 
-def test_status_counts_events_in_the_last_day_per_harness(store, owner):
+def test_status_counts_events_in_the_last_day_per_harness(
+    store: PostgresStore, owner: Principal
+) -> None:
     """One event 2h old, one 40h old: only the recent one counts toward
     events_24h, and last_event_at names the newer of the two."""
     older = store.put_event(an_event(owner, at=NOW - timedelta(hours=40)))
@@ -113,7 +132,9 @@ def test_status_counts_events_in_the_last_day_per_harness(store, owner):
     assert stats.last_event_at != older.occurred_at
 
 
-def test_status_names_sessions_still_awaiting_extraction(store, owner):
+def test_status_names_sessions_still_awaiting_extraction(
+    store: PostgresStore, owner: Principal
+) -> None:
     """A quiet session with no done extract job is outstanding work, and it
     is counted against its harness."""
     store.put_event(an_event(owner, at=NOW - timedelta(hours=2), session="s1"))
@@ -133,11 +154,15 @@ def test_status_names_sessions_still_awaiting_extraction(store, owner):
 class _AlwaysFails:
     """An extractor that always raises, to drive a job to its attempt cap."""
 
-    def extract(self, events, project, known_titles=None):
+    def extract(
+        self, events: list[Event], project: str, known_titles: list[str] | None = None
+    ):
         raise RuntimeError("claude exploded")
 
 
-def test_status_excludes_a_session_whose_extraction_has_given_up(store, owner):
+def test_status_excludes_a_session_whose_extraction_has_given_up(
+    store: PostgresStore, owner: Principal
+) -> None:
     """`sessions_awaiting_extraction` computes watermarks from DONE jobs
     only, so a session whose job FAILED past the attempt cap still has
     outstanding events by that definition alone. `record status` must not
@@ -158,8 +183,8 @@ def test_status_excludes_a_session_whose_extraction_has_given_up(store, owner):
 
 
 def test_status_mentions_a_stranded_legacy_capture_job_once(
-    live_dsn, monkeypatch, tmp_path
-):
+    live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """The dead spool must be visible rather than mysterious."""
     import psycopg
 
@@ -183,14 +208,16 @@ def test_status_mentions_a_stranded_legacy_capture_job_once(
     assert result.stdout.count("capture_jobs_legacy") == 1
 
 
-def test_events_show_says_pruned_rather_than_not_found(store, owner):
+def test_events_show_says_pruned_rather_than_not_found(
+    store: PostgresStore, owner: Principal
+) -> None:
     """ "We recorded where this came from and then deleted the raw" and "we
     never recorded anything" are different answers, and a user who cannot
     tell them apart concludes provenance was never recorded at all."""
     entry = write.remember(store, owner.id, title="t", body="b")
     event = store.put_event(an_event(owner, at=NOW - timedelta(days=40)))
     store.link_entry_events(entry.id, [event], owner.id)
-    _mark_done(store, owner, "s1", covers_through=event.occurred_at)
+    _mark_done(store, owner, "s1", covers_through=found(event.occurred_at))
 
     report = events.prune(store, owner.id, before=NOW)
     assert report.deleted == 1
@@ -202,7 +229,9 @@ def test_events_show_says_pruned_rather_than_not_found(store, owner):
     assert "not found" not in rendered
 
 
-def test_events_show_on_an_entry_with_no_provenance(store, owner):
+def test_events_show_on_an_entry_with_no_provenance(
+    store: PostgresStore, owner: Principal
+) -> None:
     """A hand-written entry has no events and never will. That is an
     ordinary answer, not an error."""
     entry = write.remember(store, owner.id, title="t", body="b")
@@ -231,7 +260,12 @@ def test_events_show_on_an_entry_with_no_provenance(store, owner):
 
 
 def an_unkeyed_event(
-    owner, *, harness="claude-code", session="s1", payload=None, at=NOW
+    owner: Principal,
+    *,
+    harness: str = "claude-code",
+    session: str = "s1",
+    payload: dict[str, Any] | None = None,
+    at: datetime = NOW,
 ):
     """A SessionEnd, the shape 011 deliberately cannot deduplicate."""
     return Event(
@@ -253,7 +287,9 @@ def an_unkeyed_event(
     )
 
 
-def test_status_reports_a_duplicated_unkeyed_event(store, owner):
+def test_status_reports_a_duplicated_unkeyed_event(
+    store: PostgresStore, owner: Principal
+) -> None:
     """The failure this exists for: a hook registered twice under two
     command names, recording every session close twice. That is exactly
     what happened to the claude-code adapter, and nothing anywhere
@@ -270,7 +306,9 @@ def test_status_reports_a_duplicated_unkeyed_event(store, owner):
     assert dup.count == 2
 
 
-def test_a_single_unkeyed_event_is_not_reported(store, owner):
+def test_a_single_unkeyed_event_is_not_reported(
+    store: PostgresStore, owner: Principal
+) -> None:
     """One SessionEnd per session is the normal shape and must stay quiet -
     a report that fires on healthy data is one nobody reads."""
     store.put_event(an_unkeyed_event(owner))
@@ -280,7 +318,9 @@ def test_a_single_unkeyed_event_is_not_reported(store, owner):
     assert report.suspected_duplicates == []
 
 
-def test_two_different_unkeyed_events_are_not_a_duplicate(store, owner):
+def test_two_different_unkeyed_events_are_not_a_duplicate(
+    store: PostgresStore, owner: Principal
+) -> None:
     """A session can legitimately end more than once - `clear` then
     `prompt_input_exit`. Different payloads, not a duplicate."""
     store.put_event(an_unkeyed_event(owner, payload={"reason": "clear"}))
@@ -297,7 +337,9 @@ def test_two_different_unkeyed_events_are_not_a_duplicate(store, owner):
     assert report.suspected_duplicates == []
 
 
-def test_keyed_events_are_not_scanned_for_duplicates(store, owner):
+def test_keyed_events_are_not_scanned_for_duplicates(
+    store: PostgresStore, owner: Principal
+) -> None:
     """011 already makes those impossible, so a second opinion here could
     only ever be wrong."""
     for i in range(2):
@@ -310,7 +352,9 @@ def test_keyed_events_are_not_scanned_for_duplicates(store, owner):
     assert report.suspected_duplicates == []
 
 
-def test_a_command_run_twice_is_never_reported_as_a_duplicate(store, owner):
+def test_a_command_run_twice_is_never_reported_as_a_duplicate(
+    store: PostgresStore, owner: Principal
+) -> None:
     """The false positive that would make this report worthless.
 
     Running `ls` twice in a session is ordinary and the two events are
@@ -326,7 +370,9 @@ def test_a_command_run_twice_is_never_reported_as_a_duplicate(store, owner):
     assert report.suspected_duplicates == []
 
 
-def test_the_duplicate_report_names_the_fix(store, owner):
+def test_the_duplicate_report_names_the_fix(
+    store: PostgresStore, owner: Principal
+) -> None:
     """The point is not to say a number - it is to tell the user that a
     hook is registered twice and which command re-registers it."""
     store.put_event(an_unkeyed_event(owner))
@@ -339,7 +385,9 @@ def test_the_duplicate_report_names_the_fix(store, owner):
     assert "remem install claude-code" in out
 
 
-def test_the_duplicate_report_reaches_json_too(store, owner):
+def test_the_duplicate_report_reaches_json_too(
+    store: PostgresStore, owner: Principal
+) -> None:
     """--json and the human form read off one StatusReport; a detector
     visible in only one of them is how the two disagree."""
     store.put_event(an_unkeyed_event(owner))
@@ -352,7 +400,9 @@ def test_the_duplicate_report_reaches_json_too(store, owner):
     ]
 
 
-def test_a_clean_status_says_nothing_about_duplicates(store, owner):
+def test_a_clean_status_says_nothing_about_duplicates(
+    store: PostgresStore, owner: Principal
+) -> None:
     store.put_event(an_event(owner))
 
     out = events.render(events.status(store, owner.id, idle_seconds=IDLE))
@@ -360,7 +410,9 @@ def test_a_clean_status_says_nothing_about_duplicates(store, owner):
     assert "duplicate" not in out.lower()
 
 
-def test_the_status_report_carries_hook_advisories(store, owner):
+def test_the_status_report_carries_hook_advisories(
+    store: PostgresStore, owner: Principal
+) -> None:
     """`record status` is what a user runs when a harness looks quiet, and
     is otherwise structurally incapable of answering - it reports what WAS
     recorded and cannot know what should have been. It is also the only
@@ -382,13 +434,17 @@ def test_the_status_report_carries_hook_advisories(store, owner):
     assert events.to_dict(report)["hook_advisories"] == report.hook_advisories
 
 
-def test_a_healthy_install_adds_no_advisory_lines(store, owner):
+def test_a_healthy_install_adds_no_advisory_lines(
+    store: PostgresStore, owner: Principal
+) -> None:
     report = events.status(store, owner.id, idle_seconds=IDLE)
     assert report.hook_advisories == []
     assert "remem doctor" not in events.render(report)
 
 
-def test_status_carries_an_ingest_advisory(store, owner):
+def test_status_carries_an_ingest_advisory(
+    store: PostgresStore, owner: Principal
+) -> None:
     ingest.designate(store, owner.id, "remem", ["docs/specs"])
     run = store.start_ingest_run(owner.id, "remem", IngestTrigger.AUTO)
     store.finish_ingest_run(

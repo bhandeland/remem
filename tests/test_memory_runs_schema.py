@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from typing import Any
+
+import psycopg
 import pytest
 
 from remem.backends.postgres.migrate import migrate
@@ -9,7 +12,7 @@ from remem.backends.postgres.migrate import migrate
 pytestmark = pytest.mark.db
 
 
-def _columns(conn, table):
+def _columns(conn: psycopg.Connection[Any], table: str) -> dict[str, tuple[str, str]]:
     rows = conn.execute(
         "select column_name, is_nullable, data_type "
         "from information_schema.columns where table_name = %s",
@@ -18,7 +21,7 @@ def _columns(conn, table):
     return {r[0]: (r[1], r[2]) for r in rows}
 
 
-def test_memory_runs_exists_with_its_counts(conn):
+def test_memory_runs_exists_with_its_counts(conn: psycopg.Connection[Any]) -> None:
     migrate(conn)
     cols = _columns(conn, "memory_runs")
     for name in ("adopted", "healed", "edited", "regenerated", "deleted", "unchanged"):
@@ -30,7 +33,9 @@ def test_memory_runs_exists_with_its_counts(conn):
     assert cols["started_at"][0] == "NO"
 
 
-def test_the_trigger_check_rejects_an_unknown_value(conn):
+def test_the_trigger_check_rejects_an_unknown_value(
+    conn: psycopg.Connection[Any],
+) -> None:
     import psycopg
 
     migrate(conn)

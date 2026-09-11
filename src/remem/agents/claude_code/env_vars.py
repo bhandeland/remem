@@ -18,12 +18,30 @@ Values and defaults transcribed from https://code.claude.com/docs/en/env-vars.
 
 from __future__ import annotations
 
-from typing import Mapping
+from typing import Mapping, NotRequired, TypedDict, Unpack
 
 from remem.agents.base import EnvVar, Kind
 
 
-def _var(name: str, kind: Kind, help: str, **kw) -> tuple[str, EnvVar]:
+class _VarFields(TypedDict):
+    """The EnvVar fields `_var` forwards, so a typo in one is an error.
+
+    `**kw` is otherwise unconstrained, and the fields it carries here -
+    bounds, a default, a note - are exactly the ones a transcription slip
+    would land in. Spelling them out is what makes `minimun=0` fail at
+    check time rather than construct an EnvVar with a stray attribute.
+    """
+
+    minimum: NotRequired[int | float | None]
+    maximum: NotRequired[int | float | None]
+    default: NotRequired[str | None]
+    duration: NotRequired[bool]
+    note: NotRequired[str | None]
+
+
+def _var(
+    name: str, kind: Kind, help: str, **kw: Unpack[_VarFields]
+) -> tuple[str, EnvVar]:
     return name, EnvVar(name=name, kind=kind, help=help, **kw)
 
 

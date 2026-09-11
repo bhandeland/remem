@@ -22,7 +22,7 @@ def env(live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> str:
     return live_dsn
 
 
-def test_recall_hides_archived_chunks_unless_asked(env, tmp_path):
+def test_recall_hides_archived_chunks_unless_asked(env: str, tmp_path: Path) -> None:
     from remem.mcp_server import recall_tool
     from remem.services import ingest
     from remem.session import open_session

@@ -34,7 +34,7 @@ def doc(tmp_path: Path) -> Path:
     return path
 
 
-def _titles(store, owner, path):
+def _titles(store: PostgresStore, owner: Principal, path: Path):
     hits = store.search(
         Query(
             tags=[ingest.src_tag(path)],
@@ -46,7 +46,9 @@ def _titles(store, owner, path):
     return {h.entry.title for h in hits}
 
 
-def test_a_renamed_heading_leaves_no_live_orphan(store, owner, doc):
+def test_a_renamed_heading_leaves_no_live_orphan(
+    store: PostgresStore, owner: Principal, doc: Path
+) -> None:
     ingest.ingest_file(store, owner.id, doc, project="remem")
     doc.write_text(DOC.replace("## Alpha", "## Alpha, revisited"))
 
@@ -61,7 +63,9 @@ def test_a_renamed_heading_leaves_no_live_orphan(store, owner, doc):
     }
 
 
-def test_a_swept_orphan_is_superseded_by_the_anchor(store, owner, doc):
+def test_a_swept_orphan_is_superseded_by_the_anchor(
+    store: PostgresStore, owner: Principal, doc: Path
+) -> None:
     ingest.ingest_file(store, owner.id, doc, project="remem")
     anchor = next(
         h.entry
@@ -88,7 +92,9 @@ def test_a_swept_orphan_is_superseded_by_the_anchor(store, owner, doc):
     assert orphans[0].entry.superseded_by == anchor.id
 
 
-def test_the_sweep_does_not_reach_other_files(store, owner, tmp_path, doc):
+def test_the_sweep_does_not_reach_other_files(
+    store: PostgresStore, owner: Principal, tmp_path: Path, doc: Path
+) -> None:
     other = tmp_path / "other.md"
     other.write_text("# Other\n\nlead\n\n## Gamma\n\nbody g\n")
     ingest.ingest_file(store, owner.id, doc, project="remem")
@@ -100,7 +106,9 @@ def test_the_sweep_does_not_reach_other_files(store, owner, tmp_path, doc):
     assert _titles(store, owner, other) == {"Other", "Other § Gamma"}
 
 
-def test_dry_run_sweeps_nothing(store, owner, doc):
+def test_dry_run_sweeps_nothing(
+    store: PostgresStore, owner: Principal, doc: Path
+) -> None:
     ingest.ingest_file(store, owner.id, doc, project="remem")
     doc.write_text(DOC.replace("## Alpha\n\nbody a\n\n", ""))
 
@@ -110,7 +118,9 @@ def test_dry_run_sweeps_nothing(store, owner, doc):
     assert "Design § Alpha" in _titles(store, owner, doc)
 
 
-def test_ingest_paths_globs_a_directory(store, owner, tmp_path):
+def test_ingest_paths_globs_a_directory(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     (tmp_path / "sub").mkdir()
     (tmp_path / "a.md").write_text("# A\n\nlead\n\n## One\n\nbody\n")
     (tmp_path / "sub" / "b.md").write_text("# B\n\nlead\n\n## Two\n\nbody\n")
@@ -122,7 +132,9 @@ def test_ingest_paths_globs_a_directory(store, owner, tmp_path):
     assert report.failures == []
 
 
-def test_one_unreadable_file_does_not_cost_the_others(store, owner, tmp_path):
+def test_one_unreadable_file_does_not_cost_the_others(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     (tmp_path / "good.md").write_text("# Good\n\nlead\n\n## One\n\nbody\n")
     (tmp_path / "bad.md").write_bytes(b"\xff\xfe\x00 not utf-8 \xff")
 

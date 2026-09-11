@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
+from pathlib import Path
+
+from remem import memory_file
+from remem.domain import Entry
 from remem.services import memory
 from remem.services.memory import Case
 
@@ -53,17 +58,17 @@ def test_a_file_that_moved_since_export_is_never_deleted():
     assert memory.classify(file_sha="B", entry_sha=None, mark=MARK) == (Case.ADOPT_EDIT)
 
 
-def test_watermarks_round_trip(tmp_path):
+def test_watermarks_round_trip(tmp_path: Path) -> None:
     marks = {"a": MARK}
     memory.save_watermarks(tmp_path, marks)
     assert memory.load_watermarks(tmp_path) == marks
 
 
-def test_a_missing_watermark_file_is_an_empty_mapping(tmp_path):
+def test_a_missing_watermark_file_is_an_empty_mapping(tmp_path: Path) -> None:
     assert memory.load_watermarks(tmp_path) == {}
 
 
-def test_a_corrupt_watermark_file_is_an_empty_mapping(tmp_path):
+def test_a_corrupt_watermark_file_is_an_empty_mapping(tmp_path: Path) -> None:
     (tmp_path / memory.WATERMARK_NAME).write_text("{not json")
     assert memory.load_watermarks(tmp_path) == {}
 
@@ -76,8 +81,8 @@ def test_a_corrupt_watermark_file_is_an_empty_mapping(tmp_path):
 # strip a `type:` the user never removed. `extra` is already read back off
 # the file being replaced for exactly this reason; `type` belongs on the
 # same footing whenever the entry has nothing to say about it.
-def _entry(tags):
-    from remem.domain import Entry, Kind, Origin, new_id
+def _entry(tags: Sequence[str]) -> Entry:
+    from remem.domain import Kind, Origin, new_id
 
     return Entry(
         id=new_id(),
@@ -91,9 +96,7 @@ def _entry(tags):
     )
 
 
-def _source(type_):
-    from remem import memory_file
-
+def _source(type_: str | None) -> memory_file.MemoryFile:
     return memory_file.MemoryFile(
         name="n",
         title="T",

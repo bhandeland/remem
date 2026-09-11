@@ -22,7 +22,12 @@ from remem.extract.claude_cli import (
 START = datetime(2026, 8, 29, 12, 0, tzinfo=timezone.utc)
 
 
-def an_event(payload=None, i=0, tool="Bash", kind=EventKind.TOOL_CALL):
+def an_event(
+    payload: dict[str, Any] | None = None,
+    i: int = 0,
+    tool: str | None = "Bash",
+    kind: EventKind = EventKind.TOOL_CALL,
+):
     return Event(
         id=new_id(),
         owner_id=new_id(),
@@ -36,7 +41,7 @@ def an_event(payload=None, i=0, tool="Bash", kind=EventKind.TOOL_CALL):
     )
 
 
-def events_of_size(total, count=1000):
+def events_of_size(total: int, count: int = 1000):
     """`count` events whose rendered form is at least `total` bytes.
 
     Each payload differs: a real session does not repeat one command
@@ -54,36 +59,36 @@ def events_of_size(total, count=1000):
     return [an_event({"command": f"{i}-{filler}"}, i=i) for i in range(count)]
 
 
-def test_command_runs_claude_in_print_mode():
+def test_command_runs_claude_in_print_mode() -> None:
     cmd = build_command("do the thing")
     assert cmd[0] == "claude"
     assert "-p" in cmd
     assert "do the thing" in cmd
 
 
-def test_env_sets_the_recursion_guard():
+def test_env_sets_the_recursion_guard() -> None:
     """claude -p is itself a Claude Code session; without this its own hooks
     record the extraction's events, which the next extraction reads, and the
     whole thing compounds forever."""
     assert build_env({"PATH": "/usr/bin"})["REMEM_EXTRACT_CHILD"] == "1"
 
 
-def test_env_preserves_the_caller_environment():
+def test_env_preserves_the_caller_environment() -> None:
     assert build_env({"PATH": "/usr/bin", "HOME": "/h"})["PATH"] == "/usr/bin"
 
 
-def test_prompt_forbids_recording_secrets():
+def test_prompt_forbids_recording_secrets() -> None:
     lowered = PROMPT.lower()
     assert "credential" in lowered or "secret" in lowered
     assert "token" in lowered
 
 
-def test_prompt_permits_returning_nothing():
+def test_prompt_permits_returning_nothing() -> None:
     assert "[]" in PROMPT
 
 
-def test_extract_parses_the_subprocess_output(monkeypatch):
-    def fake_run(cmd, **kwargs):
+def test_extract_parses_the_subprocess_output(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(
             cmd,
             0,
@@ -96,8 +101,8 @@ def test_extract_parses_the_subprocess_output(monkeypatch):
     assert [e.title for e in entries] == ["T"]
 
 
-def test_extract_raises_when_claude_is_missing(monkeypatch):
-    def fake_run(cmd, **kwargs):
+def test_extract_raises_when_claude_is_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         raise FileNotFoundError("claude")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
@@ -106,8 +111,8 @@ def test_extract_raises_when_claude_is_missing(monkeypatch):
     assert "not on PATH" in str(exc.value)
 
 
-def test_extract_raises_on_timeout(monkeypatch):
-    def fake_run(cmd, **kwargs):
+def test_extract_raises_on_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         raise subprocess.TimeoutExpired(cmd, 180)
 
     monkeypatch.setattr(subprocess, "run", fake_run)
@@ -116,8 +121,8 @@ def test_extract_raises_on_timeout(monkeypatch):
     assert "timed out" in str(exc.value)
 
 
-def test_extract_raises_on_nonzero_exit(monkeypatch):
-    def fake_run(cmd, **kwargs):
+def test_extract_raises_on_nonzero_exit(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="boom")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
@@ -126,12 +131,14 @@ def test_extract_raises_on_nonzero_exit(monkeypatch):
     assert "boom" in str(exc.value)
 
 
-def test_the_events_are_passed_on_stdin_not_as_an_argument(monkeypatch):
+def test_the_events_are_passed_on_stdin_not_as_an_argument(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """A megabyte of rendered events in argv would exceed the platform's
     argument limit."""
     seen: dict[str, Any] = {}
 
-    def fake_run(cmd, **kwargs):
+    def fake_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         seen["input"] = kwargs.get("input")
         seen["cmd"] = cmd
         return subprocess.CompletedProcess(cmd, 0, stdout="[]", stderr="")
@@ -145,7 +152,7 @@ def test_the_events_are_passed_on_stdin_not_as_an_argument(monkeypatch):
 # --- bounding the rendered events ------------------------------------------
 
 
-def test_events_render_one_line_each_oldest_first():
+def test_events_render_one_line_each_oldest_first() -> None:
     text = render_events(
         [an_event({"command": "first"}, i=0), an_event({"command": "second"}, i=1)]
     )
@@ -155,7 +162,7 @@ def test_events_render_one_line_each_oldest_first():
     assert "second" in lines[1]
 
 
-def test_a_rendered_event_carries_its_time_kind_tool_and_payload():
+def test_a_rendered_event_carries_its_time_kind_tool_and_payload() -> None:
     line = render_events([an_event({"command": "ls -l"})])
     assert START.isoformat() in line
     assert "tool_call" in line
@@ -163,7 +170,7 @@ def test_a_rendered_event_carries_its_time_kind_tool_and_payload():
     assert '"command":"ls -l"' in line
 
 
-def test_a_payload_is_rendered_whole_rather_than_summarised():
+def test_a_payload_is_rendered_whole_rather_than_summarised() -> None:
     """The judgement about what matters in a payload is the model's, and a
     renderer that pre-digested it would hide what a better prompt could
     find in the same stored events."""
@@ -171,19 +178,21 @@ def test_a_payload_is_rendered_whole_rather_than_summarised():
     assert '"nested":{"b":[1,2]}' in line
 
 
-def test_an_event_with_no_tool_still_renders():
+def test_an_event_with_no_tool_still_renders() -> None:
     line = render_events([an_event({"text": "hi"}, tool=None, kind=EventKind.MESSAGE)])
     assert "message" in line
     assert '"text":"hi"' in line
 
 
-def test_a_large_batch_of_events_is_bounded_to_its_tail(monkeypatch):
+def test_a_large_batch_of_events_is_bounded_to_its_tail(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Measured against the real CLI: 40KB follows the prompt and returns in
     seconds; 400KB takes ~5 minutes AND the model ignores the prompt
     entirely. An unbounded input fails on essentially every real session."""
     seen: dict[str, Any] = {}
 
-    def fake_run(cmd, **kwargs):
+    def fake_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         seen["input"] = kwargs.get("input")
         return subprocess.CompletedProcess(cmd, 0, stdout="[]", stderr="")
 
@@ -200,7 +209,7 @@ def test_a_large_batch_of_events_is_bounded_to_its_tail(monkeypatch):
     assert len(seen["input"]) <= ceiling
 
 
-def test_bounding_keeps_the_end_not_the_beginning():
+def test_bounding_keeps_the_end_not_the_beginning() -> None:
     """A session's conclusions live at the end; its opening is setup."""
     events = (
         [an_event({"command": "START-MARKER"}, i=0)]
@@ -212,14 +221,14 @@ def test_bounding_keeps_the_end_not_the_beginning():
     assert "START-MARKER" not in text
 
 
-def test_a_bounded_batch_says_so():
+def test_a_bounded_batch_says_so() -> None:
     """The model must know it is seeing the end of a longer session, not a
     whole short one - otherwise it reasons about a truncated opening."""
     text = render_events(events_of_size(MAX_PROMPT_BYTES * 2))
     assert "truncated" in text.lower()
 
 
-def test_truncation_never_cuts_a_line_in_half():
+def test_truncation_never_cuts_a_line_in_half() -> None:
     """A half-rendered payload is a shape the model has to guess at, and the
     first thing it guesses is that the payload means something other than
     what it says. Asserted on the JSON itself rather than by comparing with
@@ -233,13 +242,13 @@ def test_truncation_never_cuts_a_line_in_half():
         assert json.loads(line.split(" ", 3)[3])
 
 
-def test_a_short_session_is_passed_whole():
+def test_a_short_session_is_passed_whole() -> None:
     text = render_events([an_event({"command": "SHORT"})])
     assert "SHORT" in text
     assert "truncated" not in text.lower()
 
 
-def test_no_events_renders_to_nothing():
+def test_no_events_renders_to_nothing() -> None:
     """The service treats an empty batch as a quiet session; the renderer
     must not invent a truncation note for it."""
     assert render_events([]) == ""
@@ -248,11 +257,13 @@ def test_no_events_renders_to_nothing():
 # --- diagnosable failures ---------------------------------------------------
 
 
-def test_a_nonzero_exit_with_empty_stderr_still_says_something_useful(monkeypatch):
+def test_a_nonzero_exit_with_empty_stderr_still_says_something_useful(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """The observed real-world failure: `claude exited 1:` and nothing more.
     Exit code alone is not a diagnosis."""
 
-    def fake_run(cmd, **kwargs):
+    def fake_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
@@ -264,8 +275,10 @@ def test_a_nonzero_exit_with_empty_stderr_still_says_something_useful(monkeypatc
     assert "bytes" in message.lower()
 
 
-def test_a_nonzero_exit_with_stderr_still_includes_it(monkeypatch):
-    def fake_run(cmd, **kwargs):
+def test_a_nonzero_exit_with_stderr_still_includes_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="boom happened")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
@@ -274,10 +287,10 @@ def test_a_nonzero_exit_with_stderr_still_includes_it(monkeypatch):
     assert "boom happened" in str(exc.value)
 
 
-def test_a_timeout_reports_the_input_size(monkeypatch):
+def test_a_timeout_reports_the_input_size(monkeypatch: pytest.MonkeyPatch) -> None:
     """Size is the first thing to suspect on a timeout."""
 
-    def fake_run(cmd, **kwargs):
+    def fake_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         raise subprocess.TimeoutExpired(cmd, 180)
 
     monkeypatch.setattr(subprocess, "run", fake_run)
@@ -289,7 +302,7 @@ def test_a_timeout_reports_the_input_size(monkeypatch):
 # --- model pinning ----------------------------------------------------------
 
 
-def test_the_command_pins_a_model():
+def test_the_command_pins_a_model() -> None:
     """Without --model, `claude -p` inherits the user's session model, so
     extraction silently changes whenever they switch models for unrelated
     reasons."""
@@ -298,10 +311,12 @@ def test_the_command_pins_a_model():
     assert cmd[cmd.index("--model") + 1] == "sonnet"
 
 
-def test_the_extractor_passes_its_configured_model(monkeypatch):
+def test_the_extractor_passes_its_configured_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     seen: dict[str, Any] = {}
 
-    def fake_run(cmd, **kwargs):
+    def fake_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         seen["cmd"] = cmd
         return subprocess.CompletedProcess(cmd, 0, stdout="[]", stderr="")
 
@@ -310,12 +325,14 @@ def test_the_extractor_passes_its_configured_model(monkeypatch):
     assert seen["cmd"][seen["cmd"].index("--model") + 1] == "haiku"
 
 
-def test_the_extractor_defaults_to_the_configured_default(monkeypatch):
+def test_the_extractor_defaults_to_the_configured_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from remem.config import DEFAULT_EXTRACT_MODEL
 
     seen: dict[str, Any] = {}
 
-    def fake_run(cmd, **kwargs):
+    def fake_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         seen["cmd"] = cmd
         return subprocess.CompletedProcess(cmd, 0, stdout="[]", stderr="")
 
@@ -324,7 +341,9 @@ def test_the_extractor_defaults_to_the_configured_default(monkeypatch):
     assert seen["cmd"][seen["cmd"].index("--model") + 1] == DEFAULT_EXTRACT_MODEL
 
 
-def test_one_event_larger_than_the_whole_budget_is_cut(monkeypatch):
+def test_one_event_larger_than_the_whole_budget_is_cut(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """A single Read of a large file would otherwise defeat the bound. The
     field cap now catches this before the line-at-a-time rule does - the
     event survives, only its oversized value is trimmed."""
@@ -334,7 +353,7 @@ def test_one_event_larger_than_the_whole_budget_is_cut(monkeypatch):
     assert "tool_call" in text
 
 
-def test_a_line_that_is_still_too_long_after_capping_is_cut_short():
+def test_a_line_that_is_still_too_long_after_capping_is_cut_short() -> None:
     """The backstop beneath the field cap: capping bounds each value, not
     their number, so an event carrying hundreds of them can still be longer
     than the whole budget on its own."""
@@ -347,16 +366,16 @@ def test_a_line_that_is_still_too_long_after_capping_is_cut_short():
 # --- constants stated once, not per event -----------------------------------
 
 
-def _lines(text):
+def _lines(text: str):
     """The event lines, without the bracketed notes the renderer prepends."""
     return [ln for ln in text.splitlines() if not ln.startswith("[")]
 
 
-def _notes(text):
+def _notes(text: str):
     return [ln for ln in text.splitlines() if ln.startswith("[")]
 
 
-def test_a_key_identical_across_every_event_is_stated_once():
+def test_a_key_identical_across_every_event_is_stated_once() -> None:
     """112 events repeating one cwd spent ~4KB saying the same thing. The
     budget is bytes, and every repeat is a line of session the model does
     not get to see."""
@@ -367,13 +386,13 @@ def test_a_key_identical_across_every_event_is_stated_once():
     assert all(f"c{i}" in text for i in range(5))
 
 
-def test_a_key_whose_value_varies_stays_on_every_event():
+def test_a_key_whose_value_varies_stays_on_every_event() -> None:
     events = [an_event({"cwd": f"/repo{i}", "command": "x"}, i=i) for i in range(5)]
     text = render_events(events)
     assert all(f"/repo{i}" in "\n".join(_lines(text)) for i in range(5))
 
 
-def test_a_key_missing_from_one_event_is_not_hoisted():
+def test_a_key_missing_from_one_event_is_not_hoisted() -> None:
     """Present-and-equal on four of five events is not constant: hoisting it
     would assert it of the fifth, which never carried it."""
     events = [an_event({"cwd": "/repo"}, i=i) for i in range(4)]
@@ -382,7 +401,7 @@ def test_a_key_missing_from_one_event_is_not_hoisted():
     assert "/repo" in "\n".join(_lines(text))
 
 
-def test_a_batch_too_short_to_repeat_itself_is_left_alone():
+def test_a_batch_too_short_to_repeat_itself_is_left_alone() -> None:
     """Below three events hoisting saves at most one copy - churn, and it
     would strip the payload the caller can see whole today."""
     events = [an_event({"cwd": "/repo"}, i=i) for i in range(2)]
@@ -391,7 +410,7 @@ def test_a_batch_too_short_to_repeat_itself_is_left_alone():
     assert all("/repo" in line for line in _lines(text))
 
 
-def test_hoisting_is_keyed_on_the_batch_not_on_a_table_of_key_names():
+def test_hoisting_is_keyed_on_the_batch_not_on_a_table_of_key_names() -> None:
     """The renderer serves every harness. A hardcoded list of Claude Code's
     payload keys would silently do nothing for Cursor, whose constants are
     workspace_roots and user_email."""
@@ -412,7 +431,7 @@ def test_hoisting_is_keyed_on_the_batch_not_on_a_table_of_key_names():
 # --- capping one value, rather than dropping the whole event ----------------
 
 
-def test_a_value_larger_than_the_field_cap_is_cut_whatever_its_key():
+def test_a_value_larger_than_the_field_cap_is_cut_whatever_its_key() -> None:
     """Keyed on the value's size, not on a list of key names: one 31KB
     tool_response took 77% of the whole budget on a real session, and the
     key holding it differs per harness."""
@@ -423,14 +442,14 @@ def test_a_value_larger_than_the_field_cap_is_cut_whatever_its_key():
     assert "cut" in text.lower()
 
 
-def test_a_value_within_the_cap_is_left_whole():
+def test_a_value_within_the_cap_is_left_whole() -> None:
     """The cap trims the outliers; it is not a summariser."""
     modest = "y" * 300
     events = [an_event({"command": modest, "n": i}, i=i) for i in range(5)]
     assert modest in render_events(events)
 
 
-def test_a_constant_too_large_to_state_is_cut_in_the_note_too():
+def test_a_constant_too_large_to_state_is_cut_in_the_note_too() -> None:
     """Hoisting a 30KB constant would state it once and still blow the
     budget - stating it once is not the same as stating it cheaply."""
     big = "z" * 5000
@@ -440,7 +459,7 @@ def test_a_constant_too_large_to_state_is_cut_in_the_note_too():
     assert "blob" in text
 
 
-def test_capping_a_value_keeps_every_event(monkeypatch):
+def test_capping_a_value_keeps_every_event(monkeypatch: pytest.MonkeyPatch) -> None:
     """The point of the cap: a session stays whole. Dropping events was
     measured at zero entries on a session holding four durable insights,
     where the capped render of the same events returned entries in five
@@ -454,7 +473,7 @@ def test_capping_a_value_keeps_every_event(monkeypatch):
     assert "truncated" not in text.lower()
 
 
-def test_a_whole_working_session_fits_within_the_budget():
+def test_a_whole_working_session_fits_within_the_budget() -> None:
     """The measured shape this budget exists to hold: ~112 events whose
     capped render is ~83KB. At the old 40,000 the same session was dropped
     to its last 18 events and returned nothing in three runs, where the
@@ -475,7 +494,7 @@ def test_a_whole_working_session_fits_within_the_budget():
     assert all(f"E{i}-" in text for i in range(112))
 
 
-def test_a_session_too_large_at_the_default_cap_is_re_rendered_tighter():
+def test_a_session_too_large_at_the_default_cap_is_re_rendered_tighter() -> None:
     """The middle rung. Every event is still shown; each is told less. A
     diluted whole session beat a sharp fragment of one in every measured
     run, so detail is what gives way first, not coverage."""

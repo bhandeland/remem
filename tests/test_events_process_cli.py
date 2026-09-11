@@ -12,6 +12,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
 import psycopg
 import pytest
@@ -20,7 +21,7 @@ from typer.testing import CliRunner
 from remem.backends.postgres.migrate import migrate
 from remem.backends.postgres.store import PostgresStore
 from remem.cli import app
-from remem.domain import Event, EventKind, Kind, new_id
+from remem.domain import Entry, Event, EventKind, Kind, new_id
 from remem.extract.base import ExtractedEntry
 from remem.services import record
 from tests.conftest import one, scalar
@@ -43,7 +44,9 @@ def env(live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> str:
     return live_dsn
 
 
-def _record(dsn, project, session_id, command, when=LONG_AGO):
+def _record(
+    dsn: str, project: str, session_id: str, command: str, when: datetime = LONG_AGO
+):
     """Commit one event for a project that has opted in, and return the owner."""
     with psycopg.connect(dsn) as c:
         store = PostgresStore(c)
@@ -72,10 +75,12 @@ class _TitleFromFirstEvent:
     Lets a test tell two sessions apart without spawning anything.
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any):
         pass
 
-    def extract(self, events, project, known_titles=None):
+    def extract(
+        self, events: list[Event], project: str, known_titles: list[str] | None = None
+    ):
         return [
             ExtractedEntry(
                 title=events[0].payload["command"], body="body", kind=Kind.NOTE
@@ -83,13 +88,15 @@ class _TitleFromFirstEvent:
         ]
 
 
-def test_a_run_with_nothing_to_do_succeeds_quietly(env):
+def test_a_run_with_nothing_to_do_succeeds_quietly(env: str) -> None:
     result = runner.invoke(app, ["events", "process"])
     assert result.exit_code == 0
     assert "claimed 0" in result.stdout
 
 
-def test_a_quiet_session_is_extracted(env, monkeypatch):
+def test_a_quiet_session_is_extracted(
+    env: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
     _record(env, "remem", "s1", "GOOD")
     monkeypatch.setattr(
         "remem.extract.claude_cli.ClaudeCliExtractor", _TitleFromFirstEvent
@@ -104,7 +111,9 @@ def test_a_quiet_session_is_extracted(env, monkeypatch):
     assert titles == ["GOOD"]
 
 
-def test_a_session_inside_the_idle_window_is_left_alone(env, monkeypatch):
+def test_a_session_inside_the_idle_window_is_left_alone(
+    env: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """REMEM_IDLE_MINUTES is the trigger, and the CLI must pass it through
     rather than letting the service's own default decide."""
     _record(
@@ -125,7 +134,9 @@ def test_a_session_inside_the_idle_window_is_left_alone(env, monkeypatch):
     assert "claimed 0" in result.stdout
 
 
-def test_a_shorter_idle_window_makes_the_same_session_extractable(env, monkeypatch):
+def test_a_shorter_idle_window_makes_the_same_session_extractable(
+    env: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
     _record(
         env,
         "remem",
@@ -143,7 +154,9 @@ def test_a_shorter_idle_window_makes_the_same_session_extractable(env, monkeypat
     assert "claimed 1" in result.stdout
 
 
-def test_a_real_database_error_does_not_discard_the_rest_of_the_run(env, monkeypatch):
+def test_a_real_database_error_does_not_discard_the_rest_of_the_run(
+    env: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """One job erroring the connection must not roll back the whole batch.
 
     A genuine failed statement puts a non-autocommit connection into
@@ -160,7 +173,7 @@ def test_a_real_database_error_does_not_discard_the_rest_of_the_run(env, monkeyp
 
     real_put = PostgresStore.put_entry
 
-    def flaky_put(self, entry):
+    def flaky_put(self: PostgresStore, entry: Entry) -> Entry:
         if entry.title == "BAD":
             # A genuinely invalid statement on the live cursor, not a Python
             # exception raised beside it.
@@ -195,7 +208,9 @@ def test_a_real_database_error_does_not_discard_the_rest_of_the_run(env, monkeyp
     assert "entries written 1" in result.stdout
 
 
-def test_the_job_flag_retries_one_job_that_gave_up(env, monkeypatch):
+def test_the_job_flag_retries_one_job_that_gave_up(
+    env: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
     owner_id = _record(env, "remem", "s1", "GOOD")
     with psycopg.connect(env) as c:
         job_id = new_id()
@@ -224,27 +239,34 @@ def test_the_job_flag_retries_one_job_that_gave_up(env, monkeypatch):
     assert titles == ["GOOD"]
 
 
-def test_the_job_flag_with_an_unknown_id_exits_nonzero(env):
+def test_the_job_flag_with_an_unknown_id_exits_nonzero(env: str) -> None:
     result = runner.invoke(app, ["events", "process", "--job", str(uuid.uuid4())])
     assert result.exit_code == 1
     assert "No extract job" in result.stderr
 
 
-def test_the_job_flag_with_a_malformed_id_exits_nonzero(env):
+def test_the_job_flag_with_a_malformed_id_exits_nonzero(env: str) -> None:
     result = runner.invoke(app, ["events", "process", "--job", "not-a-uuid"])
     assert result.exit_code == 1
     assert "not a valid" in result.stderr
 
 
-def test_the_run_uses_the_configured_model(env, monkeypatch):
+def test_the_run_uses_the_configured_model(
+    env: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """The CLI must pass config through, not let the extractor's default win."""
     seen = {}
 
     class Probe:
-        def __init__(self, *args, **kwargs):
+        def __init__(self, *args: Any, **kwargs: Any):
             seen.update(kwargs)
 
-        def extract(self, events, project, known_titles=None) -> list[ExtractedEntry]:
+        def extract(
+            self,
+            events: list[Event],
+            project: str,
+            known_titles: list[str] | None = None,
+        ) -> list[ExtractedEntry]:
             return []
 
     _record(env, "remem", "s1", "anything")
@@ -255,7 +277,9 @@ def test_the_run_uses_the_configured_model(env, monkeypatch):
     assert seen.get("model") == "opus"
 
 
-def test_a_second_run_says_nothing_while_the_first_holds_the_lock(env, monkeypatch):
+def test_a_second_run_says_nothing_while_the_first_holds_the_lock(
+    env: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Cron overlap is the expected case, not an error. A non-zero exit here
     would mail the user about a working system."""
     owner_id = _record(env, "remem", "s1", "GOOD")
@@ -283,7 +307,9 @@ def test_a_second_run_says_nothing_while_the_first_holds_the_lock(env, monkeypat
         holder.close()
 
 
-def test_the_lock_is_released_when_the_run_ends(env, monkeypatch):
+def test_the_lock_is_released_when_the_run_ends(
+    env: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Session-level, so it dies with the connection - which is the process
     ending. A lock that outlived one run would stop every later one."""
     _record(env, "remem", "s1", "GOOD")
@@ -298,7 +324,7 @@ def test_the_lock_is_released_when_the_run_ends(env, monkeypatch):
     assert "claimed 1" in result.stdout
 
 
-def test_the_help_names_the_group(env):
+def test_the_help_names_the_group(env: str) -> None:
     result = runner.invoke(app, ["events", "--help"])
     assert result.exit_code == 0
     assert "process" in result.stdout

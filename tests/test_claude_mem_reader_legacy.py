@@ -11,7 +11,7 @@ import json
 import sqlite3
 from pathlib import Path
 
-from remem.importers.base import SourceKind
+from remem.importers.base import SourceKind, SourceRecord
 from remem.importers.claude_mem import read
 
 LEGACY_SCHEMA = """
@@ -88,11 +88,11 @@ def _legacy(tmp_path: Path) -> Path:
     return db
 
 
-def _by_kind(records, kind):
+def _by_kind(records: list[SourceRecord], kind: SourceKind) -> list[SourceRecord]:
     return [r for r in records if r.kind is kind]
 
 
-def test_all_three_legacy_tables_are_read(tmp_path):
+def test_all_three_legacy_tables_are_read(tmp_path: Path) -> None:
     records = read(_legacy(tmp_path)).records
 
     assert len(_by_kind(records, SourceKind.OBSERVATION)) == 1
@@ -100,7 +100,7 @@ def test_all_three_legacy_tables_are_read(tmp_path):
     assert len(_by_kind(records, SourceKind.PROMPT)) == 1
 
 
-def test_a_legacy_observation_maps_like_a_modern_one(tmp_path):
+def test_a_legacy_observation_maps_like_a_modern_one(tmp_path: Path) -> None:
     [obs] = _by_kind(read(_legacy(tmp_path)).records, SourceKind.OBSERVATION)
 
     assert obs.source_id == "1"
@@ -109,7 +109,7 @@ def test_a_legacy_observation_maps_like_a_modern_one(tmp_path):
     assert "Workspace occupies 75GB" in obs.body
 
 
-def test_a_summary_renders_its_five_fields(tmp_path):
+def test_a_summary_renders_its_five_fields(tmp_path: Path) -> None:
     [summary] = _by_kind(read(_legacy(tmp_path)).records, SourceKind.SUMMARY)
 
     for expected in (
@@ -122,7 +122,7 @@ def test_a_summary_renders_its_five_fields(tmp_path):
         assert expected in summary.body
 
 
-def test_prompts_are_grouped_into_one_record_per_session(tmp_path):
+def test_prompts_are_grouped_into_one_record_per_session(tmp_path: Path) -> None:
     """One entry per prompt would be near-empty entries competing in search
     against real memories. The sequence is the signal, not the string."""
     [prompts] = _by_kind(read(_legacy(tmp_path)).records, SourceKind.PROMPT)
@@ -132,7 +132,7 @@ def test_prompts_are_grouped_into_one_record_per_session(tmp_path):
     assert "now summarise it" in prompts.body
 
 
-def test_milliseconds_are_not_read_as_seconds(tmp_path):
+def test_milliseconds_are_not_read_as_seconds(tmp_path: Path) -> None:
     """Legacy epochs are milliseconds. Read as seconds they land in 1970."""
     [obs] = _by_kind(read(_legacy(tmp_path)).records, SourceKind.OBSERVATION)
 

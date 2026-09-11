@@ -38,7 +38,7 @@ class FakeEmbedder:
     name = "fake-2"
     dim = 2
 
-    def embed(self, texts):
+    def embed(self, texts: list[str]) -> list[list[float]]:
         return [[float(len(t)), 1.0] for t in texts]
 
 
@@ -71,14 +71,14 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return root
 
 
-def test_designate_reports_what_it_stored(env, repo):
+def test_designate_reports_what_it_stored(env: str, repo: Path) -> None:
     result = runner.invoke(app, ["reingest", "designate", "docs/specs"])
 
     assert result.exit_code == 0
     assert "docs/specs" in result.stdout
 
 
-def test_status_lists_the_designation(env, repo):
+def test_status_lists_the_designation(env: str, repo: Path) -> None:
     runner.invoke(app, ["reingest", "designate", "docs/specs"])
 
     result = runner.invoke(app, ["reingest", "status"])
@@ -87,14 +87,14 @@ def test_status_lists_the_designation(env, repo):
     assert "docs/specs" in result.stdout
 
 
-def test_status_says_so_when_nothing_is_designated(env, repo):
+def test_status_says_so_when_nothing_is_designated(env: str, repo: Path) -> None:
     result = runner.invoke(app, ["reingest", "status"])
 
     assert result.exit_code == 0
     assert "not designated" in result.stdout.lower()
 
 
-def test_designate_refuses_an_absolute_path_loudly(env, repo):
+def test_designate_refuses_an_absolute_path_loudly(env: str, repo: Path) -> None:
     """A person typed this, so it is fail-loud - unlike `run`."""
     result = runner.invoke(app, ["reingest", "designate", "/etc"])
 
@@ -102,7 +102,7 @@ def test_designate_refuses_an_absolute_path_loudly(env, repo):
     assert "absolute" in result.stdout.lower() + result.stderr.lower()
 
 
-def test_run_ingests_the_designated_paths(env, repo):
+def test_run_ingests_the_designated_paths(env: str, repo: Path) -> None:
     runner.invoke(app, ["reingest", "designate", "docs/specs"])
 
     result = runner.invoke(app, ["reingest", "run"])
@@ -112,7 +112,7 @@ def test_run_ingests_the_designated_paths(env, repo):
     assert "alpha" in found.stdout.lower()
 
 
-def test_run_is_silent(env, repo):
+def test_run_is_silent(env: str, repo: Path) -> None:
     """It is spawned detached from a session start. Output goes nowhere,
     and printing is how a hook contract rots."""
     runner.invoke(app, ["reingest", "designate", "docs/specs"])
@@ -122,7 +122,9 @@ def test_run_is_silent(env, repo):
     assert result.stdout == ""
 
 
-def test_run_exits_zero_outside_a_repository(env, tmp_path, monkeypatch):
+def test_run_exits_zero_outside_a_repository(
+    env: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Fail-soft: no repo means no root to resolve against, and that is an
     ordinary thing rather than a failure worth a non-zero exit."""
     monkeypatch.chdir(tmp_path)
@@ -132,7 +134,9 @@ def test_run_exits_zero_outside_a_repository(env, tmp_path, monkeypatch):
     assert result.exit_code == 0
 
 
-def test_run_exits_zero_with_the_database_down(env, repo, monkeypatch):
+def test_run_exits_zero_with_the_database_down(
+    env: str, repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """The strongest form of the fail-soft contract: this is spawned by a
     session start, and a knowledge tool must never be why one goes wrong."""
     monkeypatch.setenv("REMEM_DSN", "postgresql://nobody@127.0.0.1:1/nothing")
@@ -143,7 +147,7 @@ def test_run_exits_zero_with_the_database_down(env, repo, monkeypatch):
     assert result.stdout == ""
 
 
-def test_status_shows_the_last_run_after_a_run(env, repo):
+def test_status_shows_the_last_run_after_a_run(env: str, repo: Path) -> None:
     runner.invoke(app, ["reingest", "designate", "docs/specs"])
     runner.invoke(app, ["reingest", "run"])
 
@@ -159,7 +163,7 @@ def test_status_shows_the_last_run_after_a_run(env, repo):
     assert "all designated paths present" in result.stdout
 
 
-def test_status_reports_a_designated_path_missing_on_disk(env, repo):
+def test_status_reports_a_designated_path_missing_on_disk(env: str, repo: Path) -> None:
     runner.invoke(app, ["reingest", "designate", "docs/specs", "docs/gone"])
 
     result = runner.invoke(app, ["reingest", "status"])
@@ -168,7 +172,9 @@ def test_status_reports_a_designated_path_missing_on_disk(env, repo):
     assert f"checked against {repo.resolve()}" in result.stdout
 
 
-def test_status_for_another_project_says_paths_were_not_checked(env, repo):
+def test_status_for_another_project_says_paths_were_not_checked(
+    env: str, repo: Path
+) -> None:
     runner.invoke(
         app, ["reingest", "designate", "docs/specs", "--project", "elsewhere"]
     )
@@ -178,7 +184,7 @@ def test_status_for_another_project_says_paths_were_not_checked(env, repo):
     assert "paths not checked: run from inside elsewhere's repository" in result.stdout
 
 
-def test_status_json(env, repo):
+def test_status_json(env: str, repo: Path) -> None:
     runner.invoke(app, ["reingest", "designate", "docs/specs"])
     runner.invoke(app, ["reingest", "run"])
 
@@ -190,7 +196,9 @@ def test_status_json(env, repo):
     assert entry["check"]["missing"] == []
 
 
-def test_status_json_for_an_undesignated_project_with_a_manual_run(env, repo):
+def test_status_json_for_an_undesignated_project_with_a_manual_run(
+    env: str, repo: Path
+) -> None:
     """The `status()` fallback: nothing is designated, so `designations` is
     empty and `checked_against` is None - there is no disk check to report."""
     runner.invoke(app, ["ingest", "docs/specs/alpha.md"])

@@ -9,6 +9,7 @@ entries_written=0.
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from pathlib import Path
 
 from remem.agents.base import ExpectedHook, HookState, UnsupportedScope
@@ -16,7 +17,10 @@ from remem.services import doctor
 from tests.conftest import found
 
 
-def hooks(path="/tmp/settings.json", **found):
+# `path` is positional-only so that `hooks(**complete())` - a dict of
+# list[str] - cannot be read as a candidate value for it. Every caller
+# already passes it positionally; the marker only states that.
+def hooks(path: str = "/tmp/settings.json", /, **found: list[str]) -> HookState:
     expected = (
         ExpectedHook("SessionStart", "remem hook session-start", True, "injection"),
         ExpectedHook("PostToolUse", "remem hook record-event", True, "every tool call"),
@@ -41,10 +45,10 @@ class FakeAdapter:
 
     name = "fake"
 
-    def __init__(self, state=None, raises=False):
+    def __init__(self, state: HookState | None = None, raises: bool = False):
         self._state, self._raises = state, raises
 
-    def hook_state(self, scope, home, env):
+    def hook_state(self, scope: str, home: Path, env: Mapping[str, str]):
         if scope != "user":
             raise UnsupportedScope(f"scope '{scope}' is not supported")
         if self._raises:
@@ -58,10 +62,10 @@ class TwoScopeAdapter:
 
     name = "two"
 
-    def __init__(self, **states):
+    def __init__(self, **states: HookState):
         self._states = states
 
-    def hook_state(self, scope, home, env):
+    def hook_state(self, scope: str, home: Path, env: Mapping[str, str]):
         if scope not in self._states:
             raise UnsupportedScope(f"scope '{scope}' is not supported")
         return self._states[scope]
@@ -71,11 +75,11 @@ class NoCapability:
     name = "plain"
 
 
-def verdicts(report):
+def verdicts(report: doctor.AgentReport) -> dict[str, doctor.Verdict]:
     return {f.event: f.verdict for f in report.findings}
 
 
-def test_a_registered_hook_is_ok():
+def test_a_registered_hook_is_ok() -> None:
     state = hooks(
         SessionStart=["remem hook session-start"],
         PostToolUse=["remem hook record-event"],
@@ -86,7 +90,7 @@ def test_a_registered_hook_is_ok():
     assert not doctor.failed([report])
 
 
-def test_a_missing_required_hook_fails_the_check():
+def test_a_missing_required_hook_fails_the_check() -> None:
     state = hooks(
         SessionStart=["remem hook session-start"],
         SessionEnd=["remem hook record-event"],
@@ -96,7 +100,7 @@ def test_a_missing_required_hook_fails_the_check():
     assert doctor.failed([report])
 
 
-def test_a_missing_optional_hook_is_reported_but_does_not_fail():
+def test_a_missing_optional_hook_is_reported_but_does_not_fail() -> None:
     state = hooks(
         SessionStart=["remem hook session-start"],
         PostToolUse=["remem hook record-event"],
@@ -106,7 +110,7 @@ def test_a_missing_optional_hook_is_reported_but_does_not_fail():
     assert not doctor.failed([report])
 
 
-def test_a_hook_registered_twice_is_duplicated_and_does_not_fail():
+def test_a_hook_registered_twice_is_duplicated_and_does_not_fail() -> None:
     """It fires twice and doubles every row it records, which is worth
     saying loudly - but the hook does fire, so the exit code stays 0."""
     state = hooks(
@@ -118,7 +122,7 @@ def test_a_hook_registered_twice_is_duplicated_and_does_not_fail():
     assert not doctor.failed([report])
 
 
-def test_a_superseded_command_is_stale_not_missing():
+def test_a_superseded_command_is_stale_not_missing() -> None:
     state = hooks(
         SessionStart=["remem hook session-start"],
         PostToolUse=["remem hook post-tool-use-old"],
@@ -128,7 +132,7 @@ def test_a_superseded_command_is_stale_not_missing():
     assert not doctor.failed([report])
 
 
-def test_an_adapter_with_no_remem_hooks_at_all_is_simply_not_installed():
+def test_an_adapter_with_no_remem_hooks_at_all_is_simply_not_installed() -> None:
     """Warning that Cursor's hooks are missing on a machine with no Cursor
     would make the whole report noise, and a report people skim hides the
     next PostToolUse."""
@@ -138,14 +142,14 @@ def test_an_adapter_with_no_remem_hooks_at_all_is_simply_not_installed():
     assert not doctor.failed([report])
 
 
-def test_an_adapter_without_the_capability_is_unchecked_never_ok():
+def test_an_adapter_without_the_capability_is_unchecked_never_ok() -> None:
     report = doctor.check({"plain": NoCapability()})[0]
     assert report.verdict is doctor.Verdict.UNCHECKED
     assert report.findings == ()
     assert not doctor.failed([report])
 
 
-def test_an_adapter_that_raises_warns_and_the_rest_still_run():
+def test_an_adapter_that_raises_warns_and_the_rest_still_run() -> None:
     """The registry contract: a broken third-party adapter must never be
     why remem will not run."""
     state = hooks(
@@ -167,7 +171,7 @@ def test_an_adapter_that_raises_warns_and_the_rest_still_run():
 
 
 def test_unchecked_never_renders_as_ok():
-    # A substring check for "ok" would also flag the word "hook" (h-ok),
+    # A substring check for "ok" would also flag the word "hook" (h-ok) -> None,
     # which the very next assertion requires the text to contain - so this
     # checks for a standalone "ok" verdict marker, not any occurrence of
     # the letters.
@@ -176,7 +180,7 @@ def test_unchecked_never_renders_as_ok():
     assert "no hook registration to check" in text.lower()
 
 
-def test_the_advisory_names_the_hook_and_the_fix():
+def test_the_advisory_names_the_hook_and_the_fix() -> None:
     state = hooks(
         SessionStart=["remem hook session-start"],
         SessionEnd=["remem hook record-event"],
@@ -187,7 +191,7 @@ def test_the_advisory_names_the_hook_and_the_fix():
     assert "remem doctor fake" in lines[0]
 
 
-def test_a_complete_install_produces_no_advisory():
+def test_a_complete_install_produces_no_advisory() -> None:
     state = hooks(
         SessionStart=["remem hook session-start"],
         PostToolUse=["remem hook record-event"],
@@ -196,7 +200,7 @@ def test_a_complete_install_produces_no_advisory():
     assert doctor.advisories(doctor.check({"fake": FakeAdapter(state)})) == []
 
 
-def test_json_and_human_forms_read_off_the_same_reports():
+def test_json_and_human_forms_read_off_the_same_reports() -> None:
     state = hooks(SessionStart=["remem hook session-start"])
     reports = doctor.check({"fake": FakeAdapter(state)})
     data = doctor.to_dict(reports)
@@ -219,7 +223,7 @@ class RaisesOnConstruction:
         raise RuntimeError("adapter blew up on construction")
 
 
-def test_an_adapter_that_raises_from_init_warns_and_the_rest_still_run():
+def test_an_adapter_that_raises_from_init_warns_and_the_rest_still_run() -> None:
     state = hooks(
         SessionStart=["remem hook session-start"],
         PostToolUse=["remem hook record-event"],
@@ -238,7 +242,7 @@ def test_an_adapter_that_raises_from_init_warns_and_the_rest_still_run():
     assert set(verdicts(good).values()) == {doctor.Verdict.OK}
 
 
-def complete(**over):
+def complete(**over: list[str]) -> dict[str, list[str]]:
     base = dict(
         SessionStart=["remem hook session-start"],
         PostToolUse=["remem hook record-event"],
@@ -248,7 +252,7 @@ def complete(**over):
     return base
 
 
-def test_a_sweep_reports_each_installed_scope_separately():
+def test_a_sweep_reports_each_installed_scope_separately() -> None:
     """Two scopes are two files a harness will really read. Picking the
     first installed one hides a half-install in the other, which is the
     exact failure this whole command exists to catch."""
@@ -267,7 +271,7 @@ def test_a_sweep_reports_each_installed_scope_separately():
     assert verdicts(reports[1])["PostToolUse"] is doctor.Verdict.MISSING
 
 
-def test_a_required_hook_missing_in_any_installed_scope_fails():
+def test_a_required_hook_missing_in_any_installed_scope_fails() -> None:
     """R4: the scopes are treated as independent. A healthy user scope does
     not excuse a broken project one - nothing here establishes that Cursor
     merges them, and the cost of staying quiet is unrecorded sessions."""
@@ -280,7 +284,7 @@ def test_a_required_hook_missing_in_any_installed_scope_fails():
     assert doctor.failed(doctor.check({"two": adapter}))
 
 
-def test_an_uninstalled_adapter_is_reported_once_and_names_where_it_looked():
+def test_an_uninstalled_adapter_is_reported_once_and_names_where_it_looked() -> None:
     adapter = TwoScopeAdapter(
         user=hooks("/home/u/.cursor/hooks.json"),
         project=hooks("/repo/.cursor/hooks.json"),
@@ -293,7 +297,7 @@ def test_an_uninstalled_adapter_is_reported_once_and_names_where_it_looked():
     assert "/repo/.cursor/hooks.json" in text
 
 
-def test_a_single_scope_adapter_is_not_unchecked_by_the_sweep():
+def test_a_single_scope_adapter_is_not_unchecked_by_the_sweep() -> None:
     """UnsupportedScope during a sweep is a skip, not a finding: the user
     asked "is this installed anywhere", and a scope the adapter does not
     support is not a place it could be."""
@@ -303,7 +307,7 @@ def test_a_single_scope_adapter_is_not_unchecked_by_the_sweep():
     assert reports[0].verdict is None
 
 
-def test_an_explicit_scope_still_means_exactly_that_scope():
+def test_an_explicit_scope_still_means_exactly_that_scope() -> None:
     """R1: naming a scope asks a specific question, and an adapter that
     cannot answer it must say so rather than render nothing. Sweeping here
     would print an empty report and exit 0 - this feature's cardinal sin."""
@@ -316,7 +320,7 @@ def test_an_explicit_scope_still_means_exactly_that_scope():
     assert not re.search(r"\bok\b", text.lower())
 
 
-def test_the_advisory_and_the_fix_line_both_carry_the_scope():
+def test_the_advisory_and_the_fix_line_both_carry_the_scope() -> None:
     """R5: a pointer that leads to a clean or contradictory screen teaches
     the user the advisory lies, and record status's credibility is the
     whole asset."""
@@ -333,7 +337,7 @@ def test_the_advisory_and_the_fix_line_both_carry_the_scope():
     assert "remem install two --scope project" in doctor.render(reports)
 
 
-def test_a_stale_only_install_does_not_claim_to_be_incomplete():
+def test_a_stale_only_install_does_not_claim_to_be_incomplete() -> None:
     """The command IS registered, under a superseded name. Calling that
     "incomplete" sends the user looking for something that is not missing."""
     adapter = FakeAdapter(hooks(**complete(PostToolUse=["remem hook old"])))
@@ -342,7 +346,7 @@ def test_a_stale_only_install_does_not_claim_to_be_incomplete():
     assert "PostToolUse" in line
 
 
-def test_render_with_no_adapters_says_so_rather_than_printing_nothing():
+def test_render_with_no_adapters_says_so_rather_than_printing_nothing() -> None:
     """A blank page and exit 0 is a silent success for a question nobody
     answered - the same family as reporting ok for an unchecked adapter."""
     text = doctor.render([])
@@ -350,7 +354,7 @@ def test_render_with_no_adapters_says_so_rather_than_printing_nothing():
     assert "no adapters" in text.lower()
 
 
-def test_a_failed_check_reads_differently_from_nothing_to_check():
+def test_a_failed_check_reads_differently_from_nothing_to_check() -> None:
     """R7: a warning means something broke; its absence means the adapter
     simply has no hook configuration. The distinction is the honest one and
     needs no roster of which adapters remem ships."""
@@ -361,6 +365,6 @@ def test_a_failed_check_reads_differently_from_nothing_to_check():
     assert "no hook registration to check" not in broke
 
 
-def test_json_rows_carry_the_scope():
+def test_json_rows_carry_the_scope() -> None:
     reports = doctor.check({"fake": FakeAdapter(hooks(**complete()))})
     assert doctor.to_dict(reports)["agents"][0]["scope"] == "user"

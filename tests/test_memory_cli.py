@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import psycopg
 import pytest
@@ -54,7 +55,9 @@ def env(live_dsn: str, tmp_path: Path) -> dict[str, str]:
     }
 
 
-def _designated_store(env) -> tuple[PostgresStore, psycopg.Connection]:
+def _designated_store(
+    env: dict[str, str],
+) -> tuple[PostgresStore, psycopg.Connection[Any]]:
     """A connection left open and committed, with `proj-memory` designated
     for PROJECT. The caller owns closing it; these fixtures return the
     directory, not the connection, so there is nothing left to close."""
@@ -73,7 +76,7 @@ def _designated_store(env) -> tuple[PostgresStore, psycopg.Connection]:
     return store, conn
 
 
-def _memory_directory(env) -> Path:
+def _memory_directory(env: dict[str, str]) -> Path:
     return Path(env["CLAUDE_CONFIG_DIR"]) / "projects" / slug_for(Path.cwd()) / "memory"
 
 
@@ -140,27 +143,31 @@ def memory_dir_in_conflict(env: dict[str, str]) -> Path:
     return directory
 
 
-def test_designate_requires_an_existing_collection(env):
+def test_designate_requires_an_existing_collection(env: dict[str, str]) -> None:
     result = runner.invoke(app, ["memory", "designate", "nope"], env=env)
     assert result.exit_code == 1
     assert "nope" in result.stderr
 
 
-def test_sync_on_an_undesignated_project_says_so_and_exits_nonzero(env):
+def test_sync_on_an_undesignated_project_says_so_and_exits_nonzero(
+    env: dict[str, str],
+) -> None:
     result = runner.invoke(app, ["memory", "sync"], env=env)
     assert result.exit_code == 1
     assert "designate" in result.stderr
 
 
-def test_sync_prints_counts(env, memory_dir_with_one_stray):
+def test_sync_prints_counts(
+    env: dict[str, str], memory_dir_with_one_stray: Path
+) -> None:
     result = runner.invoke(app, ["memory", "sync"], env=env)
     assert result.exit_code == 0
     assert "1 adopted" in result.stdout
 
 
 def test_sync_exits_nonzero_when_a_file_is_left_in_conflict(
-    env, memory_dir_in_conflict
-):
+    env: dict[str, str], memory_dir_in_conflict: Path
+) -> None:
     result = runner.invoke(app, ["memory", "sync"], env=env)
     assert result.exit_code == 1
     # Counts land on stdout, failures on stderr. Asserting the wrong stream
@@ -168,7 +175,7 @@ def test_sync_exits_nonzero_when_a_file_is_left_in_conflict(
     assert "conflict" in result.stderr
 
 
-def test_a_bare_designate_refuses_rather_than_clearing(env):
+def test_a_bare_designate_refuses_rather_than_clearing(env: dict[str, str]) -> None:
     # `None if clear else slug` used to collapse "argument omitted" into
     # "clear it", so a user who typed this to see the current designation had
     # destroyed it by the time they read the output.
@@ -184,7 +191,7 @@ def test_a_bare_designate_refuses_rather_than_clearing(env):
     conn.close()
 
 
-def test_designate_none_still_clears(env):
+def test_designate_none_still_clears(env: dict[str, str]) -> None:
     store, conn = _designated_store(env)
     conn.commit()
     owner = store.ensure_principal("brandon")
@@ -197,7 +204,9 @@ def test_designate_none_still_clears(env):
     conn.close()
 
 
-def test_a_dry_run_conflict_does_not_promise_a_sidecar(env, memory_dir_in_conflict):
+def test_a_dry_run_conflict_does_not_promise_a_sidecar(
+    env: dict[str, str], memory_dir_in_conflict: Path
+) -> None:
     result = runner.invoke(app, ["memory", "sync", "--dry-run"], env=env)
 
     assert result.exit_code == 1
@@ -205,7 +214,9 @@ def test_a_dry_run_conflict_does_not_promise_a_sidecar(env, memory_dir_in_confli
     assert list(memory_dir_in_conflict.glob(f"*{memory.CONFLICT_SUFFIX}")) == []
 
 
-def test_a_conflict_with_a_sidecar_names_it(env, memory_dir_in_conflict):
+def test_a_conflict_with_a_sidecar_names_it(
+    env: dict[str, str], memory_dir_in_conflict: Path
+) -> None:
     result = runner.invoke(app, ["memory", "sync"], env=env)
 
     assert result.exit_code == 1
@@ -213,13 +224,15 @@ def test_a_conflict_with_a_sidecar_names_it(env, memory_dir_in_conflict):
     assert (memory_dir_in_conflict / f"a-fact{memory.CONFLICT_SUFFIX}").exists()
 
 
-def test_status_reports_the_designation_and_the_overlap(env):
+def test_status_reports_the_designation_and_the_overlap(env: dict[str, str]) -> None:
     result = runner.invoke(app, ["memory", "status"], env=env)
     assert result.exit_code == 0
     assert "not designated" in result.stdout
 
 
-def test_status_json_on_an_undesignated_project_still_has_every_key(env):
+def test_status_json_on_an_undesignated_project_still_has_every_key(
+    env: dict[str, str],
+) -> None:
     """The text path early-returns one line here. --json keeps one shape,
     so a consumer checks `collection` for null rather than branching on
     which keys arrived."""
@@ -232,7 +245,9 @@ def test_status_json_on_an_undesignated_project_still_has_every_key(env):
     assert payload["overlap"] == {"entries": 0, "bytes": 0}
 
 
-def test_status_json_reports_the_sync_that_just_ran(env, memory_dir_with_one_stray):
+def test_status_json_reports_the_sync_that_just_ran(
+    env: dict[str, str], memory_dir_with_one_stray: Path
+) -> None:
     runner.invoke(app, ["memory", "sync"], env=env)
 
     result = runner.invoke(app, ["memory", "status", "--json"], env=env)
@@ -244,7 +259,7 @@ def test_status_json_reports_the_sync_that_just_ran(env, memory_dir_with_one_str
 
 
 # --- sync --all ---------------------------------------------------------
-def test_designate_records_the_working_directory(env):
+def test_designate_records_the_working_directory(env: dict[str, str]) -> None:
     conn = psycopg.connect(env["REMEM_DSN"])
     store = PostgresStore(conn)
     owner = store.ensure_principal("brandon")
@@ -270,7 +285,9 @@ def test_designate_records_the_working_directory(env):
     assert d.working_dir == str(Path.cwd().resolve())
 
 
-def test_designate_refuses_a_project_that_is_not_this_directory(env):
+def test_designate_refuses_a_project_that_is_not_this_directory(
+    env: dict[str, str],
+) -> None:
     # The designation records this cwd, so designating some other project
     # from here would record a directory that has nothing to do with it -
     # and the mismatch would surface much later, as a sync writing to the
@@ -284,7 +301,7 @@ def test_designate_refuses_a_project_that_is_not_this_directory(env):
     assert "Refusing" in result.output
 
 
-def test_sync_all_and_project_are_mutually_exclusive(env):
+def test_sync_all_and_project_are_mutually_exclusive(env: dict[str, str]) -> None:
     result = runner.invoke(
         app,
         ["memory", "sync", "--all", "--project", "x"],
@@ -293,13 +310,17 @@ def test_sync_all_and_project_are_mutually_exclusive(env):
     assert result.exit_code != 0
 
 
-def test_sync_all_with_nothing_designated_says_so_and_exits_zero(env):
+def test_sync_all_with_nothing_designated_says_so_and_exits_zero(
+    env: dict[str, str],
+) -> None:
     result = runner.invoke(app, ["memory", "sync", "--all"], env=env)
     assert result.exit_code == 0, result.output
     assert "No project has a memory collection" in result.output
 
 
-def test_sync_all_reports_one_line_per_project(env, memory_dir_with_one_stray):
+def test_sync_all_reports_one_line_per_project(
+    env: dict[str, str], memory_dir_with_one_stray: Path
+) -> None:
     # Designated by the fixture through the service, which records no
     # working directory - exactly the pre-migration-015 row shape - so this
     # also pins that such a row is skipped loudly rather than synced.
@@ -310,8 +331,8 @@ def test_sync_all_reports_one_line_per_project(env, memory_dir_with_one_stray):
 
 
 def test_sync_all_syncs_a_designation_that_has_a_directory(
-    env, memory_dir_with_one_stray
-):
+    env: dict[str, str], memory_dir_with_one_stray: Path
+) -> None:
     # Re-designate through the CLI so the working directory is recorded.
     assert (
         runner.invoke(
@@ -327,7 +348,9 @@ def test_sync_all_syncs_a_designation_that_has_a_directory(
     assert PROJECT in result.output
 
 
-def test_sync_names_each_rename_it_followed(env, memory_dir_with_one_stray):
+def test_sync_names_each_rename_it_followed(
+    env: dict[str, str], memory_dir_with_one_stray: Path
+) -> None:
     # A rename re-tags an entry, which is a write to the store the user did
     # not ask for by name. Counting it inside `unchanged` would make the one
     # line the user reads describe a run in which nothing moved.

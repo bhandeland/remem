@@ -25,7 +25,7 @@ AT = datetime(2026, 9, 4, 14, 2, tzinfo=timezone.utc)
 SHOWN = AT.astimezone().strftime("%Y-%m-%d %H:%M")
 
 
-def _run(**kw) -> IngestRun:
+def _run(**kw: Any) -> IngestRun:
     base = dict(
         id=uuid4(),
         owner_id=uuid4(),
@@ -47,7 +47,7 @@ _BASE_STATUS = ingest.ProjectIngestStatus(
 )
 
 
-def _status(**kw) -> ingest.ProjectIngestStatus:
+def _status(**kw: Any) -> ingest.ProjectIngestStatus:
     return replace(_BASE_STATUS, **kw)
 
 
@@ -184,7 +184,9 @@ def root(tmp_path: Path) -> Path:
 
 
 @pytest.mark.db
-def test_status_checks_disk_only_for_the_current_project(store, owner, root):
+def test_status_checks_disk_only_for_the_current_project(
+    store: PostgresStore, owner: Principal, root: Path
+) -> None:
     ingest.designate(store, owner.id, "here", ["docs/specs", "docs/gone"])
     ingest.designate(store, owner.id, "there", ["docs/gone"])
 
@@ -200,7 +202,9 @@ def test_status_checks_disk_only_for_the_current_project(store, owner, root):
 
 
 @pytest.mark.db
-def test_status_for_one_project_carries_its_latest_run(store, owner, root):
+def test_status_for_one_project_carries_its_latest_run(
+    store: PostgresStore, owner: Principal, root: Path
+) -> None:
     ingest.designate(store, owner.id, "here", ["docs/specs"])
     run = store.start_ingest_run(owner.id, "here", IngestTrigger.AUTO)
 
@@ -211,7 +215,9 @@ def test_status_for_one_project_carries_its_latest_run(store, owner, root):
 
 
 @pytest.mark.db
-def test_advisories_name_only_the_unhealthy_projects(store, owner, root):
+def test_advisories_name_only_the_unhealthy_projects(
+    store: PostgresStore, owner: Principal, root: Path
+) -> None:
     ingest.designate(store, owner.id, "clean", ["docs/specs"])
     ingest.designate(store, owner.id, "failed", ["docs/specs"])
     ingest.designate(store, owner.id, "stuck", ["docs/specs"])
@@ -247,14 +253,16 @@ def test_advisories_name_only_the_unhealthy_projects(store, owner, root):
 
 
 @pytest.mark.db
-def test_advisories_are_empty_with_nothing_designated(store, owner, root):
+def test_advisories_are_empty_with_nothing_designated(
+    store: PostgresStore, owner: Principal, root: Path
+) -> None:
     assert ingest.advisories(store, owner.id, current_project=None, root=None) == []
 
 
 @pytest.mark.db
 def test_advisories_ignore_an_undesignated_projects_failed_manual_run(
-    store, owner, root
-):
+    store: PostgresStore, owner: Principal, root: Path
+) -> None:
     """status()'s fallback surfaces an undesignated current project's run
     for `reingest status` - right there, since that screen is answering
     "what happened here". But the spec scopes this advisory to designated

@@ -13,18 +13,25 @@ to be.
 import io
 import json
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
 
 import psycopg
 import pytest
 
 from remem.agents.claude_code import hook
+from remem.agents.claude_code.adapter import ClaudeCodeAdapter
 from remem.backends.postgres.migrate import migrate
 from remem.extract.base import CHILD_ENV_VAR
 from tests.conftest import scalar
 
 
-def _payload(cwd, hook_event_name="PostToolUse", session_id="sess-1", **overrides):
+def _payload(
+    cwd: str,
+    hook_event_name: str = "PostToolUse",
+    session_id: str = "sess-1",
+    **overrides: Any,
+) -> str:
     payload = {
         "cwd": cwd,
         "hook_event_name": hook_event_name,
@@ -36,12 +43,16 @@ def _payload(cwd, hook_event_name="PostToolUse", session_id="sess-1", **override
     return json.dumps(payload)
 
 
-def test_record_event_is_silent_on_malformed_stdin(capsys):
+def test_record_event_is_silent_on_malformed_stdin(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     hook.record_event("{not json", env={})
     assert capsys.readouterr().out == ""
 
 
-def test_the_hook_exits_zero_when_the_database_is_unreachable(monkeypatch, capsys):
+def test_the_hook_exits_zero_when_the_database_is_unreachable(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     monkeypatch.setattr(
         "sys.stdin",
         io.StringIO(_payload("/tmp/whatever")),
@@ -51,14 +62,18 @@ def test_the_hook_exits_zero_when_the_database_is_unreachable(monkeypatch, capsy
     assert capsys.readouterr().out == ""
 
 
-def test_the_hook_refuses_to_recurse_inside_an_extraction_child(monkeypatch, capsys):
+def test_the_hook_refuses_to_recurse_inside_an_extraction_child(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     """CHILD_ENV_VAR is checked by every hook. The extractor spawns
     `claude -p`, whose own hooks would otherwise record the extraction as
     events, which the next extraction would then read - an unbounded loop.
     """
     calls = []
 
-    def fake_event(self, env: Mapping[str, str], payload: dict[str, Any]) -> None:
+    def fake_event(
+        self: ClaudeCodeAdapter, env: Mapping[str, str], payload: dict[str, Any]
+    ) -> None:
         calls.append(1)
 
     monkeypatch.setattr(
@@ -71,13 +86,17 @@ def test_the_hook_refuses_to_recurse_inside_an_extraction_child(monkeypatch, cap
     assert "extraction child" in capsys.readouterr().err
 
 
-def test_main_record_event_always_exits_zero(monkeypatch, capsys):
+def test_main_record_event_always_exits_zero(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     monkeypatch.setattr("sys.stdin", io.StringIO("garbage"))
     assert hook.main_record_event() == 0
     assert capsys.readouterr().out == ""
 
 
-def test_main_record_event_exits_zero_when_stdin_raises(monkeypatch):
+def test_main_record_event_exits_zero_when_stdin_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     class Exploding:
         def read(self):
             raise OSError("gone")
@@ -86,7 +105,9 @@ def test_main_record_event_exits_zero_when_stdin_raises(monkeypatch):
     assert hook.main_record_event() == 0
 
 
-def test_debug_explains_an_unreachable_database_on_stderr(capsys):
+def test_debug_explains_an_unreachable_database_on_stderr(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     """Stdout is reserved for real hook output; an explanation only ever
     goes to stderr, and only under REMEM_HOOK_DEBUG."""
     hook.record_event(
@@ -101,7 +122,7 @@ def test_debug_explains_an_unreachable_database_on_stderr(capsys):
     assert "remem hook" in captured.err
 
 
-def test_debug_is_silent_unless_asked_for(capsys):
+def test_debug_is_silent_unless_asked_for(capsys: pytest.CaptureFixture[str]) -> None:
     hook.record_event(
         _payload("/tmp/whatever"),
         env={"REMEM_DSN": "postgresql://nobody@127.0.0.1:1/none"},
@@ -112,7 +133,9 @@ def test_debug_is_silent_unless_asked_for(capsys):
 
 
 @pytest.mark.db
-def test_the_session_end_hook_records_an_event_and_enqueues_nothing(live_dsn, tmp_path):
+def test_the_session_end_hook_records_an_event_and_enqueues_nothing(
+    live_dsn: str, tmp_path: Path
+) -> None:
     """The idle rule replaced the end hook as the trigger. SessionEnd is now
     a hint that shortens the wait, and a harness without one loses nothing
     but time - what it must still do is record, and it must not enqueue

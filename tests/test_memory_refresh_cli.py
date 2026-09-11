@@ -14,6 +14,7 @@ arrives through the environment.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import psycopg
 import pytest
@@ -24,7 +25,14 @@ from remem.agents.claude_code.memory import slug_for
 from remem.backends.postgres.migrate import migrate
 from remem.backends.postgres.store import PostgresStore
 from remem.cli import app
-from remem.domain import CollectionQuery, Kind, MemoryTrigger, Origin
+from remem.domain import (
+    CollectionQuery,
+    Kind,
+    MemoryRun,
+    MemoryTrigger,
+    Origin,
+    Principal,
+)
 from remem.project import resolve_project
 from remem.services import kb, memory
 from remem.services.write import remember
@@ -50,11 +58,13 @@ def env(live_dsn: str, tmp_path: Path) -> dict[str, str]:
     }
 
 
-def _memory_directory(env) -> Path:
+def _memory_directory(env: dict[str, str]) -> Path:
     return Path(env["CLAUDE_CONFIG_DIR"]) / "projects" / slug_for(Path.cwd()) / "memory"
 
 
-def _designate(env):
+def _designate(
+    env: dict[str, str],
+) -> tuple[PostgresStore, psycopg.Connection[Any], Principal]:
     conn = psycopg.connect(env["REMEM_DSN"])
     store = PostgresStore(conn)
     owner = store.ensure_principal("brandon")
@@ -126,14 +136,16 @@ def designated_in_conflict(env: dict[str, str]) -> Path:
     return directory
 
 
-def _latest_run(env):
+def _latest_run(env: dict[str, str]) -> MemoryRun | None:
     with psycopg.connect(env["REMEM_DSN"]) as conn:
         store = PostgresStore(conn)
         owner = store.ensure_principal("brandon")
         return store.latest_memory_run(owner.id, PROJECT)
 
 
-def test_refresh_syncs_the_directory_without_printing(env, designated_with_one_stray):
+def test_refresh_syncs_the_directory_without_printing(
+    env: dict[str, str], designated_with_one_stray: Path
+) -> None:
     """The work happens; the session sees nothing of it."""
     result = runner.invoke(app, ["memory", "refresh"], env=env)
     assert result.exit_code == 0
@@ -143,7 +155,9 @@ def test_refresh_syncs_the_directory_without_printing(env, designated_with_one_s
     assert run.adopted == 1
 
 
-def test_refresh_records_the_run_as_auto(env, designated_with_one_stray):
+def test_refresh_records_the_run_as_auto(
+    env: dict[str, str], designated_with_one_stray: Path
+) -> None:
     """The one caller `trigger='auto'` was added for. `sync` stays manual."""
     runner.invoke(app, ["memory", "refresh"], env=env)
     run = found(_latest_run(env))
@@ -151,7 +165,9 @@ def test_refresh_records_the_run_as_auto(env, designated_with_one_stray):
     assert run.finished_at is not None
 
 
-def test_refresh_on_an_undesignated_project_does_nothing_quietly(env):
+def test_refresh_on_an_undesignated_project_does_nothing_quietly(
+    env: dict[str, str],
+) -> None:
     """The common case: no designation, no row, no noise, exit 0.
 
     `memory sync` exits 1 here and tells the user to designate. From a hook
@@ -164,7 +180,9 @@ def test_refresh_on_an_undesignated_project_does_nothing_quietly(env):
     assert _latest_run(env) is None
 
 
-def test_an_undesignated_project_is_named_as_such_not_dumped_as_an_error(env):
+def test_an_undesignated_project_is_named_as_such_not_dumped_as_an_error(
+    env: dict[str, str],
+) -> None:
     """Not opted in is the common case, and it reads as one under debug.
 
     Without the specific `NotDesignated` catch this still exits 0 - the
@@ -182,7 +200,9 @@ def test_an_undesignated_project_is_named_as_such_not_dumped_as_an_error(env):
     assert "NotDesignated" not in result.stderr
 
 
-def test_refresh_stays_silent_and_exits_zero_on_a_conflict(env, designated_in_conflict):
+def test_refresh_stays_silent_and_exits_zero_on_a_conflict(
+    env: dict[str, str], designated_in_conflict: Path
+) -> None:
     """`sync` exits 1 here. The sidecar plus the advisory carry it instead."""
     result = runner.invoke(app, ["memory", "refresh"], env=env)
     assert result.exit_code == 0
@@ -192,8 +212,8 @@ def test_refresh_stays_silent_and_exits_zero_on_a_conflict(env, designated_in_co
 
 
 def test_refresh_explains_itself_on_stderr_under_hook_debug(
-    env, designated_with_one_stray
-):
+    env: dict[str, str], designated_with_one_stray: Path
+) -> None:
     """Silence is ambiguous, so the opt-in diagnostic is the whole story."""
     result = runner.invoke(
         app, ["memory", "refresh"], env={**env, "REMEM_HOOK_DEBUG": "1"}
@@ -203,7 +223,9 @@ def test_refresh_explains_itself_on_stderr_under_hook_debug(
     assert "adopted" in result.stderr
 
 
-def test_refresh_exits_zero_when_the_database_is_unreachable(env, tmp_path):
+def test_refresh_exits_zero_when_the_database_is_unreachable(
+    env: dict[str, str], tmp_path: Path
+) -> None:
     """Docker being down is this tool's expected failure, and `_session`
     turns it into `typer.Exit(1)`. A hook-spawned command must swallow that
     like everything else."""
@@ -217,8 +239,10 @@ def test_refresh_exits_zero_when_the_database_is_unreachable(env, tmp_path):
 
 
 def test_refresh_exits_zero_even_when_something_calls_sys_exit(
-    env, monkeypatch, designated_with_one_stray
-):
+    env: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    designated_with_one_stray: Path,
+) -> None:
     """The one thing `except BaseException` buys over `except Exception`.
 
     `typer.Exit` is a RuntimeError, so the unreachable-database path above
@@ -228,7 +252,7 @@ def test_refresh_exits_zero_even_when_something_calls_sys_exit(
     can hit should turn into a non-zero exit.
     """
 
-    def boom(*a, **k):
+    def boom(*a: Any, **k: Any) -> memory.Report:
         raise SystemExit(3)
 
     monkeypatch.setattr("remem.services.memory.sync", boom)

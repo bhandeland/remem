@@ -33,12 +33,14 @@ def owner(store: PostgresStore) -> Principal:
     return store.ensure_principal("brandon")
 
 
-def test_ingested_is_in_the_default_origins_and_archived_is_not():
+def test_ingested_is_in_the_default_origins_and_archived_is_not() -> None:
     assert Origin.INGESTED in search.DEFAULT_ORIGINS
     assert Origin.ARCHIVED not in search.DEFAULT_ORIGINS
 
 
-def test_default_search_finds_ingested_and_hides_archived(store, owner):
+def test_default_search_finds_ingested_and_hides_archived(
+    store: PostgresStore, owner: Principal
+) -> None:
     remember(
         store,
         owner.id,
@@ -62,7 +64,7 @@ def test_default_search_finds_ingested_and_hides_archived(store, owner):
     assert titles == ["Sweep design"]
 
 
-def test_include_archived_surfaces_both(store, owner):
+def test_include_archived_surfaces_both(store: PostgresStore, owner: Principal) -> None:
     remember(
         store,
         owner.id,
@@ -86,7 +88,9 @@ def test_include_archived_surfaces_both(store, owner):
     assert {h.entry.title for h in hits} == {"Sweep design", "Task 9 sweep"}
 
 
-def test_neither_origin_reaches_a_context_block(store, owner):
+def test_neither_origin_reaches_a_context_block(
+    store: PostgresStore, owner: Principal
+) -> None:
     remember(
         store,
         owner.id,

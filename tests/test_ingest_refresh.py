@@ -11,15 +11,17 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 import psycopg
 import pytest
 
 from remem.backends.postgres.migrate import migrate
 from remem.backends.postgres.store import PostgresStore
-from remem.domain import IngestTrigger, Origin, Principal, Query
-from remem.embed import EmbedderUnavailable
+from remem.domain import Hit, IngestTrigger, Origin, Principal, Query
+from remem.embed import Embedder, EmbedderUnavailable
 from remem.services import ingest
+from tests.conftest import found
 
 pytestmark = pytest.mark.db
 
@@ -28,7 +30,7 @@ class FakeEmbedder:
     name = "fake-2"
     dim = 2
 
-    def embed(self, texts):
+    def embed(self, texts: list[str]) -> list[list[float]]:
         return [[float(len(t)), 1.0] for t in texts]
 
 
@@ -54,13 +56,15 @@ def root(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def _titles(store, owner_id, origin):
+def _titles(store: PostgresStore, owner_id: UUID, origin: Origin) -> set[str]:
     return {
         h.entry.title for h in store.search(Query(origins=[origin], limit=50), owner_id)
     }
 
 
-def test_an_undesignated_project_ingests_nothing(store, owner, root):
+def test_an_undesignated_project_ingests_nothing(
+    store: PostgresStore, owner: Principal, root: Path
+) -> None:
     result = ingest.refresh(
         store, owner.id, "proj", root, embed_model="fake-2", load_embedder=FakeEmbedder
     )
@@ -69,11 +73,13 @@ def test_an_undesignated_project_ingests_nothing(store, owner, root):
     assert _titles(store, owner.id, Origin.INGESTED) == set()
 
 
-def test_an_undesignated_project_never_builds_the_embedder(store, owner, root):
+def test_an_undesignated_project_never_builds_the_embedder(
+    store: PostgresStore, owner: Principal, root: Path
+) -> None:
     """The empty case is the common one - it must cost nothing."""
-    built = []
+    built: list[int] = []
 
-    def load():
+    def load() -> Embedder:
         built.append(1)
         return FakeEmbedder()
 
@@ -83,7 +89,9 @@ def test_an_undesignated_project_never_builds_the_embedder(store, owner, root):
     assert built == []
 
 
-def test_refresh_ingests_the_designated_paths(store, owner, root):
+def test_refresh_ingests_the_designated_paths(
+    store: PostgresStore, owner: Principal, root: Path
+) -> None:
     ingest.designate(store, owner.id, "proj", ["docs/specs"])
 
     result = ingest.refresh(
@@ -94,7 +102,9 @@ def test_refresh_ingests_the_designated_paths(store, owner, root):
     assert "One" in _titles(store, owner.id, Origin.INGESTED)
 
 
-def test_refresh_honours_the_archive_designation(store, owner, root):
+def test_refresh_honours_the_archive_designation(
+    store: PostgresStore, owner: Principal, root: Path
+) -> None:
     ingest.designate(store, owner.id, "proj", ["docs/specs"])
     ingest.designate(store, owner.id, "proj", ["docs/plans"], archive=True)
 
@@ -106,7 +116,9 @@ def test_refresh_honours_the_archive_designation(store, owner, root):
     assert "Two" not in _titles(store, owner.id, Origin.INGESTED)
 
 
-def test_refresh_resolves_paths_against_the_given_root(store, owner, root):
+def test_refresh_resolves_paths_against_the_given_root(
+    store: PostgresStore, owner: Principal, root: Path
+) -> None:
     """Stored relative, resolved here - never against the process cwd."""
     ingest.designate(store, owner.id, "proj", ["docs/specs"])
 
@@ -118,7 +130,9 @@ def test_refresh_resolves_paths_against_the_given_root(store, owner, root):
     assert result.report.created == 2
 
 
-def test_refresh_is_idempotent(store, owner, root):
+def test_refresh_is_idempotent(
+    store: PostgresStore, owner: Principal, root: Path
+) -> None:
     ingest.designate(store, owner.id, "proj", ["docs/specs"])
     ingest.refresh(
         store, owner.id, "proj", root, embed_model="fake-2", load_embedder=FakeEmbedder
@@ -132,7 +146,9 @@ def test_refresh_is_idempotent(store, owner, root):
     assert again.report.unchanged == 2
 
 
-def test_a_designated_path_that_vanished_is_a_failure_not_a_crash(store, owner, root):
+def test_a_designated_path_that_vanished_is_a_failure_not_a_crash(
+    store: PostgresStore, owner: Principal, root: Path
+) -> None:
     """A directory renamed since designation must not kill the whole run."""
     ingest.designate(store, owner.id, "proj", ["docs/specs", "docs/gone"])
 
@@ -144,7 +160,9 @@ def test_a_designated_path_that_vanished_is_a_failure_not_a_crash(store, owner, 
     assert [p.name for p, _ in result.report.failures] == ["gone"]
 
 
-def test_refresh_embeds_what_it_ingested(store, owner, root):
+def test_refresh_embeds_what_it_ingested(
+    store: PostgresStore, owner: Principal, root: Path
+) -> None:
     ingest.designate(store, owner.id, "proj", ["docs/specs"])
 
     result = ingest.refresh(
@@ -154,7 +172,9 @@ def test_refresh_embeds_what_it_ingested(store, owner, root):
     assert result.embedded == 2
 
 
-def test_refresh_survives_an_unavailable_embedder(store, owner, root):
+def test_refresh_survives_an_unavailable_embedder(
+    store: PostgresStore, owner: Principal, root: Path
+) -> None:
     """Fail-soft: the ingest still happened, and nobody asked for any of it.
 
     `remem embed` exits 1 here on purpose - embedding is its whole job. This
@@ -163,7 +183,7 @@ def test_refresh_survives_an_unavailable_embedder(store, owner, root):
     """
     ingest.designate(store, owner.id, "proj", ["docs/specs"])
 
-    def load():
+    def load() -> Embedder:
         raise EmbedderUnavailable("fastembed is not installed")
 
     result = ingest.refresh(
@@ -186,8 +206,11 @@ def test_refresh_survives_an_unavailable_embedder(store, owner, root):
 # Identity is the repo-relative path. Reading happens against the root.
 # Those are two different jobs and conflating them is what broke it.
 def test_refresh_sees_a_manually_ingested_corpus_as_unchanged(
-    store, owner, root, monkeypatch
-):
+    store: PostgresStore,
+    owner: Principal,
+    root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.chdir(root)
     manual = ingest.ingest_paths(
         store,
@@ -206,7 +229,9 @@ def test_refresh_sees_a_manually_ingested_corpus_as_unchanged(
     assert result.report.unchanged == 2
 
 
-def test_refresh_stores_repo_relative_source_tags(store, owner, root):
+def test_refresh_stores_repo_relative_source_tags(
+    store: PostgresStore, owner: Principal, root: Path
+) -> None:
     ingest.designate(store, owner.id, "proj", ["docs/specs"])
     ingest.refresh(
         store, owner.id, "proj", root, embed_model="fake-2", load_embedder=FakeEmbedder
@@ -222,7 +247,9 @@ def test_refresh_stores_repo_relative_source_tags(store, owner, root):
     assert not any(t.startswith("src:/") for t in tags)
 
 
-def test_refresh_records_a_finished_run_row(store, owner, root):
+def test_refresh_records_a_finished_run_row(
+    store: PostgresStore, owner: Principal, root: Path
+) -> None:
     ingest.designate(store, owner.id, "proj", ["docs/specs"])
     ingest.designate(store, owner.id, "proj", ["docs/plans"], archive=True)
 
@@ -230,8 +257,7 @@ def test_refresh_records_a_finished_run_row(store, owner, root):
         store, owner.id, "proj", root, embed_model="fake-2", load_embedder=FakeEmbedder
     )
 
-    run = store.latest_ingest_run(owner.id, "proj")
-    assert run is not None
+    run = found(store.latest_ingest_run(owner.id, "proj"))
     assert run.trigger is IngestTrigger.AUTO
     assert run.finished_at is not None
     # two chunks from one.md (anchor + "Detail"); two.md has only its
@@ -243,7 +269,9 @@ def test_refresh_records_a_finished_run_row(store, owner, root):
     assert run.embed_error is None
 
 
-def test_an_undesignated_project_writes_no_run_row(store, owner, root):
+def test_an_undesignated_project_writes_no_run_row(
+    store: PostgresStore, owner: Principal, root: Path
+) -> None:
     ingest.refresh(
         store, owner.id, "proj", root, embed_model="fake-2", load_embedder=FakeEmbedder
     )
@@ -251,41 +279,48 @@ def test_an_undesignated_project_writes_no_run_row(store, owner, root):
     assert store.latest_ingest_run(owner.id, "proj") is None
 
 
-def test_a_missing_designated_path_lands_in_the_rows_failures(store, owner, root):
+def test_a_missing_designated_path_lands_in_the_rows_failures(
+    store: PostgresStore, owner: Principal, root: Path
+) -> None:
     ingest.designate(store, owner.id, "proj", ["docs/specs", "docs/renamed"])
 
     ingest.refresh(
         store, owner.id, "proj", root, embed_model="fake-2", load_embedder=FakeEmbedder
     )
 
-    run = store.latest_ingest_run(owner.id, "proj")
+    run = found(store.latest_ingest_run(owner.id, "proj"))
     assert run.created == 2
     assert [f["path"] for f in run.failures] == ["docs/renamed"]
     assert "No such file" in run.failures[0]["reason"]
 
 
-def test_an_absent_embedder_is_recorded_not_raised(store, owner, root):
+def test_an_absent_embedder_is_recorded_not_raised(
+    store: PostgresStore, owner: Principal, root: Path
+) -> None:
     ingest.designate(store, owner.id, "proj", ["docs/specs"])
 
-    def broken():
+    def broken() -> Embedder:
         raise EmbedderUnavailable("fastembed is not installed")
 
     ingest.refresh(
         store, owner.id, "proj", root, embed_model="fake-2", load_embedder=broken
     )
 
-    run = store.latest_ingest_run(owner.id, "proj")
+    run = found(store.latest_ingest_run(owner.id, "proj"))
     assert run.finished_at is not None
     assert run.created == 2
     assert run.embed_error == "fastembed is not installed"
 
 
 def test_an_exception_mid_run_is_recorded_and_re_raised(
-    store, owner, root, monkeypatch
-):
+    store: PostgresStore,
+    owner: Principal,
+    root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     ingest.designate(store, owner.id, "proj", ["docs/specs"])
 
-    def explode(*a, **kw):
+    def explode(*a: Any, **kw: Any) -> ingest.Report:
         raise RuntimeError("disk on fire")
 
     monkeypatch.setattr(ingest, "ingest_paths", explode)
@@ -300,12 +335,14 @@ def test_an_exception_mid_run_is_recorded_and_re_raised(
             load_embedder=FakeEmbedder,
         )
 
-    run = store.latest_ingest_run(owner.id, "proj")
+    run = found(store.latest_ingest_run(owner.id, "proj"))
     assert run.finished_at is not None
     assert run.failures == [{"path": "*", "reason": "RuntimeError: disk on fire"}]
 
 
-def test_ingest_manual_records_a_manual_row(store, owner, root):
+def test_ingest_manual_records_a_manual_row(
+    store: PostgresStore, owner: Principal, root: Path
+) -> None:
     report = ingest.ingest_manual(
         store,
         owner.id,
@@ -314,14 +351,16 @@ def test_ingest_manual_records_a_manual_row(store, owner, root):
         root=root,
     )
 
-    run = store.latest_ingest_run(owner.id, "proj")
+    run = found(store.latest_ingest_run(owner.id, "proj"))
     assert report.created == 2
     assert run.trigger is IngestTrigger.MANUAL
     assert run.created == 2
     assert run.embedded == 0
 
 
-def test_ingest_manual_writes_no_row_for_a_dry_run_or_no_project(store, owner, root):
+def test_ingest_manual_writes_no_row_for_a_dry_run_or_no_project(
+    store: PostgresStore, owner: Principal, root: Path
+) -> None:
     ingest.ingest_manual(
         store, owner.id, [Path("docs/specs")], project="proj", root=root, dry_run=True
     )
@@ -347,8 +386,8 @@ def test_ingest_manual_writes_no_row_for_a_dry_run_or_no_project(store, owner, r
 
 
 def test_a_changed_chunk_is_superseded_atomically_under_autocommit(
-    live_dsn, tmp_path, monkeypatch
-):
+    live_dsn: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     with psycopg.connect(live_dsn, autocommit=True) as conn:
         migrate(conn)
         store = PostgresStore(conn)
@@ -358,7 +397,7 @@ def test_a_changed_chunk_is_superseded_atomically_under_autocommit(
         doc.write_text("# One\n\nSpec body.\n\n## Detail\n\nFirst.\n")
         ingest.ingest_file(store, owner.id, doc, project="proj")
 
-        def _live(dsn_store):
+        def _live(dsn_store: PostgresStore) -> list[Hit]:
             return dsn_store.search(
                 Query(
                     tags=[ingest.src_tag(doc)],
@@ -377,7 +416,7 @@ def test_a_changed_chunk_is_superseded_atomically_under_autocommit(
         # and were never at risk.
         doc.write_text("# One\n\nSpec body.\n\n## Detail\n\nChanged.\n")
 
-        def killed(*a, **kw):
+        def killed(*a: Any, **kw: Any) -> bool:
             raise RuntimeError("killed")
 
         monkeypatch.setattr(store, "set_superseded", killed)

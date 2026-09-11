@@ -7,13 +7,17 @@ recording nothing. This is the check that would have caught it.
 from __future__ import annotations
 
 from pathlib import Path
+from uuid import UUID
 
 import psycopg
 import pytest
 
+from remem.agents.base import HarnessEvent
 from remem.agents.opencode.adapter import OpenCodeAdapter
 from remem.agents.verify import VERIFY_PROJECT
 from remem.backends.postgres.migrate import migrate
+from remem.domain import Event
+from remem.store import Store
 
 pytestmark = pytest.mark.db
 
@@ -30,14 +34,18 @@ def env(live_dsn: str, tmp_path: Path) -> dict[str, str]:
     }
 
 
-def test_verification_round_trips_a_real_event(env, tmp_path):
+def test_verification_round_trips_a_real_event(
+    env: dict[str, str], tmp_path: Path
+) -> None:
     report = OpenCodeAdapter().verify(env=env, home=tmp_path)
 
     assert any("round-trip" in a for a in report.actions)
     assert report.warnings == []
 
 
-def test_verification_records_under_the_opencode_harness(env, tmp_path, monkeypatch):
+def test_verification_records_under_the_opencode_harness(
+    env: dict[str, str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Not 'claude-code'. The harness column is what `remem record status`
     groups by, so a shared round-trip that hardcoded a name would report
     the wrong harness as working.
@@ -54,7 +62,9 @@ def test_verification_records_under_the_opencode_harness(env, tmp_path, monkeypa
     calls: list[str] = []
     real_record = record_service.record
 
-    def spy(store, owner_id, harness_event, harness):
+    def spy(
+        store: Store, owner_id: UUID, harness_event: HarnessEvent, harness: str
+    ) -> Event | None:
         calls.append(harness)
         return real_record(store, owner_id, harness_event, harness)
 
@@ -66,7 +76,9 @@ def test_verification_records_under_the_opencode_harness(env, tmp_path, monkeypa
     assert calls == ["opencode"]
 
 
-def test_verification_leaves_another_principal_untouched(env, live_dsn, tmp_path):
+def test_verification_leaves_another_principal_untouched(
+    env: dict[str, str], live_dsn: str, tmp_path: Path
+) -> None:
     """Pins two of the delete's four keys at once: owner and session.
 
     A scratch database holding nothing else is structurally incapable of
@@ -120,8 +132,8 @@ def test_verification_leaves_another_principal_untouched(env, live_dsn, tmp_path
 
 
 def test_verification_leaves_the_same_owners_other_project_untouched(
-    env, live_dsn, tmp_path
-):
+    env: dict[str, str], live_dsn: str, tmp_path: Path
+) -> None:
     """Pins the one key the test above cannot: project, held constant across
     the same owner the round-trip actually uses.
 

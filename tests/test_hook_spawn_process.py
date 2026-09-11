@@ -6,14 +6,17 @@ block the session and must never print into it.
 """
 
 import subprocess
+from typing import Any
+
+import pytest
 
 from remem.agents.claude_code import hook
 
 
-def test_spawn_process_launches_a_detached_run(monkeypatch):
-    seen = {}
+def test_spawn_process_launches_a_detached_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, Any] = {}
 
-    def fake_popen(cmd, **kwargs):
+    def fake_popen(cmd: list[str], **kwargs: object) -> object:
         seen["cmd"] = cmd
         seen["kwargs"] = kwargs
         return object()
@@ -23,11 +26,13 @@ def test_spawn_process_launches_a_detached_run(monkeypatch):
     assert seen["cmd"][:3] == ["remem", "events", "process"]
 
 
-def test_spawn_process_does_not_block_on_the_child(monkeypatch):
+def test_spawn_process_does_not_block_on_the_child(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """A session must not wait for extraction to finish."""
-    seen = {}
+    seen: dict[str, Any] = {}
 
-    def fake_popen(cmd, **kwargs):
+    def fake_popen(cmd: list[str], **kwargs: object) -> object:
         seen.update(kwargs)
         return object()
 
@@ -38,8 +43,10 @@ def test_spawn_process_does_not_block_on_the_child(monkeypatch):
     assert seen.get("start_new_session") is True
 
 
-def test_spawn_process_is_skipped_inside_an_extraction_child(monkeypatch):
-    called = []
+def test_spawn_process_is_skipped_inside_an_extraction_child(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    called: list[int] = []
 
     def fake_popen(*a: object, **k: object) -> None:
         called.append(1)
@@ -49,16 +56,20 @@ def test_spawn_process_is_skipped_inside_an_extraction_child(monkeypatch):
     assert called == []
 
 
-def test_spawn_process_returns_false_when_remem_is_missing(monkeypatch):
-    def boom(*a, **k):
+def test_spawn_process_returns_false_when_remem_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def boom(*a: object, **k: object) -> None:
         raise FileNotFoundError("remem")
 
     monkeypatch.setattr(subprocess, "Popen", boom)
     assert hook.spawn_process({}) is False
 
 
-def test_session_start_still_prints_nothing_when_spawning_fails(monkeypatch, capsys):
-    def boom(*a, **k):
+def test_session_start_still_prints_nothing_when_spawning_fails(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def boom(*a: object, **k: object) -> None:
         raise OSError("no processes")
 
     monkeypatch.setattr(subprocess, "Popen", boom)

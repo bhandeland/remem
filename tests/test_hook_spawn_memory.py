@@ -8,16 +8,19 @@ one with no terminal to report to.
 """
 
 import subprocess
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
+from typing import Any
+
+import pytest
 
 from remem import hookio
 from remem.extract.base import CHILD_ENV_VAR
 
 
-def test_spawn_memory_launches_the_refresh(monkeypatch):
-    seen = {}
+def test_spawn_memory_launches_the_refresh(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, Any] = {}
 
-    def fake_popen(cmd, **kwargs):
+    def fake_popen(cmd: Sequence[str], **kwargs: object) -> object:
         seen["cmd"] = cmd
         return object()
 
@@ -26,10 +29,12 @@ def test_spawn_memory_launches_the_refresh(monkeypatch):
     assert seen["cmd"][:3] == ["remem", "memory", "refresh"]
 
 
-def test_spawn_memory_does_not_block_on_the_child(monkeypatch):
-    seen = {}
+def test_spawn_memory_does_not_block_on_the_child(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: dict[str, Any] = {}
 
-    def fake_popen(cmd, **kwargs):
+    def fake_popen(cmd: Sequence[str], **kwargs: object) -> object:
         seen.update(kwargs)
         return object()
 
@@ -40,7 +45,9 @@ def test_spawn_memory_does_not_block_on_the_child(monkeypatch):
     assert seen.get("start_new_session") is True
 
 
-def test_spawn_memory_is_skipped_inside_an_extraction_child(monkeypatch):
+def test_spawn_memory_is_skipped_inside_an_extraction_child(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """The extractor's `claude -p` runs remem's hooks. It must not sync.
 
     Same guard, same reason, as its two siblings: an extraction child that
@@ -58,8 +65,10 @@ def test_spawn_memory_is_skipped_inside_an_extraction_child(monkeypatch):
     assert called == []
 
 
-def test_spawn_memory_returns_false_when_remem_is_missing(monkeypatch):
-    def boom(*a, **k):
+def test_spawn_memory_returns_false_when_remem_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def boom(*a: object, **k: object) -> None:
         raise FileNotFoundError("remem")
 
     monkeypatch.setattr(subprocess, "Popen", boom)
@@ -67,7 +76,7 @@ def test_spawn_memory_returns_false_when_remem_is_missing(monkeypatch):
 
 
 # --- both trigger points, because there are two and only two -----------
-def test_session_start_spawns_the_sync(monkeypatch):
+def test_session_start_spawns_the_sync(monkeypatch: pytest.MonkeyPatch) -> None:
     from remem.agents.claude_code import hook
 
     spawned: list[Mapping[str, str]] = []
@@ -89,12 +98,12 @@ def test_session_start_spawns_the_sync(monkeypatch):
 
 
 def test_session_start_still_prints_nothing_when_the_sync_cannot_spawn(
-    monkeypatch, capsys
-):
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     """Fail-soft is not weakened by adding a third spawn."""
     from remem.agents.claude_code import hook
 
-    def boom(*a, **k):
+    def boom(*a: object, **k: object) -> None:
         raise OSError("no processes")
 
     monkeypatch.setattr(subprocess, "Popen", boom)

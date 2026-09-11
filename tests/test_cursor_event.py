@@ -9,13 +9,14 @@ rename and that outcome - the counterpart to tests/test_opencode_event.py.
 from __future__ import annotations
 
 import subprocess
+from pathlib import Path
 from typing import Any
 
 from remem.agents.cursor.adapter import ROOT_KEY, SESSION_KEY, CursorAdapter
 from remem.domain import EventKind
 
 
-def test_the_payload_keys_are_the_ones_cursor_sends():
+def test_the_payload_keys_are_the_ones_cursor_sends() -> None:
     """Pinned as literals, not through the constants below - a test that
     builds its payload from SESSION_KEY cannot notice SESSION_KEY itself
     changing. This is the guard docs/superpowers/notes/2026-08-29-cursor-
@@ -26,7 +27,7 @@ def test_the_payload_keys_are_the_ones_cursor_sends():
     assert ROOT_KEY == "workspace_roots"
 
 
-def _payload(hook: str, tmp_path, **extra) -> dict[str, Any]:
+def _payload(hook: str, tmp_path: Path, **extra: Any) -> dict[str, Any]:
     # Literal key names, not SESSION_KEY/ROOT_KEY - see the test above.
     # Building this from the adapter's own constants would make every test
     # in this file pass even if both constants were renamed to garbage,
@@ -39,7 +40,7 @@ def _payload(hook: str, tmp_path, **extra) -> dict[str, Any]:
     }
 
 
-def test_a_tool_call_becomes_a_tool_call_event(tmp_path):
+def test_a_tool_call_becomes_a_tool_call_event(tmp_path: Path) -> None:
     adapter = CursorAdapter()
 
     event = adapter.event({}, _payload("postToolUse", tmp_path, tool_name="Shell"))
@@ -50,7 +51,7 @@ def test_a_tool_call_becomes_a_tool_call_event(tmp_path):
     assert event.tool == "Shell"
 
 
-def test_both_message_hooks_become_message_events(tmp_path):
+def test_both_message_hooks_become_message_events(tmp_path: Path) -> None:
     adapter = CursorAdapter()
 
     for hook in ("beforeSubmitPrompt", "afterAgentResponse"):
@@ -59,7 +60,7 @@ def test_both_message_hooks_become_message_events(tmp_path):
         assert event.kind is EventKind.MESSAGE, hook
 
 
-def test_session_start_is_not_an_event(tmp_path):
+def test_session_start_is_not_an_event(tmp_path: Path) -> None:
     """It injects rather than records, so it must never reach event() -
     exactly as opencode's system.transform never does."""
     adapter = CursorAdapter()
@@ -67,14 +68,14 @@ def test_session_start_is_not_an_event(tmp_path):
     assert adapter.event({}, _payload("sessionStart", tmp_path)) is None
 
 
-def test_an_unsubscribed_hook_is_not_an_event(tmp_path):
+def test_an_unsubscribed_hook_is_not_an_event(tmp_path: Path) -> None:
     adapter = CursorAdapter()
 
     assert adapter.event({}, _payload("afterAgentThought", tmp_path)) is None
     assert adapter.event({}, _payload("beforeReadFile", tmp_path)) is None
 
 
-def test_a_payload_with_no_session_id_is_not_an_event(tmp_path):
+def test_a_payload_with_no_session_id_is_not_an_event(tmp_path: Path) -> None:
     """Without one the event cannot be grouped, and extraction is per
     session."""
     adapter = CursorAdapter()
@@ -84,7 +85,7 @@ def test_a_payload_with_no_session_id_is_not_an_event(tmp_path):
     assert adapter.event({}, payload) is None
 
 
-def test_a_payload_falls_back_to_conversation_id(tmp_path):
+def test_a_payload_falls_back_to_conversation_id(tmp_path: Path) -> None:
     """Cursor's own constructor computes session_id as
     (the hook-specific payload's own session_id) ?? conversation_id, so an
     adapter that only read SESSION_KEY would silently drop every event on a
@@ -100,7 +101,7 @@ def test_a_payload_falls_back_to_conversation_id(tmp_path):
     assert event.session_id == "sess-1"
 
 
-def test_the_payload_is_passed_through_whole(tmp_path):
+def test_the_payload_is_passed_through_whole(tmp_path: Path) -> None:
     """The extractor is the half of this pipeline meant to be re-runnable
     without re-recording, so an adapter that pruned fields here would cap
     what any future extractor could ever see."""
@@ -113,8 +114,8 @@ def test_the_payload_is_passed_through_whole(tmp_path):
     assert event.payload == payload
 
 
-def test_identity_resolves_the_project_from_the_workspace_root(tmp_path):
-    # A bare `mkdir()` for .git is not a repository: resolve_project shells
+def test_identity_resolves_the_project_from_the_workspace_root(tmp_path: Path):
+    # A bare `mkdir() -> None` for .git is not a repository: resolve_project shells
     # out to `git rev-parse --git-common-dir`, which needs a real one.
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
     adapter = CursorAdapter()
@@ -126,7 +127,7 @@ def test_identity_resolves_the_project_from_the_workspace_root(tmp_path):
     assert identity.project == tmp_path.name
 
 
-def test_identity_tolerates_a_bare_string_workspace_root(tmp_path):
+def test_identity_tolerates_a_bare_string_workspace_root(tmp_path: Path) -> None:
     """Cursor's constructor always emits a list (a `.map()` over workspace
     folders), so this shape has never been observed live - but tolerating
     it costs nothing, and this pins that tolerance rather than the list
@@ -141,7 +142,7 @@ def test_identity_tolerates_a_bare_string_workspace_root(tmp_path):
     assert identity.project == tmp_path.name
 
 
-def test_identity_of_an_empty_payload_is_not_an_error():
+def test_identity_of_an_empty_payload_is_not_an_error() -> None:
     """Every caller is a fail-soft hook."""
     adapter = CursorAdapter()
 
@@ -152,7 +153,7 @@ def test_identity_of_an_empty_payload_is_not_an_error():
     assert identity.project is None
 
 
-def test_the_adapter_records_only_hooks_cursor_emits():
+def test_the_adapter_records_only_hooks_cursor_emits() -> None:
     from remem.agents.cursor.hooks import BLOCKING_HOOKS, HOOK_NAMES
 
     subscribed = frozenset(CursorAdapter.EVENT_KINDS)

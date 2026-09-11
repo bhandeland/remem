@@ -90,7 +90,9 @@ def source(tmp_path: Path) -> Path:
     return db
 
 
-def test_a_dry_run_reports_counts_and_writes_nothing(env, source):
+def test_a_dry_run_reports_counts_and_writes_nothing(
+    env: dict[str, str], source: Path
+) -> None:
     result = runner.invoke(
         app, ["import", "claude-mem", str(source), "--dry-run"], env=env
     )
@@ -108,14 +110,16 @@ def test_a_dry_run_reports_counts_and_writes_nothing(env, source):
     assert json.loads(search_result.stdout) == []
 
 
-def test_an_import_reports_what_it_created(env, source):
+def test_an_import_reports_what_it_created(env: dict[str, str], source: Path) -> None:
     result = runner.invoke(app, ["import", "claude-mem", str(source)], env=env)
 
     assert result.exit_code == 0, result.output
     assert "1 created" in result.stdout
 
 
-def test_a_second_import_reports_nothing_changed(env, source):
+def test_a_second_import_reports_nothing_changed(
+    env: dict[str, str], source: Path
+) -> None:
     runner.invoke(app, ["import", "claude-mem", str(source)], env=env)
 
     result = runner.invoke(app, ["import", "claude-mem", str(source)], env=env)
@@ -123,7 +127,9 @@ def test_a_second_import_reports_nothing_changed(env, source):
     assert "1 unchanged" in result.stdout
 
 
-def test_a_file_that_is_not_a_claude_mem_database_exits_nonzero(env, tmp_path):
+def test_a_file_that_is_not_a_claude_mem_database_exits_nonzero(
+    env: dict[str, str], tmp_path: Path
+) -> None:
     junk = tmp_path / "notes.txt"
     junk.write_text("not sqlite")
 
@@ -133,7 +139,7 @@ def test_a_file_that_is_not_a_claude_mem_database_exits_nonzero(env, tmp_path):
     assert "notes.txt" in result.stderr
 
 
-def test_a_missing_file_exits_nonzero(env, tmp_path):
+def test_a_missing_file_exits_nonzero(env: dict[str, str], tmp_path: Path) -> None:
     result = runner.invoke(
         app, ["import", "claude-mem", str(tmp_path / "nope.db")], env=env
     )
@@ -141,7 +147,7 @@ def test_a_missing_file_exits_nonzero(env, tmp_path):
     assert result.exit_code == 1
 
 
-def test_an_unreadable_source_is_checked_before_a_session_opens(tmp_path):
+def test_an_unreadable_source_is_checked_before_a_session_opens(tmp_path: Path) -> None:
     """`claude_mem.read` must run before `_session()` connects - a file
     that is not a database should be refused without ever touching
     Postgres. Proved with an unreachable DSN: if the read happened after
@@ -167,7 +173,7 @@ def test_an_unreadable_source_is_checked_before_a_session_opens(tmp_path):
     assert "Cannot reach Postgres" not in result.stderr
 
 
-def test_skipped_rows_are_reported(env, tmp_path):
+def test_skipped_rows_are_reported(env: dict[str, str], tmp_path: Path) -> None:
     """A row `read()` cannot map is not silently dropped - the CLI must
     name it. Built with an unrecognised `kind` value, which is exactly what
     `ReadResult.skipped` exists to carry through from reader to report."""

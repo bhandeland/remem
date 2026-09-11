@@ -18,6 +18,7 @@ from remem.backends.postgres.store import PostgresStore
 from remem.domain import IngestTrigger, Kind, Origin, Principal
 from remem.services import ingest, write
 from remem.store import NotOwner
+from tests.conftest import found
 
 pytestmark = pytest.mark.db
 
@@ -38,7 +39,9 @@ def other(store: PostgresStore) -> Principal:
     return store.ensure_principal("someone-else")
 
 
-def test_a_started_row_reads_back_unfinished(store, owner):
+def test_a_started_row_reads_back_unfinished(
+    store: PostgresStore, owner: Principal
+) -> None:
     run = store.start_ingest_run(owner.id, "proj", IngestTrigger.AUTO)
 
     latest = store.latest_ingest_run(owner.id, "proj")
@@ -50,7 +53,9 @@ def test_a_started_row_reads_back_unfinished(store, owner):
     assert latest.failures == []
 
 
-def test_finish_records_counts_failures_twins_and_the_embed_error(store, owner):
+def test_finish_records_counts_failures_twins_and_the_embed_error(
+    store: PostgresStore, owner: Principal
+) -> None:
     run = store.start_ingest_run(owner.id, "proj", IngestTrigger.MANUAL, archive=True)
 
     store.finish_ingest_run(
@@ -66,7 +71,7 @@ def test_finish_records_counts_failures_twins_and_the_embed_error(store, owner):
         embed_error="fastembed is not installed",
     )
 
-    latest = store.latest_ingest_run(owner.id, "proj")
+    latest = found(store.latest_ingest_run(owner.id, "proj"))
     assert latest.finished_at is not None
     assert latest.archive is True
     assert (
@@ -83,24 +88,28 @@ def test_finish_records_counts_failures_twins_and_the_embed_error(store, owner):
     assert latest.embed_error == "fastembed is not installed"
 
 
-def test_latest_is_the_newest_started(store, owner):
+def test_latest_is_the_newest_started(store: PostgresStore, owner: Principal) -> None:
     first = store.start_ingest_run(owner.id, "proj", IngestTrigger.AUTO)
     second = store.start_ingest_run(owner.id, "proj", IngestTrigger.AUTO)
 
-    assert store.latest_ingest_run(owner.id, "proj").id == second.id
+    assert found(store.latest_ingest_run(owner.id, "proj")).id == second.id
     assert first.id != second.id
 
 
-def test_latest_is_per_project_and_per_owner(store, owner, other):
+def test_latest_is_per_project_and_per_owner(
+    store: PostgresStore, owner: Principal, other: Principal
+) -> None:
     store.start_ingest_run(owner.id, "proj", IngestTrigger.AUTO)
     theirs = store.start_ingest_run(other.id, "proj", IngestTrigger.AUTO)
 
     assert store.latest_ingest_run(owner.id, "other-proj") is None
-    assert store.latest_ingest_run(other.id, "proj").id == theirs.id
-    assert store.latest_ingest_run(owner.id, "proj").id != theirs.id
+    assert found(store.latest_ingest_run(other.id, "proj")).id == theirs.id
+    assert found(store.latest_ingest_run(owner.id, "proj")).id != theirs.id
 
 
-def test_finishing_someone_elses_row_raises_not_owner(store, owner, other):
+def test_finishing_someone_elses_row_raises_not_owner(
+    store: PostgresStore, owner: Principal, other: Principal
+) -> None:
     theirs = store.start_ingest_run(other.id, "proj", IngestTrigger.AUTO)
 
     with pytest.raises(NotOwner):
@@ -116,10 +125,17 @@ def test_finishing_someone_elses_row_raises_not_owner(store, owner, other):
             twins=[],
             embed_error=None,
         )
-    assert store.latest_ingest_run(other.id, "proj").finished_at is None
+    assert found(store.latest_ingest_run(other.id, "proj")).finished_at is None
 
 
-def _ingest(store, owner, tmp_path, rel, project="proj", archive=False):
+def _ingest(
+    store: PostgresStore,
+    owner: Principal,
+    tmp_path: Path,
+    rel: str,
+    project: str = "proj",
+    archive: bool = False,
+) -> ingest.Report:
     """Write a two-chunk document at tmp_path/rel and ingest it with `rel`
     as its identity, the way the refresh does."""
     full = tmp_path / rel
@@ -135,7 +151,9 @@ def _ingest(store, owner, tmp_path, rel, project="proj", archive=False):
     )
 
 
-def test_anchors_are_the_entries_with_src_but_no_sec(store, owner, tmp_path):
+def test_anchors_are_the_entries_with_src_but_no_sec(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     _ingest(store, owner, tmp_path, "docs/a.md")
     _ingest(store, owner, tmp_path, "docs/b.md", archive=True)
 
@@ -147,8 +165,8 @@ def test_anchors_are_the_entries_with_src_but_no_sec(store, owner, tmp_path):
 
 
 def test_anchors_excludes_superseded_other_projects_and_other_owners(
-    store, owner, other, tmp_path
-):
+    store: PostgresStore, owner: Principal, other: Principal, tmp_path: Path
+) -> None:
     _ingest(store, owner, tmp_path, "docs/a.md")
     _ingest(store, owner, tmp_path, "docs/elsewhere.md", project="other-proj")
     _ingest(store, other, tmp_path, "docs/theirs.md")

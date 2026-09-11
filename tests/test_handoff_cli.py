@@ -27,7 +27,7 @@ def env(live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> str:
     return live_dsn
 
 
-def test_write_then_latest_round_trips(env):
+def test_write_then_latest_round_trips(env: str) -> None:
     w = runner.invoke(
         app, ["handoff", "write", "--topic", "ci", "--project", "remem", "--body", BODY]
     )
@@ -42,7 +42,7 @@ def test_write_then_latest_round_trips(env):
     assert "landed it" in payload["body"]
 
 
-def test_write_reports_what_it_superseded(env):
+def test_write_reports_what_it_superseded(env: str) -> None:
     runner.invoke(
         app, ["handoff", "write", "--topic", "ci", "--project", "remem", "--body", BODY]
     )
@@ -52,7 +52,7 @@ def test_write_reports_what_it_superseded(env):
     assert "superseded" in second.stdout
 
 
-def test_write_reads_the_body_from_stdin(env):
+def test_write_reads_the_body_from_stdin(env: str) -> None:
     r = runner.invoke(
         app,
         ["handoff", "write", "--topic", "ci", "--project", "remem", "--body", "-"],
@@ -61,13 +61,15 @@ def test_write_reads_the_body_from_stdin(env):
     assert r.exit_code == 0, r.stdout
 
 
-def test_latest_with_nothing_stored_is_not_an_error(env):
+def test_latest_with_nothing_stored_is_not_an_error(env: str) -> None:
     r = runner.invoke(app, ["handoff", "latest", "--project", "remem"])
     assert r.exit_code == 0
     assert "No handoff" in r.stdout
 
 
-def test_a_handoff_with_no_project_fails_loudly(env, monkeypatch, tmp_path):
+def test_a_handoff_with_no_project_fails_loudly(
+    env: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """Fail-loud, unlike the hooks: the user is standing there about to throw
     the session's context away."""
     monkeypatch.setattr("remem.cli._default_project", lambda: None)
@@ -76,7 +78,9 @@ def test_a_handoff_with_no_project_fails_loudly(env, monkeypatch, tmp_path):
     assert "project" in r.stderr
 
 
-def test_an_unslugable_topic_fails_loudly_and_does_not_touch_another_topic(env):
+def test_an_unslugable_topic_fails_loudly_and_does_not_touch_another_topic(
+    env: str,
+) -> None:
     """The CLI-level version of the silent-data-loss regression test: writing
     an unslug-able topic must not supersede an unrelated live handoff."""
     first = runner.invoke(
@@ -98,7 +102,7 @@ def test_an_unslugable_topic_fails_loudly_and_does_not_touch_another_topic(env):
     assert "landed it" in payload["body"]
 
 
-def test_latest_with_an_unslugable_topic_fails_loudly(env):
+def test_latest_with_an_unslugable_topic_fails_loudly(env: str) -> None:
     runner.invoke(
         app, ["handoff", "write", "--topic", "ci", "--project", "remem", "--body", BODY]
     )

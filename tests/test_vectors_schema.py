@@ -11,6 +11,7 @@ import psycopg
 import pytest
 
 from remem.backends.postgres.migrate import migrate
+from tests.conftest import one, scalar
 
 pytestmark = pytest.mark.db
 
@@ -21,27 +22,31 @@ def migrated(conn: psycopg.Connection[Any]) -> psycopg.Connection[Any]:
     return conn
 
 
-def test_vector_extension_is_installed(migrated):
+def test_vector_extension_is_installed(migrated: psycopg.Connection[Any]) -> None:
     row = migrated.execute(
         "select 1 from pg_extension where extname = 'vector'"
     ).fetchone()
     assert row is not None
 
 
-def test_primary_key_is_entry_and_model(migrated):
-    row = migrated.execute("""
+def test_primary_key_is_entry_and_model(migrated: psycopg.Connection[Any]) -> None:
+    row = one(
+        migrated.execute("""
         select string_agg(a.attname, ',' order by a.attname)
         from pg_index i
         join pg_attribute a on a.attrelid = i.indrelid
                            and a.attnum = any(i.indkey)
         where i.indrelid = 'entry_vectors'::regclass and i.indisprimary
-    """).fetchone()
+    """)
+    )
     # One row per (entry, model) - which is what lets two models coexist
     # while a re-embed runs.
     assert row[0] == "entry_id,model"
 
 
-def test_deleting_an_entry_deletes_its_vectors(migrated):
+def test_deleting_an_entry_deletes_its_vectors(
+    migrated: psycopg.Connection[Any],
+) -> None:
     from remem.backends.postgres.store import PostgresStore
     from remem.domain import Entry, Kind, new_id
 
@@ -56,24 +61,30 @@ def test_deleting_an_entry_deletes_its_vectors(migrated):
         (entry.id,),
     )
     migrated.execute("delete from entries where id = %s", (entry.id,))
-    left = migrated.execute(
-        "select count(*) from entry_vectors where entry_id = %s", (entry.id,)
-    ).fetchone()[0]
+    left = scalar(
+        migrated.execute(
+            "select count(*) from entry_vectors where entry_id = %s", (entry.id,)
+        )
+    )
     assert left == 0
 
 
-def test_vector_column_has_no_declared_dimension(migrated):
+def test_vector_column_has_no_declared_dimension(
+    migrated: psycopg.Connection[Any],
+) -> None:
     # Deliberate: see the migration's comment. A declared dimension would
     # commit the schema to one embedding model.
-    row = migrated.execute("""
+    row = one(
+        migrated.execute("""
         select format_type(a.atttypid, a.atttypmod)
         from pg_attribute a
         where a.attrelid = 'entry_vectors'::regclass and a.attname = 'vector'
-    """).fetchone()
+    """)
+    )
     assert row[0] == "vector"
 
 
-def test_there_is_no_ann_index_yet(migrated):
+def test_there_is_no_ann_index_yet(migrated: psycopg.Connection[Any]) -> None:
     # Asserted, not assumed. If someone adds an HNSW index they must come
     # here and say why the trigger in 006_vectors.sql was reached.
     rows = migrated.execute(

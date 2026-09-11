@@ -32,8 +32,14 @@ def now_utc() -> datetime:
 
 
 def put_event(
-    store, owner, *, at, session="s1", project="remem", harness="claude-code"
-):
+    store: PostgresStore,
+    owner: Principal,
+    *,
+    at: datetime,
+    session: str = "s1",
+    project: str = "remem",
+    harness: str = "claude-code",
+) -> Event:
     """A minimal tool_call event, timestamped by the caller.
 
     The watermark tests care only about `occurred_at`; everything else is
@@ -54,7 +60,9 @@ def put_event(
     )
 
 
-def test_a_session_with_recent_events_is_not_awaiting_extraction(store, owner):
+def test_a_session_with_recent_events_is_not_awaiting_extraction(
+    store: PostgresStore, owner: Principal
+) -> None:
     """The idle rule, from the store's side.
 
     A session that is still being worked in has events arriving; extracting
@@ -67,7 +75,9 @@ def test_a_session_with_recent_events_is_not_awaiting_extraction(store, owner):
     )
 
 
-def test_a_quiet_session_is_awaiting_extraction(store, owner):
+def test_a_quiet_session_is_awaiting_extraction(
+    store: PostgresStore, owner: Principal
+) -> None:
     put_event(store, owner, at=now_utc() - timedelta(hours=2))
     [session] = store.sessions_awaiting_extraction(owner.id, 1200, 10)
     assert session.session_id == "s1"
@@ -75,7 +85,9 @@ def test_a_quiet_session_is_awaiting_extraction(store, owner):
     assert session.extract_from is None
 
 
-def test_a_resumed_session_comes_back_with_a_watermark(store, owner):
+def test_a_resumed_session_comes_back_with_a_watermark(
+    store: PostgresStore, owner: Principal
+) -> None:
     """The reason covers_through exists.
 
     "This session has a done job" is the obvious definition of extracted and
@@ -101,7 +113,9 @@ def test_a_resumed_session_comes_back_with_a_watermark(store, owner):
     assert again.event_count == 1  # only the unextracted one
 
 
-def test_claiming_twice_reuses_the_row_and_counts_attempts(store, owner):
+def test_claiming_twice_reuses_the_row_and_counts_attempts(
+    store: PostgresStore, owner: Principal
+) -> None:
     put_event(store, owner, at=now_utc() - timedelta(hours=2))
     session = store.sessions_awaiting_extraction(owner.id, 1200, 10)[0]
 
@@ -117,11 +131,15 @@ def test_claiming_twice_reuses_the_row_and_counts_attempts(store, owner):
     assert got.attempts == 2
 
 
-def test_get_extract_job_returns_none_when_absent(store, owner):
+def test_get_extract_job_returns_none_when_absent(
+    store: PostgresStore, owner: Principal
+) -> None:
     assert store.get_extract_job(new_id(), owner.id) is None
 
 
-def test_claim_extract_job_by_id_reclaims_a_named_job(store, owner):
+def test_claim_extract_job_by_id_reclaims_a_named_job(
+    store: PostgresStore, owner: Principal
+) -> None:
     put_event(store, owner, at=now_utc() - timedelta(hours=2))
     session = store.sessions_awaiting_extraction(owner.id, 1200, 10)[0]
     job = store.claim_extract_job(owner.id, session)
@@ -136,7 +154,9 @@ def test_claim_extract_job_by_id_reclaims_a_named_job(store, owner):
     assert reclaimed.status == JobStatus.RUNNING
 
 
-def test_claim_extract_job_by_id_returns_none_for_another_owner(store, owner):
+def test_claim_extract_job_by_id_returns_none_for_another_owner(
+    store: PostgresStore, owner: Principal
+) -> None:
     put_event(store, owner, at=now_utc() - timedelta(hours=2))
     session = store.sessions_awaiting_extraction(owner.id, 1200, 10)[0]
     job = store.claim_extract_job(owner.id, session)
@@ -145,7 +165,9 @@ def test_claim_extract_job_by_id_returns_none_for_another_owner(store, owner):
     assert store.claim_extract_job_by_id(job.id, other.id) is None
 
 
-def test_extract_job_counts_groups_by_status(store, owner):
+def test_extract_job_counts_groups_by_status(
+    store: PostgresStore, owner: Principal
+) -> None:
     put_event(store, owner, at=now_utc() - timedelta(hours=2), session="a")
     put_event(store, owner, at=now_utc() - timedelta(hours=2), session="b")
     sessions = store.sessions_awaiting_extraction(owner.id, 1200, 10)
@@ -162,7 +184,9 @@ def test_extract_job_counts_groups_by_status(store, owner):
     assert counts["failed"] == 1
 
 
-def test_recent_failed_extract_jobs_orders_newest_first(store, owner):
+def test_recent_failed_extract_jobs_orders_newest_first(
+    store: PostgresStore, owner: Principal
+) -> None:
     put_event(store, owner, at=now_utc() - timedelta(hours=2), session="a")
     put_event(store, owner, at=now_utc() - timedelta(hours=2), session="b")
     sessions = store.sessions_awaiting_extraction(owner.id, 1200, 10)
@@ -179,7 +203,9 @@ def test_recent_failed_extract_jobs_orders_newest_first(store, owner):
     assert oldest.error == "first failure"
 
 
-def test_the_advisory_lock_is_per_command_and_owner(store, owner):
+def test_the_advisory_lock_is_per_command_and_owner(
+    store: PostgresStore, owner: Principal
+) -> None:
     """Two `events process` runs must not process the same session; a
     process run and an embed run must not block each other."""
     assert store.try_advisory_lock("events-process", owner.id) is True

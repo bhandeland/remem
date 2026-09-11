@@ -36,7 +36,7 @@ def owner(store: PostgresStore) -> Principal:
     return store.ensure_principal("brandon")
 
 
-def a_harness_event(**kw):
+def a_harness_event(**kw: Any) -> HarnessEvent:
     return HarnessEvent(
         kind=kw.get("kind", EventKind.TOOL_CALL),
         session_id=kw.get("session_id", "s1"),
@@ -47,12 +47,14 @@ def a_harness_event(**kw):
     )
 
 
-def test_nothing_is_recorded_for_a_project_that_did_not_opt_in(store, owner):
+def test_nothing_is_recorded_for_a_project_that_did_not_opt_in(
+    store: PostgresStore, owner: Principal
+) -> None:
     assert record.record(store, owner.id, a_harness_event(), "claude-code") is None
     assert store.events_for_session(owner.id, "remem", "claude-code", "s1") == []
 
 
-def test_an_opted_in_project_records(store, owner):
+def test_an_opted_in_project_records(store: PostgresStore, owner: Principal) -> None:
     record.enable(store, owner.id, "remem")
 
     event = record.record(store, owner.id, a_harness_event(), "claude-code")
@@ -63,13 +65,15 @@ def test_an_opted_in_project_records(store, owner):
     assert stored[0].harness == "claude-code"
 
 
-def test_disable_closes_the_gate_again(store, owner):
+def test_disable_closes_the_gate_again(store: PostgresStore, owner: Principal) -> None:
     record.enable(store, owner.id, "remem")
     record.disable(store, owner.id, "remem")
     assert record.record(store, owner.id, a_harness_event(), "claude-code") is None
 
 
-def test_an_event_with_no_project_is_refused(store, owner):
+def test_an_event_with_no_project_is_refused(
+    store: PostgresStore, owner: Principal
+) -> None:
     """A project-less event cannot be gated, so it must not be recorded.
 
     The opt-in is per project. An event that does not know which project it
@@ -83,7 +87,9 @@ def test_an_event_with_no_project_is_refused(store, owner):
     )
 
 
-def test_the_opt_in_is_per_project_not_global(store, owner):
+def test_the_opt_in_is_per_project_not_global(
+    store: PostgresStore, owner: Principal
+) -> None:
     record.enable(store, owner.id, "remem")
     assert (
         record.record(store, owner.id, a_harness_event(project="other"), "claude-code")

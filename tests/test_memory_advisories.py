@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 import psycopg
 import pytest
 
 from remem.backends.postgres.migrate import migrate
 from remem.backends.postgres.store import PostgresStore
-from remem.domain import CollectionQuery, MemoryTrigger
+from remem.domain import CollectionQuery, MemoryRun, MemoryTrigger
 from remem.services import kb
 from remem.services import memory as memory_service
 
@@ -22,7 +24,9 @@ def store(conn: psycopg.Connection[Any]) -> PostgresStore:
     return PostgresStore(conn)
 
 
-def _designate(store, owner_id, project, directory):
+def _designate(
+    store: PostgresStore, owner_id: UUID, project: str, directory: Path
+) -> None:
     kb.create(
         store,
         owner_id,
@@ -36,7 +40,13 @@ def _designate(store, owner_id, project, directory):
     )
 
 
-def _finished(store, owner_id, project, trigger=MemoryTrigger.MANUAL, **kw):
+def _finished(
+    store: PostgresStore,
+    owner_id: UUID,
+    project: str,
+    trigger: MemoryTrigger = MemoryTrigger.MANUAL,
+    **kw: Any,
+) -> MemoryRun:
     run = store.start_memory_run(owner_id, project, trigger)
     base: dict[str, Any] = dict(
         adopted=0,
@@ -54,7 +64,7 @@ def _finished(store, owner_id, project, trigger=MemoryTrigger.MANUAL, **kw):
     return run
 
 
-def test_a_healthy_project_raises_nothing(store, tmp_path):
+def test_a_healthy_project_raises_nothing(store: PostgresStore, tmp_path: Path) -> None:
     owner = store.ensure_principal("adv-healthy")
     _designate(store, owner.id, "p", tmp_path)
     _finished(store, owner.id, "p")
@@ -62,7 +72,7 @@ def test_a_healthy_project_raises_nothing(store, tmp_path):
     assert memory_service.advisories(store, owner.id) == []
 
 
-def test_a_never_synced_project_is_named(store, tmp_path):
+def test_a_never_synced_project_is_named(store: PostgresStore, tmp_path: Path) -> None:
     owner = store.ensure_principal("adv-never")
     _designate(store, owner.id, "p", tmp_path)
 
@@ -73,7 +83,7 @@ def test_a_never_synced_project_is_named(store, tmp_path):
     assert "p" in lines[0]
 
 
-def test_an_unfinished_run_is_named(store, tmp_path):
+def test_an_unfinished_run_is_named(store: PostgresStore, tmp_path: Path) -> None:
     owner = store.ensure_principal("adv-unfinished")
     _designate(store, owner.id, "p", tmp_path)
     store.start_memory_run(owner.id, "p", MemoryTrigger.MANUAL)
@@ -81,7 +91,7 @@ def test_an_unfinished_run_is_named(store, tmp_path):
     assert "did not finish" in memory_service.advisories(store, owner.id)[0]
 
 
-def test_failures_are_named(store, tmp_path):
+def test_failures_are_named(store: PostgresStore, tmp_path: Path) -> None:
     owner = store.ensure_principal("adv-failures")
     _designate(store, owner.id, "p", tmp_path)
     _finished(store, owner.id, "p", failures=[{"name": "bad", "reason": "boom"}])
@@ -89,7 +99,7 @@ def test_failures_are_named(store, tmp_path):
     assert "1 failure" in memory_service.advisories(store, owner.id)[0]
 
 
-def test_a_sidecar_on_disk_is_named(store, tmp_path):
+def test_a_sidecar_on_disk_is_named(store: PostgresStore, tmp_path: Path) -> None:
     """The condition that outlives every run - nothing deletes a sidecar."""
     owner = store.ensure_principal("adv-sidecar")
     _designate(store, owner.id, "p", tmp_path)
@@ -99,7 +109,9 @@ def test_a_sidecar_on_disk_is_named(store, tmp_path):
     assert "conflict" in memory_service.advisories(store, owner.id)[0]
 
 
-def test_a_designation_with_no_directory_is_skipped_by_name(store):
+def test_a_designation_with_no_directory_is_skipped_by_name(
+    store: PostgresStore,
+) -> None:
     """Written before migration 015. Named, never guessed at."""
     owner = store.ensure_principal("adv-nodir")
     # Straight to the store: `memory.designate` would need a collection,
@@ -112,7 +124,9 @@ def test_a_designation_with_no_directory_is_skipped_by_name(store):
     assert "re-designate" in lines[0].lower()
 
 
-def test_a_missing_directory_is_not_reported_as_clean(store, tmp_path):
+def test_a_missing_directory_is_not_reported_as_clean(
+    store: PostgresStore, tmp_path: Path
+) -> None:
     owner = store.ensure_principal("adv-gone")
     gone = tmp_path / "gone"
     _designate(store, owner.id, "p", gone)
@@ -121,7 +135,9 @@ def test_a_missing_directory_is_not_reported_as_clean(store, tmp_path):
     assert "does not exist" in memory_service.advisories(store, owner.id)[0]
 
 
-def test_only_designated_projects_are_swept(store, tmp_path):
+def test_only_designated_projects_are_swept(
+    store: PostgresStore, tmp_path: Path
+) -> None:
     """A run row for an undesignated project never raises a line."""
     owner = store.ensure_principal("adv-undesignated")
     store.start_memory_run(owner.id, "stray", MemoryTrigger.MANUAL)
@@ -129,7 +145,9 @@ def test_only_designated_projects_are_swept(store, tmp_path):
     assert memory_service.advisories(store, owner.id) == []
 
 
-def test_an_unfinished_run_names_its_trigger(store, tmp_path):
+def test_an_unfinished_run_names_its_trigger(
+    store: PostgresStore, tmp_path: Path
+) -> None:
     """An unattended `refresh` and a typed `sync` leave identical rows, so
     the line has to say which one died - they are debugged differently."""
     owner = store.ensure_principal("adv-unfinished-trigger")
@@ -139,7 +157,9 @@ def test_an_unfinished_run_names_its_trigger(store, tmp_path):
     assert "auto" in memory_service.advisories(store, owner.id)[0]
 
 
-def test_failures_name_the_trigger_of_the_run_they_came_from(store, tmp_path):
+def test_failures_name_the_trigger_of_the_run_they_came_from(
+    store: PostgresStore, tmp_path: Path
+) -> None:
     owner = store.ensure_principal("adv-failures-trigger")
     _designate(store, owner.id, "p", tmp_path)
     _finished(
@@ -153,7 +173,9 @@ def test_failures_name_the_trigger_of_the_run_they_came_from(store, tmp_path):
     assert "auto" in memory_service.advisories(store, owner.id)[0]
 
 
-def test_a_sidecar_is_not_attributed_to_the_last_run(store, tmp_path):
+def test_a_sidecar_is_not_attributed_to_the_last_run(
+    store: PostgresStore, tmp_path: Path
+) -> None:
     """A sidecar outlives every run - nothing deletes one - so naming the
     last run's trigger beside it would attribute it to a sync that may not
     have written it."""

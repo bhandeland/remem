@@ -29,7 +29,9 @@ def owner(store: PostgresStore) -> Principal:
     return store.ensure_principal("brandon")
 
 
-def test_a_rule_without_a_summary_is_refused(store, owner):
+def test_a_rule_without_a_summary_is_refused(
+    store: PostgresStore, owner: Principal
+) -> None:
     with pytest.raises(write.RuleNeedsSummary):
         write.remember(
             store,
@@ -41,7 +43,7 @@ def test_a_rule_without_a_summary_is_refused(store, owner):
         )
 
 
-def test_a_blank_summary_is_refused_too(store, owner):
+def test_a_blank_summary_is_refused_too(store: PostgresStore, owner: Principal) -> None:
     """An empty string is not a summary. Accepting it would render a rule
     with a blank line where its instruction should be."""
     with pytest.raises(write.RuleNeedsSummary):
@@ -56,7 +58,9 @@ def test_a_blank_summary_is_refused_too(store, owner):
         )
 
 
-def test_a_rule_with_a_summary_is_written(store, owner):
+def test_a_rule_with_a_summary_is_written(
+    store: PostgresStore, owner: Principal
+) -> None:
     e = write.remember(
         store,
         owner.id,
@@ -69,7 +73,9 @@ def test_a_rule_with_a_summary_is_written(store, owner):
     assert e.summary == "do the thing"
 
 
-def test_a_human_rule_without_a_summary_is_still_refused(store, owner):
+def test_a_human_rule_without_a_summary_is_still_refused(
+    store: PostgresStore, owner: Principal
+) -> None:
     """Origin.HUMAN and Origin.AGENT are INJECTED_ORIGINS - the default
     test above (`write.remember` defaults to AGENT) covers the other one."""
     with pytest.raises(write.RuleNeedsSummary):
@@ -84,7 +90,9 @@ def test_a_human_rule_without_a_summary_is_still_refused(store, owner):
         )
 
 
-def test_an_extracted_rule_writes_without_a_summary(store, owner):
+def test_an_extracted_rule_writes_without_a_summary(
+    store: PostgresStore, owner: Principal
+) -> None:
     """kb.resolve filters to INJECTED_ORIGINS (human, agent), so an
     EXTRACTED rule can never reach a context block - requiring a summary
     on one would be enforcement with no purpose, and it used to fail
@@ -101,7 +109,9 @@ def test_an_extracted_rule_writes_without_a_summary(store, owner):
     assert e.summary is None
 
 
-def test_notes_and_docs_do_not_need_a_summary(store, owner):
+def test_notes_and_docs_do_not_need_a_summary(
+    store: PostgresStore, owner: Principal
+) -> None:
     """Only rules are injected into every session, so only rules are
     forced to state themselves in a line."""
     for kind in (Kind.NOTE, Kind.DOC):
@@ -111,7 +121,9 @@ def test_notes_and_docs_do_not_need_a_summary(store, owner):
         assert e.summary is None
 
 
-def test_update_sets_a_summary_without_creating_a_second_entry(store, owner):
+def test_update_sets_a_summary_without_creating_a_second_entry(
+    store: PostgresStore, owner: Principal
+) -> None:
     """Backfill is an in-place edit, not a correction.
 
     supersede would retire the entry, mint a replacement, and churn the
@@ -135,7 +147,9 @@ def test_update_sets_a_summary_without_creating_a_second_entry(store, owner):
     assert updated.superseded_by is None
 
 
-def test_update_refuses_to_empty_a_rules_summary(store, owner):
+def test_update_refuses_to_empty_a_rules_summary(
+    store: PostgresStore, owner: Principal
+) -> None:
     """update(summary="") passed the `is not None` test and silently wrote
     an empty string, which `_content` then treats as falsy - dropping the
     rule back to title-only through a door `remember` does not have."""
@@ -152,7 +166,9 @@ def test_update_refuses_to_empty_a_rules_summary(store, owner):
         write.update(store, owner.id, e.id, summary="")
 
 
-def test_update_refuses_a_whitespace_summary_too(store, owner):
+def test_update_refuses_a_whitespace_summary_too(
+    store: PostgresStore, owner: Principal
+) -> None:
     """update(summary="   ") stored the padding, and _content's `if
     entry.summary:` is truthy for whitespace - rendering a blank line
     where the rule's instruction belongs."""
@@ -169,7 +185,9 @@ def test_update_refuses_a_whitespace_summary_too(store, owner):
         write.update(store, owner.id, e.id, summary="   ")
 
 
-def test_update_strips_the_summary_it_stores(store, owner):
+def test_update_strips_the_summary_it_stores(
+    store: PostgresStore, owner: Principal
+) -> None:
     e = write.remember(
         store,
         owner.id,
@@ -183,7 +201,9 @@ def test_update_strips_the_summary_it_stores(store, owner):
     assert updated.summary == "padded"
 
 
-def test_remember_strips_the_summary_it_stores(store, owner):
+def test_remember_strips_the_summary_it_stores(
+    store: PostgresStore, owner: Principal
+) -> None:
     e = write.remember(
         store,
         owner.id,
@@ -196,7 +216,9 @@ def test_remember_strips_the_summary_it_stores(store, owner):
     assert e.summary == "padded"
 
 
-def test_update_leaves_the_summary_alone_when_not_given(store, owner):
+def test_update_leaves_the_summary_alone_when_not_given(
+    store: PostgresStore, owner: Principal
+) -> None:
     """None means unchanged here, as it does for every other field on
     update. There is no --clear-summary: a wrong summary is fixed by
     writing a better one."""

@@ -114,7 +114,7 @@ def load(
     )
     data = _read_file(path)
 
-    def pick(env_key: str, file_key: str, default):
+    def pick(env_key: str, file_key: str, default: object) -> object:
         if env_key in env:
             return env[env_key]
         return data.get(file_key, default)

@@ -1,3 +1,5 @@
+from typing import Any
+
 import pytest
 
 from remem.domain import Collection, Entry, Kind, new_id
@@ -6,7 +8,7 @@ from remem.services.kb import RulesExceedBudget, render
 OWNER = new_id()
 
 
-def collection(**kw):
+def collection(**kw: Any) -> Collection:
     return Collection(
         id=new_id(),
         slug=kw.pop("slug", "s"),
@@ -16,7 +18,13 @@ def collection(**kw):
     )
 
 
-def entry(title, body, kind=Kind.NOTE, tags=None, summary=None):
+def entry(
+    title: str,
+    body: str,
+    kind: Kind = Kind.NOTE,
+    tags: list[str] | None = None,
+    summary: str | None = None,
+) -> Entry:
     return Entry(
         id=new_id(),
         kind=kind,
@@ -28,13 +36,13 @@ def entry(title, body, kind=Kind.NOTE, tags=None, summary=None):
     )
 
 
-def test_renders_the_collection_title_and_description():
+def test_renders_the_collection_title_and_description() -> None:
     out = render(collection(description="what matters"), [], max_chars=1000)
     assert "My KB" in out
     assert "what matters" in out
 
 
-def test_rules_render_before_other_entries():
+def test_rules_render_before_other_entries() -> None:
     entries = [
         entry("A memory", "body one"),
         entry("A rule", "body two", kind=Kind.RULE),
@@ -43,33 +51,33 @@ def test_rules_render_before_other_entries():
     assert out.index("A rule") < out.index("A memory")
 
 
-def test_entry_metadata_line_carries_id_and_tags():
+def test_entry_metadata_line_carries_id_and_tags() -> None:
     e = entry("Titled", "body", tags=["sql", "style"])
     out = render(collection(), [e], max_chars=5000)
     assert str(e.id) in out
     assert "sql" in out and "style" in out
 
 
-def test_budget_drops_whole_entries_not_partial_ones():
+def test_budget_drops_whole_entries_not_partial_ones() -> None:
     entries = [entry(f"Entry {i}", "x" * 200) for i in range(20)]
     out = render(collection(), entries, max_chars=800)
     assert "x" * 200 in out  # any included entry is complete
     assert len(out) <= 1200  # budget plus the notice line
 
 
-def test_omitted_entries_are_announced_with_a_count():
+def test_omitted_entries_are_announced_with_a_count() -> None:
     entries = [entry(f"Entry {i}", "x" * 200) for i in range(20)]
     out = render(collection(slug="my-kb"), entries, max_chars=600)
     assert "more entries not shown" in out
     assert "remem kb show my-kb --full" in out
 
 
-def test_no_notice_when_everything_fits():
+def test_no_notice_when_everything_fits() -> None:
     out = render(collection(), [entry("Small", "tiny")], max_chars=5000)
     assert "not shown" not in out
 
 
-def test_rules_are_never_truncated_even_over_budget():
+def test_rules_are_never_truncated_even_over_budget() -> None:
     """Rules survive whole while everything else is dropped for space.
 
     Unchanged invariant, restated for short forms: what must survive whole
@@ -92,7 +100,7 @@ def test_rules_are_never_truncated_even_over_budget():
     assert "10 more entries not shown" in out
 
 
-def test_rules_alone_exceeding_the_budget_raises():
+def test_rules_alone_exceeding_the_budget_raises() -> None:
     """The backstop, which short forms make rare rather than remove.
 
     Rules are cheap now, so the over-budget case needs building rather
@@ -107,13 +115,13 @@ def test_rules_alone_exceeding_the_budget_raises():
         render(collection(), rules, max_chars=500)
 
 
-def test_empty_collection_renders_without_crashing():
+def test_empty_collection_renders_without_crashing() -> None:
     out = render(collection(), [], max_chars=1000)
     assert isinstance(out, str)
     assert "My KB" in out
 
 
-def test_total_output_never_exceeds_the_budget():
+def test_total_output_never_exceeds_the_budget() -> None:
     """The omitted-count notice is part of the block, so it must be budgeted.
 
     Previously the notice was appended after the packing loop, so the returned
@@ -125,7 +133,7 @@ def test_total_output_never_exceeds_the_budget():
         assert len(out) <= budget, (budget, len(out))
 
 
-def test_a_rule_renders_its_summary_and_not_its_body():
+def test_a_rule_renders_its_summary_and_not_its_body() -> None:
     """The block carries the rule; the entry keeps the case for it.
 
     Rule bodies in this project are essays - the incident, the reasoning,
@@ -145,7 +153,7 @@ def test_a_rule_renders_its_summary_and_not_its_body():
     assert "y" * 2000 not in out
 
 
-def test_a_rule_without_a_summary_renders_title_only():
+def test_a_rule_without_a_summary_renders_title_only() -> None:
     """The graceful floor: 17 rules predate the summary requirement and
     must keep rendering rather than vanishing or dragging their bodies in."""
     e = entry("Run ingest from the repository root", "z" * 900, kind=Kind.RULE)
@@ -156,7 +164,7 @@ def test_a_rule_without_a_summary_renders_title_only():
     assert "z" * 900 not in out
 
 
-def test_a_rule_keeps_its_id_line_with_and_without_a_summary():
+def test_a_rule_keeps_its_id_line_with_and_without_a_summary() -> None:
     """The id is how an agent fetches the full rule. Without it the block
     is a dead end rather than an index into the knowledge base."""
     with_summary = entry("A", "body", kind=Kind.RULE, summary="short form")
@@ -168,7 +176,7 @@ def test_a_rule_keeps_its_id_line_with_and_without_a_summary():
     assert str(without.id) in out
 
 
-def test_a_note_still_renders_its_body():
+def test_a_note_still_renders_its_body() -> None:
     """Only rules change. Notes and docs are not injected into every
     session, so nothing about their cost changed."""
     e = entry("A note", "the whole body stays")
@@ -178,7 +186,7 @@ def test_a_note_still_renders_its_body():
     assert "the whole body stays" in out
 
 
-def test_notice_still_appears_when_it_forces_dropping_another_entry():
+def test_notice_still_appears_when_it_forces_dropping_another_entry() -> None:
     entries = [entry(f"Entry {i}", "x" * 200) for i in range(20)]
     out = render(collection(slug="my-kb"), entries, max_chars=600)
     assert "more entries not shown" in out

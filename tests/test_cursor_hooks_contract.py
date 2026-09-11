@@ -54,7 +54,7 @@ def test_the_blocking_hooks_are_not_subscribed():
     assert "postToolUse" not in BLOCKING_HOOKS
 
 
-def test_parsing_a_bundle(tmp_path):
+def test_parsing_a_bundle(tmp_path: Path) -> None:
     """The reader, exercised without needing Cursor installed.
 
     The fixture has to exercise both halves of the real reader: the anchor
@@ -89,7 +89,7 @@ def test_parsing_a_bundle(tmp_path):
     assert "notAHook" not in names
 
 
-def test_reading_a_bundle_that_is_not_there(tmp_path):
+def test_reading_a_bundle_that_is_not_there(tmp_path: Path) -> None:
     assert installed_hook_names(tmp_path / "nope") == frozenset()
 
 

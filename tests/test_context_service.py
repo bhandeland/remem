@@ -33,7 +33,7 @@ def owner(store: PostgresStore) -> Principal:
     return store.ensure_principal("brandon")
 
 
-def test_block_renders_a_knowledge_base(store, owner):
+def test_block_renders_a_knowledge_base(store: PostgresStore, owner: Principal) -> None:
     kb.create(
         store,
         owner.id,
@@ -48,12 +48,16 @@ def test_block_renders_a_knowledge_base(store, owner):
     assert "A rule" in block
 
 
-def test_block_is_empty_for_a_project_with_no_knowledge_base(store, owner):
+def test_block_is_empty_for_a_project_with_no_knowledge_base(
+    store: PostgresStore, owner: Principal
+) -> None:
     """Silence, not an exception. Every caller of this is fail-soft."""
     assert context.block(store, owner.id, "nothing-here", max_chars=10_000) == ""
 
 
-def test_the_reason_for_an_empty_block_is_reported(store, owner):
+def test_the_reason_for_an_empty_block_is_reported(
+    store: PostgresStore, owner: Principal
+) -> None:
     """Silence is ambiguous, which is why REMEM_HOOK_DEBUG exists. The
     service knows why it returned nothing; only the frontend knows where to
     say so, hence the callable."""
@@ -64,7 +68,9 @@ def test_the_reason_for_an_empty_block_is_reported(store, owner):
     assert any("nothing-here" in line for line in said)
 
 
-def test_the_reason_names_the_principal_when_the_caller_provides_it(store, owner):
+def test_the_reason_names_the_principal_when_the_caller_provides_it(
+    store: PostgresStore, owner: Principal
+) -> None:
     """A wrong or unexpected REMEM_USER_ID is one of the likeliest reasons
     for silent injection, so the diagnostic should name the principal it
     looked under - when the caller has one to give. The service has no
@@ -83,7 +89,9 @@ def test_the_reason_names_the_principal_when_the_caller_provides_it(store, owner
     assert any("brandon" in line for line in said)
 
 
-def test_the_handoff_pointer_is_appended_outside_max_chars(store, owner):
+def test_the_handoff_pointer_is_appended_outside_max_chars(
+    store: PostgresStore, owner: Principal
+) -> None:
     """The pointer is a fixed ~20 tokens appended after render, so it must
     survive even a max_chars budget too small to hold the knowledge base
     itself - competing with rules for that budget would be absurd."""

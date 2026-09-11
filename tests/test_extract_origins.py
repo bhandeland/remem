@@ -22,7 +22,9 @@ def owner(store: PostgresStore) -> Principal:
     return store.ensure_principal("brandon")
 
 
-def test_search_without_origins_returns_everything(store, owner):
+def test_search_without_origins_returns_everything(
+    store: PostgresStore, owner: Principal
+) -> None:
     write.remember(
         store, owner.id, title="Human note", body="shared word", origin=Origin.HUMAN
     )
@@ -37,7 +39,7 @@ def test_search_without_origins_returns_everything(store, owner):
     assert titles == {"Human note", "Captured note"}
 
 
-def test_search_filters_by_origin(store, owner):
+def test_search_filters_by_origin(store: PostgresStore, owner: Principal) -> None:
     write.remember(
         store, owner.id, title="Human note", body="shared word", origin=Origin.HUMAN
     )
@@ -54,7 +56,9 @@ def test_search_filters_by_origin(store, owner):
     assert [h.entry.title for h in hits] == ["Human note"]
 
 
-def test_no_text_listing_also_filters_by_origin(store, owner):
+def test_no_text_listing_also_filters_by_origin(
+    store: PostgresStore, owner: Principal
+) -> None:
     write.remember(store, owner.id, title="Human note", body="b", origin=Origin.HUMAN)
     write.remember(
         store, owner.id, title="Captured note", body="b", origin=Origin.EXTRACTED
@@ -63,7 +67,9 @@ def test_no_text_listing_also_filters_by_origin(store, owner):
     assert [h.entry.title for h in hits] == ["Human note"]
 
 
-def test_fuzzy_search_also_filters_by_origin(store, owner):
+def test_fuzzy_search_also_filters_by_origin(
+    store: PostgresStore, owner: Principal
+) -> None:
     """A filter honoured by only one search path would appear to work until a
     query happened to miss exactly."""
     write.remember(
@@ -81,7 +87,9 @@ def test_fuzzy_search_also_filters_by_origin(store, owner):
     assert hits == []
 
 
-def test_resolve_excludes_captured_entries_from_the_query_branch(store, owner):
+def test_resolve_excludes_captured_entries_from_the_query_branch(
+    store: PostgresStore, owner: Principal
+) -> None:
     kb.create(store, owner.id, slug="s", title="T", query=CollectionQuery(tags=["ops"]))
     write.remember(
         store, owner.id, title="Human note", body="b", tags=["ops"], origin=Origin.HUMAN
@@ -97,7 +105,9 @@ def test_resolve_excludes_captured_entries_from_the_query_branch(store, owner):
     assert [e.title for e in kb.resolve(store, owner.id, "s")] == ["Human note"]
 
 
-def test_resolve_includes_a_captured_entry_that_was_pinned(store, owner):
+def test_resolve_includes_a_captured_entry_that_was_pinned(
+    store: PostgresStore, owner: Principal
+) -> None:
     """Pinning is the deliberate way to promote a captured entry."""
     kb.create(store, owner.id, slug="s", title="T")
     captured = write.remember(

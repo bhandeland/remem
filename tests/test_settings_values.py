@@ -16,7 +16,9 @@ from remem.services.settings import (
     "raw,expected",
     [("10m", 600000), ("30s", 30000), ("500ms", 500), ("600000", 600000)],
 )
-def test_parse_duration_accepts_suffixes_and_plain_milliseconds(raw, expected):
+def test_parse_duration_accepts_suffixes_and_plain_milliseconds(
+    raw: str, expected: int
+) -> None:
     assert parse_duration(raw) == expected
 
 

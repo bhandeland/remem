@@ -23,19 +23,21 @@ def owner(store: PostgresStore) -> Principal:
     return store.ensure_principal("brandon")
 
 
-def test_create_then_resolve_an_empty_collection(store, owner):
+def test_create_then_resolve_an_empty_collection(
+    store: PostgresStore, owner: Principal
+) -> None:
     kb.create(store, owner.id, slug="s", title="T")
     assert kb.resolve(store, owner.id, "s") == []
 
 
-def test_resolve_returns_pinned_entries(store, owner):
+def test_resolve_returns_pinned_entries(store: PostgresStore, owner: Principal) -> None:
     c = kb.create(store, owner.id, slug="s", title="T")
     e = remember(store, owner.id, title="Pinned", body="b")
     store.pin(c.id, e.id, position=0, owner_id=owner.id)
     assert [x.title for x in kb.resolve(store, owner.id, "s")] == ["Pinned"]
 
 
-def test_resolve_includes_query_matches(store, owner):
+def test_resolve_includes_query_matches(store: PostgresStore, owner: Principal) -> None:
     kb.create(
         store, owner.id, slug="s", title="T", query=CollectionQuery(tags=["style"])
     )
@@ -44,7 +46,9 @@ def test_resolve_includes_query_matches(store, owner):
     assert [x.title for x in kb.resolve(store, owner.id, "s")] == ["Styled"]
 
 
-def test_resolve_dedupes_when_an_entry_is_both_pinned_and_matched(store, owner):
+def test_resolve_dedupes_when_an_entry_is_both_pinned_and_matched(
+    store: PostgresStore, owner: Principal
+) -> None:
     c = kb.create(
         store, owner.id, slug="s", title="T", query=CollectionQuery(tags=["style"])
     )
@@ -53,7 +57,9 @@ def test_resolve_dedupes_when_an_entry_is_both_pinned_and_matched(store, owner):
     assert [x.title for x in kb.resolve(store, owner.id, "s")] == ["Both"]
 
 
-def test_pinned_entries_come_before_query_matches(store, owner):
+def test_pinned_entries_come_before_query_matches(
+    store: PostgresStore, owner: Principal
+) -> None:
     c = kb.create(
         store, owner.id, slug="s", title="T", query=CollectionQuery(tags=["style"])
     )
@@ -64,7 +70,9 @@ def test_pinned_entries_come_before_query_matches(store, owner):
     assert titles.index("Pinned") < titles.index("Matched")
 
 
-def test_resolve_excludes_superseded_entries(store, owner):
+def test_resolve_excludes_superseded_entries(
+    store: PostgresStore, owner: Principal
+) -> None:
     kb.create(
         store, owner.id, slug="s", title="T", query=CollectionQuery(tags=["deploys"])
     )
@@ -74,7 +82,9 @@ def test_resolve_excludes_superseded_entries(store, owner):
     assert "Old" not in titles
 
 
-def test_resolve_filters_by_kind_in_the_query(store, owner):
+def test_resolve_filters_by_kind_in_the_query(
+    store: PostgresStore, owner: Principal
+) -> None:
     kb.create(
         store, owner.id, slug="s", title="T", query=CollectionQuery(kinds=[Kind.RULE])
     )
@@ -90,18 +100,24 @@ def test_resolve_filters_by_kind_in_the_query(store, owner):
     assert [x.title for x in kb.resolve(store, owner.id, "s")] == ["A rule"]
 
 
-def test_resolve_raises_for_an_unknown_slug(store, owner):
+def test_resolve_raises_for_an_unknown_slug(
+    store: PostgresStore, owner: Principal
+) -> None:
     with pytest.raises(kb.CollectionNotFound):
         kb.resolve(store, owner.id, "nope")
 
 
-def test_an_empty_query_matches_nothing_rather_than_everything(store, owner):
+def test_an_empty_query_matches_nothing_rather_than_everything(
+    store: PostgresStore, owner: Principal
+) -> None:
     kb.create(store, owner.id, slug="s", title="T")
     remember(store, owner.id, title="Loose", body="b")
     assert kb.resolve(store, owner.id, "s") == []
 
 
-def test_a_pinned_entry_that_is_later_superseded_does_not_resurface(store, owner):
+def test_a_pinned_entry_that_is_later_superseded_does_not_resurface(
+    store: PostgresStore, owner: Principal
+) -> None:
     c = kb.create(store, owner.id, slug="s", title="T")
     e = remember(store, owner.id, title="Old", body="b")
     store.pin(c.id, e.id, position=0, owner_id=owner.id)
@@ -110,26 +126,32 @@ def test_a_pinned_entry_that_is_later_superseded_does_not_resurface(store, owner
     assert "Old" not in titles
 
 
-def test_pin_adds_an_entry_to_the_collection(store, owner):
+def test_pin_adds_an_entry_to_the_collection(
+    store: PostgresStore, owner: Principal
+) -> None:
     kb.create(store, owner.id, slug="s", title="T")
     e = remember(store, owner.id, title="Pinned", body="b")
     kb.pin(store, owner.id, "s", e.id)
     assert [x.title for x in kb.resolve(store, owner.id, "s")] == ["Pinned"]
 
 
-def test_pin_rejects_an_unknown_collection(store, owner):
+def test_pin_rejects_an_unknown_collection(
+    store: PostgresStore, owner: Principal
+) -> None:
     e = remember(store, owner.id, title="E", body="b")
     with pytest.raises(kb.CollectionNotFound):
         kb.pin(store, owner.id, "nope", e.id)
 
 
-def test_pin_rejects_an_unknown_entry(store, owner):
+def test_pin_rejects_an_unknown_entry(store: PostgresStore, owner: Principal) -> None:
     kb.create(store, owner.id, slug="s", title="T")
     with pytest.raises(kb.EntryNotFound):
         kb.pin(store, owner.id, "s", new_id())
 
 
-def test_pin_rejects_another_owners_entry(store, owner):
+def test_pin_rejects_another_owners_entry(
+    store: PostgresStore, owner: Principal
+) -> None:
     other = store.ensure_principal("mallory")
     kb.create(store, owner.id, slug="s", title="T")
     theirs = remember(store, other.id, title="Theirs", body="b")

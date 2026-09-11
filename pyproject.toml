@@ -95,8 +95,8 @@ markers = [
 # The strict preset, not the default one. It adds the annotation-completeness
 # rules - a bare `dict` in a signature, an untyped lambda, an empty container
 # with no element type - which is the class of gap that lets a signature drift
-# from its callers without anything noticing. The one rule this project defers
-# is named in [tool.pyrefly.errors] below.
+# from its callers without anything noticing. Every rule in it runs; nothing
+# is deferred.
 preset = "strict"
 
 # src and the suite both. The suite was excluded while it carried 92 errors;
@@ -130,22 +130,6 @@ search-path = ["."]
 # would mean deleting real guards to satisfy a lint.
 [tool.pyrefly.errors]
 unnecessary-type-conversion = false
-
-# Staged, not rejected - the one strict rule deferred to a later phase rather
-# than a rule this project disagrees with.
-#
-# It fires 2,216 times in tests and twice in src, and the count is misleading:
-# that is one fact, not 2,216 of them. `tests/conftest.py`'s own fixtures are
-# unannotated - `def conn(db_dsn):`, `def db_dsn():` - so every fixture
-# parameter arrives as `Any`, which is why all 1,240 test functions are flagged
-# and why their bodies are effectively unchecked no matter what their own
-# signatures say.
-#
-# Annotating the fixtures is therefore the prerequisite that makes any
-# per-test annotation mean something; doing the 1,240 test signatures first
-# would be ceremony that buys no checking. Phase 2 annotates conftest, phase 3
-# turns this rule on.
-implicit-any-parameter = false
 
 [tool.ruff]
 line-length = 88

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -8,13 +9,13 @@ from remem.agents.base import UnsupportedScope
 from remem.agents.cursor import install
 
 
-def test_user_scope_is_the_home_cursor_directory(tmp_path):
+def test_user_scope_is_the_home_cursor_directory(tmp_path: Path) -> None:
     path = install.hooks_path("user", home=tmp_path, cwd=tmp_path / "repo")
 
     assert path == tmp_path / ".cursor" / "hooks.json"
 
 
-def test_project_scope_is_the_repository(tmp_path):
+def test_project_scope_is_the_repository(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
 
@@ -23,12 +24,12 @@ def test_project_scope_is_the_repository(tmp_path):
     assert path == repo / ".cursor" / "hooks.json"
 
 
-def test_an_unknown_scope_raises_rather_than_falling_back(tmp_path):
+def test_an_unknown_scope_raises_rather_than_falling_back(tmp_path: Path) -> None:
     with pytest.raises(UnsupportedScope):
         install.hooks_path("global", home=tmp_path, cwd=tmp_path)
 
 
-def test_merging_into_nothing_creates_the_document(tmp_path):
+def test_merging_into_nothing_creates_the_document(tmp_path: Path) -> None:
     path = tmp_path / "hooks.json"
 
     merged, backup = install.merge(path, {"sessionStart": "remem hook context"})
@@ -38,7 +39,7 @@ def test_merging_into_nothing_creates_the_document(tmp_path):
     assert merged["hooks"]["sessionStart"] == [{"command": "remem hook context"}]
 
 
-def test_merging_preserves_another_tools_hooks(tmp_path):
+def test_merging_preserves_another_tools_hooks(tmp_path: Path) -> None:
     """hooks.json is user-owned and shared - unlike opencode's remem.js,
     which remem is the only thing that ever writes."""
     path = tmp_path / "hooks.json"
@@ -63,7 +64,7 @@ def test_merging_preserves_another_tools_hooks(tmp_path):
     assert backup is not None and backup.exists()
 
 
-def test_merging_twice_does_not_duplicate_our_entry(tmp_path):
+def test_merging_twice_does_not_duplicate_our_entry(tmp_path: Path) -> None:
     path = tmp_path / "hooks.json"
     entries = {"sessionStart": "remem hook context"}
 
@@ -74,7 +75,7 @@ def test_merging_twice_does_not_duplicate_our_entry(tmp_path):
     assert len(merged["hooks"]["sessionStart"]) == 1
 
 
-def test_the_backup_holds_what_was_there_before(tmp_path):
+def test_the_backup_holds_what_was_there_before(tmp_path: Path) -> None:
     path = tmp_path / "hooks.json"
     path.write_text('{"version": 1, "hooks": {"stop": [{"command": "x"}]}}')
 
@@ -84,7 +85,7 @@ def test_the_backup_holds_what_was_there_before(tmp_path):
     assert json.loads(backup.read_text())["hooks"]["stop"] == [{"command": "x"}]
 
 
-def test_unreadable_json_is_backed_up_and_replaced(tmp_path):
+def test_unreadable_json_is_backed_up_and_replaced(tmp_path: Path) -> None:
     """A corrupt hooks.json must not stop the install, but the user's bytes
     must survive - which is exactly what the backup is for."""
     path = tmp_path / "hooks.json"
@@ -136,7 +137,9 @@ def test_the_entries_call_the_harness_neutral_command():
 
 
 @pytest.mark.db
-def test_install_writes_the_hooks_and_verifies(tmp_path, monkeypatch):
+def test_install_writes_the_hooks_and_verifies(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """install() performs a live database round-trip - it proves the
     record path actually works - which is why this is marked db."""
     from remem.agents.cursor.adapter import CursorAdapter
@@ -150,7 +153,7 @@ def test_install_writes_the_hooks_and_verifies(tmp_path, monkeypatch):
     assert any("Recording is OFF" in n for n in report.notes)
 
 
-def test_merge_collapses_a_command_the_file_already_names_twice(tmp_path):
+def test_merge_collapses_a_command_the_file_already_names_twice(tmp_path: Path) -> None:
     """The repair half, mirroring the Claude Code adapter's.
 
     The membership test below only ever prevented a duplicate this install
@@ -175,7 +178,9 @@ def test_merge_collapses_a_command_the_file_already_names_twice(tmp_path):
     assert merged["hooks"]["postToolUse"] == [{"command": command}]
 
 
-def test_merge_migrates_a_superseded_command_instead_of_appending_beside_it(tmp_path):
+def test_merge_migrates_a_superseded_command_instead_of_appending_beside_it(
+    tmp_path: Path,
+) -> None:
     """The migration half.
 
     Renaming a command remem writes would otherwise leave the old entry in
@@ -206,7 +211,9 @@ def test_merge_migrates_a_superseded_command_instead_of_appending_beside_it(tmp_
     ]
 
 
-def test_merge_repairs_a_file_naming_both_the_old_and_the_new_command(tmp_path):
+def test_merge_repairs_a_file_naming_both_the_old_and_the_new_command(
+    tmp_path: Path,
+) -> None:
     """The state a previous buggy install leaves behind: both present.
 
     Migrating in place is not enough here - it would produce two identical
@@ -237,7 +244,7 @@ def test_merge_repairs_a_file_naming_both_the_old_and_the_new_command(tmp_path):
     assert merged["hooks"]["postToolUse"] == [{"command": new}]
 
 
-def test_merge_never_removes_an_entry_remem_did_not_write(tmp_path):
+def test_merge_never_removes_an_entry_remem_did_not_write(tmp_path: Path) -> None:
     """hooks.json is shared and user-owned.
 
     An install that tidied the file by deleting entries it did not write
@@ -284,7 +291,7 @@ def test_the_hook_table_names_exactly_what_install_writes():
     )
 
 
-def test_merge_preserves_other_keys_on_an_entry_it_rewrites(tmp_path):
+def test_merge_preserves_other_keys_on_an_entry_it_rewrites(tmp_path: Path) -> None:
     """Cursor may grow per-entry options. Rewriting the command must not
     drop whatever else the entry carried."""
     path = tmp_path / "hooks.json"

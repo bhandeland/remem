@@ -33,18 +33,20 @@ def owner(store: PostgresStore) -> Principal:
     return store.ensure_principal("brandon")
 
 
-def test_a_project_starts_undesignated(store, owner):
+def test_a_project_starts_undesignated(store: PostgresStore, owner: Principal) -> None:
     assert ingest.designations(store, owner.id, "proj") == []
 
 
-def test_designate_records_the_paths(store, owner):
+def test_designate_records_the_paths(store: PostgresStore, owner: Principal) -> None:
     ingest.designate(store, owner.id, "proj", ["docs/specs", "docs/notes"])
     [d] = ingest.designations(store, owner.id, "proj")
     assert d.paths == ("docs/specs", "docs/notes")
     assert d.archive is False
 
 
-def test_the_archive_set_is_a_separate_designation(store, owner):
+def test_the_archive_set_is_a_separate_designation(
+    store: PostgresStore, owner: Principal
+) -> None:
     """Two rows per project at most, matching the two invocations."""
     ingest.designate(store, owner.id, "proj", ["docs/specs"])
     ingest.designate(store, owner.id, "proj", ["docs/plans"], archive=True)
@@ -52,14 +54,18 @@ def test_the_archive_set_is_a_separate_designation(store, owner):
     assert got == {False: ("docs/specs",), True: ("docs/plans",)}
 
 
-def test_redesignating_replaces_rather_than_appends(store, owner):
+def test_redesignating_replaces_rather_than_appends(
+    store: PostgresStore, owner: Principal
+) -> None:
     ingest.designate(store, owner.id, "proj", ["docs/specs"])
     ingest.designate(store, owner.id, "proj", ["docs/other"])
     [d] = ingest.designations(store, owner.id, "proj")
     assert d.paths == ("docs/other",)
 
 
-def test_designate_none_clears_only_that_half(store, owner):
+def test_designate_none_clears_only_that_half(
+    store: PostgresStore, owner: Principal
+) -> None:
     ingest.designate(store, owner.id, "proj", ["docs/specs"])
     ingest.designate(store, owner.id, "proj", ["docs/plans"], archive=True)
     ingest.designate(store, owner.id, "proj", None)
@@ -67,12 +73,14 @@ def test_designate_none_clears_only_that_half(store, owner):
     assert d.archive is True
 
 
-def test_designation_is_per_project(store, owner):
+def test_designation_is_per_project(store: PostgresStore, owner: Principal) -> None:
     ingest.designate(store, owner.id, "a", ["docs/specs"])
     assert ingest.designations(store, owner.id, "b") == []
 
 
-def test_designations_without_a_project_returns_every_one(store, owner):
+def test_designations_without_a_project_returns_every_one(
+    store: PostgresStore, owner: Principal
+) -> None:
     ingest.designate(store, owner.id, "a", ["docs/specs"])
     ingest.designate(store, owner.id, "b", ["docs/notes"])
     assert {d.project for d in ingest.designations(store, owner.id)} == {"a", "b"}
@@ -83,18 +91,24 @@ def test_designations_without_a_project_returns_every_one(store, owner):
 # path would point at whatever the machine that stored it happened to have,
 # and a `..` escape would ingest from outside the repository entirely. Both
 # are refused at designate time, where there is a human to tell.
-def test_designate_refuses_an_absolute_path(store, owner):
+def test_designate_refuses_an_absolute_path(
+    store: PostgresStore, owner: Principal
+) -> None:
     with pytest.raises(ingest.BadDesignation):
         ingest.designate(store, owner.id, "proj", ["/etc"])
     assert ingest.designations(store, owner.id, "proj") == []
 
 
-def test_designate_refuses_a_path_escaping_the_repository(store, owner):
+def test_designate_refuses_a_path_escaping_the_repository(
+    store: PostgresStore, owner: Principal
+) -> None:
     with pytest.raises(ingest.BadDesignation):
         ingest.designate(store, owner.id, "proj", ["../elsewhere"])
 
 
-def test_designate_refuses_an_empty_path_list(store, owner):
+def test_designate_refuses_an_empty_path_list(
+    store: PostgresStore, owner: Principal
+) -> None:
     """Clearing is `None`. An empty list is a mistake worth naming."""
     with pytest.raises(ingest.BadDesignation):
         ingest.designate(store, owner.id, "proj", [])

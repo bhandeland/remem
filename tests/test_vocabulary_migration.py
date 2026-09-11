@@ -12,11 +12,14 @@ after it".
 from __future__ import annotations
 
 import json
-from uuid import uuid4
+from typing import Any
+from uuid import UUID, uuid4
 
+import psycopg
 import pytest
 
 from remem.backends.postgres.migrate import migration_files
+from remem.backends.postgres.sqltext import as_sql
 from remem.backends.postgres.store import PostgresStore
 from remem.domain import Kind, Origin
 from remem.services import kb
@@ -26,7 +29,7 @@ pytestmark = pytest.mark.db
 BEFORE = "006_vectors"
 
 
-def apply_through(conn, last_version: str) -> None:
+def apply_through(conn: psycopg.Connection[Any], last_version: str) -> None:
     """Apply migrations up to and including `last_version`.
 
     The suite's other database tests start from a fully migrated schema.
@@ -39,24 +42,26 @@ def apply_through(conn, last_version: str) -> None:
         " applied_at timestamptz not null default clock_timestamp())"
     )
     for version, sql in migration_files():
-        conn.execute(sql)
+        conn.execute(as_sql(sql))
         conn.execute("insert into schema_migrations (version) values (%s)", (version,))
         if version == last_version:
             return
 
 
-def apply_rest(conn) -> None:
+def apply_rest(conn: psycopg.Connection[Any]) -> None:
     done = {
         r[0] for r in conn.execute("select version from schema_migrations").fetchall()
     }
     for version, sql in migration_files():
         if version in done:
             continue
-        conn.execute(sql)
+        conn.execute(as_sql(sql))
         conn.execute("insert into schema_migrations (version) values (%s)", (version,))
 
 
-def _old_world(conn, origin: str = "capture"):
+def _old_world(
+    conn: psycopg.Connection[Any], origin: str = "capture"
+) -> tuple[UUID, UUID]:
     """A principal, an old-vocabulary entry, and a collection that finds it.
 
     `origin` defaults to 'capture' for the tests exercising the origin
@@ -89,7 +94,9 @@ def _old_world(conn, origin: str = "capture"):
     return owner, entry
 
 
-def test_a_pre_migration_collection_resolves_to_the_same_entries(conn):
+def test_a_pre_migration_collection_resolves_to_the_same_entries(
+    conn: psycopg.Connection[Any],
+) -> None:
     apply_through(conn, BEFORE)
     owner, entry = _old_world(conn, origin="human")
 
@@ -100,7 +107,9 @@ def test_a_pre_migration_collection_resolves_to_the_same_entries(conn):
     assert resolved[0].kind is Kind.NOTE
 
 
-def test_a_captured_entry_reads_back_as_extracted(conn):
+def test_a_captured_entry_reads_back_as_extracted(
+    conn: psycopg.Connection[Any],
+) -> None:
     apply_through(conn, BEFORE)
     owner, entry = _old_world(conn)
 
@@ -111,7 +120,7 @@ def test_a_captured_entry_reads_back_as_extracted(conn):
     assert stored.origin is Origin.EXTRACTED
 
 
-def test_the_opt_in_survives_the_table_rename(conn):
+def test_the_opt_in_survives_the_table_rename(conn: psycopg.Connection[Any]) -> None:
     apply_through(conn, BEFORE)
     owner = uuid4()
     conn.execute(

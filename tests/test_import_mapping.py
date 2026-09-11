@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from typing import Any
 
 from remem.domain import Kind
 from remem.importers.base import SourceKind, SourceRecord
@@ -24,7 +25,7 @@ _BASE = SourceRecord(
 )
 
 
-def _record(**kw) -> SourceRecord:
+def _record(**kw: Any) -> SourceRecord:
     return replace(_BASE, **kw)
 
 

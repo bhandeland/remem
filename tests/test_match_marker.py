@@ -7,10 +7,12 @@ to score. Collapsing them back into one "approximate" flag would throw away
 the distinction the third tier exists to create.
 """
 
+from typing import Any
+
 from remem.domain import Hit, Match
 
 
-def _hit(**kw):
+def _hit(**kw: Any) -> Hit:
     from remem.domain import Entry, Kind, new_id
 
     entry = Entry(id=new_id(), kind=Kind.NOTE, title="t", body="b", owner_id=new_id())

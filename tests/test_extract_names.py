@@ -33,7 +33,9 @@ def env(live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> str:
     return live_dsn
 
 
-def test_the_old_model_variable_still_works_and_warns(capsys):
+def test_the_old_model_variable_still_works_and_warns(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     """One release of grace, and a warning that names the replacement.
 
     A user's shell profile or settings.json holds REMEM_CAPTURE_MODEL today.
@@ -46,12 +48,14 @@ def test_the_old_model_variable_still_works_and_warns(capsys):
     assert "REMEM_EXTRACT_MODEL" in capsys.readouterr().err
 
 
-def test_the_new_variable_wins_when_both_are_set(capsys):
+def test_the_new_variable_wins_when_both_are_set(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     config = load(env={"REMEM_CAPTURE_MODEL": "haiku", "REMEM_EXTRACT_MODEL": "opus"})
     assert config.extract_model == "opus"
 
 
-def test_the_child_variable_is_named_consistently_everywhere():
+def test_the_child_variable_is_named_consistently_everywhere() -> None:
     """One string, checked by three hooks and set by the extractor. A
     rename that reaches only some of them lets an extraction's own child
     record events, which the next extraction reads, without bound."""
@@ -65,7 +69,7 @@ def test_the_child_variable_is_named_consistently_everywhere():
 
 
 @pytest.mark.db
-def test_the_capture_commands_still_run_and_warn(env):
+def test_the_capture_commands_still_run_and_warn(env: str) -> None:
     """The warning is on stderr, not stdout - an old crontab still calling
     `capture drain` every hour should not gain a permanent line of stdout
     noise, and `capture status --json` has to stay parseable on its own."""
@@ -74,7 +78,7 @@ def test_the_capture_commands_still_run_and_warn(env):
     assert "remem record enable" in result.stderr
 
 
-def test_no_credential_or_endpoint_variable_became_settable():
+def test_no_credential_or_endpoint_variable_became_settable() -> None:
     """Standing rule, re-asserted because this task edits the table."""
     from remem.services.settings import REMEM_VARS
 

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
 
 import psycopg
@@ -27,7 +29,12 @@ def owner(store: PostgresStore) -> Principal:
     return store.ensure_principal("brandon")
 
 
-def _designated(store, owner, project="proj", slug="proj-memory"):
+def _designated(
+    store: PostgresStore,
+    owner: Principal,
+    project: str = "proj",
+    slug: str = "proj-memory",
+) -> str:
     # The query is what makes membership real. kb.create's `project=` only
     # records which project the collection belongs to; without an explicit
     # CollectionQuery the collection matches nothing forever, and the sync
@@ -44,7 +51,14 @@ def _designated(store, owner, project="proj", slug="proj-memory"):
     return slug
 
 
-def _write_file(directory, name, description, body, type_="project", extra=None):
+def _write_file(
+    directory: Path,
+    name: str,
+    description: str,
+    body: str,
+    type_: str | None = "project",
+    extra: Mapping[str, str] | None = None,
+) -> None:
     directory.mkdir(parents=True, exist_ok=True)
     (directory / f"{name}.md").write_text(
         memory_file.render(
@@ -60,13 +74,17 @@ def _write_file(directory, name, description, body, type_="project", extra=None)
     )
 
 
-def test_an_undesignated_project_writes_nothing(store, owner, tmp_path):
+def test_an_undesignated_project_writes_nothing(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     with pytest.raises(memory.NotDesignated):
         memory.sync(store, owner.id, project="proj", directory=tmp_path)
     assert list(tmp_path.iterdir()) == []
 
 
-def test_case_1_a_stray_file_is_adopted(store, owner, tmp_path):
+def test_case_1_a_stray_file_is_adopted(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     _designated(store, owner)
     _write_file(tmp_path, "a-fact", "a hook", "the body\n")
     report = memory.sync(store, owner.id, project="proj", directory=tmp_path)
@@ -79,7 +97,9 @@ def test_case_1_a_stray_file_is_adopted(store, owner, tmp_path):
     assert "mem:a-fact" in entries[0].tags
 
 
-def test_case_2_a_lost_watermark_heals_when_bodies_match(store, owner, tmp_path):
+def test_case_2_a_lost_watermark_heals_when_bodies_match(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     _designated(store, owner)
     _write_file(tmp_path, "a-fact", "a hook", "the body\n")
     memory.sync(store, owner.id, project="proj", directory=tmp_path)
@@ -89,7 +109,9 @@ def test_case_2_a_lost_watermark_heals_when_bodies_match(store, owner, tmp_path)
     assert report.conflicts == []
 
 
-def test_case_2_a_lost_watermark_conflicts_when_bodies_differ(store, owner, tmp_path):
+def test_case_2_a_lost_watermark_conflicts_when_bodies_differ(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     _designated(store, owner)
     _write_file(tmp_path, "a-fact", "a hook", "the body\n")
     memory.sync(store, owner.id, project="proj", directory=tmp_path)
@@ -100,8 +122,8 @@ def test_case_2_a_lost_watermark_conflicts_when_bodies_differ(store, owner, tmp_
 
 
 def test_case_3_an_edited_file_supersedes_the_entry_keeping_its_tag(
-    store, owner, tmp_path
-):
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     _designated(store, owner)
     _write_file(tmp_path, "a-fact", "a hook", "the body\n")
     memory.sync(store, owner.id, project="proj", directory=tmp_path)
@@ -113,7 +135,9 @@ def test_case_3_an_edited_file_supersedes_the_entry_keeping_its_tag(
     assert "mem:a-fact" in entries[0].tags
 
 
-def test_case_4_an_edited_entry_regenerates_the_file(store, owner, tmp_path):
+def test_case_4_an_edited_entry_regenerates_the_file(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     _designated(store, owner)
     _write_file(tmp_path, "a-fact", "a hook", "the body\n")
     memory.sync(store, owner.id, project="proj", directory=tmp_path)
@@ -124,7 +148,9 @@ def test_case_4_an_edited_entry_regenerates_the_file(store, owner, tmp_path):
     assert "from remem" in (tmp_path / "a-fact.md").read_text()
 
 
-def test_syncing_an_edited_summary_less_rule_does_not_raise(store, owner, tmp_path):
+def test_syncing_an_edited_summary_less_rule_does_not_raise(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     """A Kind.RULE entry that never had a summary - written directly, the
     way the 17 pre-existing rules on this machine got that way, since
     write.remember no longer produces one for a human- or agent-origin
@@ -170,8 +196,8 @@ def test_syncing_an_edited_summary_less_rule_does_not_raise(store, owner, tmp_pa
 
 
 def test_syncing_a_rule_with_its_description_line_deleted_carries_the_old_summary(
-    store, owner, tmp_path
-):
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     """The one-line fix `summary=mf.description or None`: a rule that DOES
     have a summary must not lose it just because the file's edit also
     dropped the `description:` line - memory_file.parse reads a missing
@@ -211,7 +237,9 @@ def test_syncing_a_rule_with_its_description_line_deleted_carries_the_old_summar
     assert rule.summary == "do the thing"
 
 
-def test_regenerating_preserves_metadata_remem_does_not_own(store, owner, tmp_path):
+def test_regenerating_preserves_metadata_remem_does_not_own(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     # Claude Code's own bookkeeping lives in these files and an Entry has
     # nowhere to put it, so a regenerate that rendered the entry alone would
     # destroy provenance on every file remem did not write.
@@ -236,8 +264,8 @@ def test_regenerating_preserves_metadata_remem_does_not_own(store, owner, tmp_pa
 
 
 def test_case_5_both_sides_moved_is_a_conflict_and_writes_nothing(
-    store, owner, tmp_path
-):
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     _designated(store, owner)
     _write_file(tmp_path, "a-fact", "a hook", "the body\n")
     memory.sync(store, owner.id, project="proj", directory=tmp_path)
@@ -252,7 +280,9 @@ def test_case_5_both_sides_moved_is_a_conflict_and_writes_nothing(
     assert "from remem" in (tmp_path / "a-fact.remem-conflict.md").read_text()
 
 
-def test_a_conflict_sidecar_is_never_adopted_as_a_memory(store, owner, tmp_path):
+def test_a_conflict_sidecar_is_never_adopted_as_a_memory(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     # The sidecar is remem's report of a conflict, not a memory. Adopting it
     # would create a second entry from the same knowledge on the next sync,
     # and then regenerate a file for it forever.
@@ -276,7 +306,9 @@ def test_a_conflict_sidecar_is_never_adopted_as_a_memory(store, owner, tmp_path)
     assert names == {"mem:a-fact"}
 
 
-def test_case_6_an_entry_out_of_the_collection_deletes_its_file(store, owner, tmp_path):
+def test_case_6_an_entry_out_of_the_collection_deletes_its_file(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     _designated(store, owner)
     _write_file(tmp_path, "a-fact", "a hook", "the body\n")
     memory.sync(store, owner.id, project="proj", directory=tmp_path)
@@ -293,7 +325,9 @@ def test_case_6_an_entry_out_of_the_collection_deletes_its_file(store, owner, tm
     assert not (tmp_path / "a-fact.md").exists()
 
 
-def test_a_file_that_moved_is_never_deleted(store, owner, tmp_path):
+def test_a_file_that_moved_is_never_deleted(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     _designated(store, owner)
     _write_file(tmp_path, "a-fact", "a hook", "the body\n")
     memory.sync(store, owner.id, project="proj", directory=tmp_path)
@@ -312,7 +346,9 @@ def test_a_file_that_moved_is_never_deleted(store, owner, tmp_path):
     assert report.conflicts == ["a-fact"]
 
 
-def test_a_second_sync_writes_nothing_at_all(store, owner, tmp_path):
+def test_a_second_sync_writes_nothing_at_all(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     # The property everything else rests on. If this fails, the round-trip
     # is not byte-exact and every sync will churn.
     _designated(store, owner)
@@ -333,7 +369,9 @@ def test_a_second_sync_writes_nothing_at_all(store, owner, tmp_path):
     )
 
 
-def test_dry_run_reports_without_writing(store, owner, tmp_path):
+def test_dry_run_reports_without_writing(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     _designated(store, owner)
     _write_file(tmp_path, "a-fact", "a hook", "the body\n")
     report = memory.sync(
@@ -348,7 +386,9 @@ def test_dry_run_reports_without_writing(store, owner, tmp_path):
     assert not (tmp_path / memory.WATERMARK_NAME).exists()
 
 
-def test_memory_md_is_written_and_indexes_every_file(store, owner, tmp_path):
+def test_memory_md_is_written_and_indexes_every_file(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     _designated(store, owner)
     _write_file(tmp_path, "b-fact", "second", "b\n")
     _write_file(tmp_path, "a-fact", "first", "a\n")
@@ -358,8 +398,8 @@ def test_memory_md_is_written_and_indexes_every_file(store, owner, tmp_path):
 
 
 def test_a_malformed_file_with_a_live_entry_is_never_overwritten(
-    store, owner, tmp_path
-):
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     # The dangerous half of "malformed". The entry still exists, so a file
     # treated as absent would be regenerated from the store and the user's
     # text destroyed. Unreadable is not absent.
@@ -377,7 +417,9 @@ def test_a_malformed_file_with_a_live_entry_is_never_overwritten(
     assert [name for name, _ in report.failures] == ["a-fact"]
 
 
-def test_a_malformed_file_is_reported_and_costs_nothing_else(store, owner, tmp_path):
+def test_a_malformed_file_is_reported_and_costs_nothing_else(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     _designated(store, owner)
     _write_file(tmp_path, "good", "a hook", "fine\n")
     tmp_path.mkdir(parents=True, exist_ok=True)
@@ -389,7 +431,9 @@ def test_a_malformed_file_is_reported_and_costs_nothing_else(store, owner, tmp_p
     assert [name for name, _ in report.failures] == ["bad"]
 
 
-def test_an_unparseable_file_keeps_its_memory_md_line(store, owner, tmp_path):
+def test_an_unparseable_file_keeps_its_memory_md_line(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     # The index is rebuilt from live entries, and a file remem could not parse
     # has none - so without carrying the old line through, "reported and
     # otherwise left completely alone" would still cost the file its index
@@ -406,7 +450,9 @@ def test_an_unparseable_file_keeps_its_memory_md_line(store, owner, tmp_path):
     assert (tmp_path / "MEMORY.md").read_text().strip() == line
 
 
-def test_regenerating_keeps_the_frontmatter_name_the_user_wrote(store, owner, tmp_path):
+def test_regenerating_keeps_the_frontmatter_name_the_user_wrote(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     # Identity is the filename stem; the frontmatter `name:` is the user's
     # and remem does not own it, so a regenerate must not rewrite it.
     _designated(store, owner)
@@ -437,7 +483,9 @@ def test_regenerating_keeps_the_frontmatter_name_the_user_wrote(store, owner, tm
     assert "(a-fact.md)" in (tmp_path / "MEMORY.md").read_text()
 
 
-def test_a_conflict_that_writes_no_sidecar_says_so(store, owner, tmp_path):
+def test_a_conflict_that_writes_no_sidecar_says_so(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     # A file edited for an entry that has left the collection is reported as
     # a conflict and touches nothing - including writing no sidecar.
     _designated(store, owner)
@@ -458,7 +506,9 @@ def test_a_conflict_that_writes_no_sidecar_says_so(store, owner, tmp_path):
     assert not (tmp_path / f"a-fact{memory.CONFLICT_SUFFIX}").exists()
 
 
-def test_a_dry_run_conflict_writes_no_sidecar_and_says_so(store, owner, tmp_path):
+def test_a_dry_run_conflict_writes_no_sidecar_and_says_so(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     _designated(store, owner)
     _write_file(tmp_path, "a-fact", "a hook", "the body\n")
     memory.sync(store, owner.id, project="proj", directory=tmp_path)
@@ -479,7 +529,9 @@ def test_a_dry_run_conflict_writes_no_sidecar_and_says_so(store, owner, tmp_path
     assert not (tmp_path / f"a-fact{memory.CONFLICT_SUFFIX}").exists()
 
 
-def test_a_collection_at_the_resolve_limit_refuses_to_sync(store, owner, tmp_path):
+def test_a_collection_at_the_resolve_limit_refuses_to_sync(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     # Past kb.RESOLVE_LIMIT an entry remem cannot see is indistinguishable
     # from one that left the collection, and its file would be deleted.
     _designated(store, owner)
@@ -500,7 +552,9 @@ def test_a_collection_at_the_resolve_limit_refuses_to_sync(store, owner, tmp_pat
     assert not (tmp_path / "MEMORY.md").exists()
 
 
-def test_designating_without_a_project_is_refused(store, owner):
+def test_designating_without_a_project_is_refused(
+    store: PostgresStore, owner: Principal
+) -> None:
     # Outside a git repository the CLI resolves no project, and the column is
     # not null - so without this the store raises a NotNullViolation
     # traceback out of a command a person typed.
@@ -508,7 +562,9 @@ def test_designating_without_a_project_is_refused(store, owner):
         memory.designate(store, owner.id, None, "proj-memory")
 
 
-def test_an_entry_with_no_mem_tag_is_exported(store, owner, tmp_path):
+def test_an_entry_with_no_mem_tag_is_exported(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     # The store-to-disk direction. Nothing puts a `mem:` tag on an entry
     # written by hand, so an export that only knew about tagged entries would
     # export nothing at all from a collection full of real rules and notes.
@@ -531,7 +587,9 @@ def test_an_entry_with_no_mem_tag_is_exported(store, owner, tmp_path):
     assert "deploys-need-https.md" in (tmp_path / "MEMORY.md").read_text()
 
 
-def test_the_minted_name_persists_so_the_next_sync_is_a_no_op(store, owner, tmp_path):
+def test_the_minted_name_persists_so_the_next_sync_is_a_no_op(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     # Load-bearing: if the tag were not written back, every sync would mint a
     # fresh name, and a name that moved is a file deleted and rewritten.
     _designated(store, owner)
@@ -562,7 +620,9 @@ def test_the_minted_name_persists_so_the_next_sync_is_a_no_op(store, owner, tmp_
     assert tags == ["mem:deploys-need-https"]
 
 
-def test_two_titles_that_slugify_alike_get_two_files(store, owner, tmp_path):
+def test_two_titles_that_slugify_alike_get_two_files(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     _designated(store, owner)
     for body in ("first\n", "second\n"):
         remember(
@@ -585,8 +645,8 @@ def test_two_titles_that_slugify_alike_get_two_files(store, owner, tmp_path):
 
 
 def test_a_tagged_entry_with_no_file_keeps_its_name_against_a_minting_collision(
-    store, owner, tmp_path
-):
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     # The seeding-order bug: `taken` starts from the files on disk, and an
     # entry's EXISTING `mem:` name only joins it when the loop reaches that
     # entry. So a tagged entry whose file is absent - deleted, fresh machine,
@@ -630,13 +690,13 @@ def test_a_tagged_entry_with_no_file_keeps_its_name_against_a_minting_collision(
 # since been deleted, and a collection that was dropped out from under a
 # designation are three different answers, and every frontend has to give
 # the same ones.
-def _dir_for(cwd):
+def _dir_for(cwd: Path) -> Path | None:
     return cwd / "memory"
 
 
 def test_sync_all_syncs_every_designation_that_records_a_directory(
-    store, owner, tmp_path
-):
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     for p in ("a", "b"):
         _designated(store, owner, project=p, slug=f"{p}-memory")
         memory.designate(
@@ -659,7 +719,9 @@ def test_sync_all_syncs_every_designation_that_records_a_directory(
     assert (tmp_path / "b" / "memory" / "b-note.md").exists()
 
 
-def test_sync_all_skips_a_designation_with_no_recorded_directory(store, owner):
+def test_sync_all_skips_a_designation_with_no_recorded_directory(
+    store: PostgresStore, owner: Principal
+) -> None:
     _designated(store, owner, project="a", slug="a-memory")
     [out] = memory.sync_all(store, owner.id, resolve_directory=_dir_for)
     assert out.report is None
@@ -669,7 +731,9 @@ def test_sync_all_skips_a_designation_with_no_recorded_directory(store, owner):
     assert "designate" in out.skipped
 
 
-def test_sync_all_reports_a_working_directory_that_is_gone(store, owner, tmp_path):
+def test_sync_all_reports_a_working_directory_that_is_gone(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     _designated(store, owner, project="a", slug="a-memory")
     memory.designate(
         store,
@@ -683,7 +747,12 @@ def test_sync_all_reports_a_working_directory_that_is_gone(store, owner, tmp_pat
     assert "gone" in found(out.skipped) or "exist" in found(out.skipped)
 
 
-def test_one_project_failing_does_not_stop_the_others(store, owner, tmp_path, conn):
+def test_one_project_failing_does_not_stop_the_others(
+    store: PostgresStore,
+    owner: Principal,
+    tmp_path: Path,
+    conn: psycopg.Connection[Any],
+) -> None:
     for p in ("a", "b"):
         _designated(store, owner, project=p, slug=f"{p}-memory")
         memory.designate(
@@ -713,8 +782,8 @@ def test_one_project_failing_does_not_stop_the_others(store, owner, tmp_path, co
 
 
 def test_a_renamed_file_moves_its_entry_instead_of_duplicating_it(
-    store, owner, tmp_path
-):
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     # The failure this guards: a rename classified as two independent names -
     # ADOPT_NEW for the new stem, REGENERATE for the old - mints a second
     # entry from the same body and writes the deleted file back out.
@@ -737,7 +806,9 @@ def test_a_renamed_file_moves_its_entry_instead_of_duplicating_it(
     assert (tmp_path / "new-name.md").exists()
 
 
-def test_a_renamed_file_leaves_a_watermark_under_its_new_name(store, owner, tmp_path):
+def test_a_renamed_file_leaves_a_watermark_under_its_new_name(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     # Without moving the watermark the next sync sees a file with no mark,
     # which is ADOPT_EDIT or CONFLICT depending on the body - so the rename
     # would cost the very gate that makes "which side moved" answerable.
@@ -757,8 +828,8 @@ def test_a_renamed_file_leaves_a_watermark_under_its_new_name(store, owner, tmp_
 
 
 def test_two_identical_files_matching_one_rename_are_refused_not_guessed(
-    store, owner, tmp_path
-):
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     # Two candidates for the same missing name is genuinely ambiguous. Pick
     # one and the entry follows a coin flip; refuse and the ordinary cases
     # still run, which is how _adopt_names handles two entries sharing a name.
@@ -775,7 +846,9 @@ def test_two_identical_files_matching_one_rename_are_refused_not_guessed(
     assert "one" in report.failures[0][1] and "two" in report.failures[0][1]
 
 
-def test_a_dry_run_reports_a_rename_without_writing_it(store, owner, tmp_path):
+def test_a_dry_run_reports_a_rename_without_writing_it(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     _designated(store, owner)
     _write_file(tmp_path, "old-name", "a hook", "the body\n")
     memory.sync(store, owner.id, project="proj", directory=tmp_path)
@@ -791,8 +864,8 @@ def test_a_dry_run_reports_a_rename_without_writing_it(store, owner, tmp_path):
 
 
 def test_a_rename_with_an_edit_in_the_same_interval_is_not_followed(
-    store, owner, tmp_path
-):
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     # The honest floor, asserted so it is a decision rather than a surprise:
     # the proof of a rename is that the new file is byte-identical to what
     # remem last wrote under the old name. Edit it too and that proof is gone,
@@ -811,8 +884,8 @@ def test_a_rename_with_an_edit_in_the_same_interval_is_not_followed(
 
 
 def test_two_entries_matching_one_new_file_are_refused_not_guessed(
-    store, owner, tmp_path
-):
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     # The mirror of the two-files case: two watermarks holding the same body,
     # one arriving file. Whichever entry were picked, the other would still
     # regenerate its file, so the "rename" would fix nothing and mis-tag one.
@@ -831,8 +904,8 @@ def test_two_entries_matching_one_new_file_are_refused_not_guessed(
 
 
 def test_an_unparseable_file_is_never_read_as_a_rename_away_from_itself(
-    store, owner, tmp_path
-):
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     # An unreadable file is absent from `files` but present on disk. Treated
     # as a missing name it would look renamed to any new file that happens to
     # match its watermark, re-tagging the entry away from a file sitting

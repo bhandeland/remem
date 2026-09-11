@@ -32,7 +32,9 @@ def owner(store: PostgresStore) -> Principal:
     return store.ensure_principal("brandon")
 
 
-def test_editing_the_body_drops_the_vector(store, owner):
+def test_editing_the_body_drops_the_vector(
+    store: PostgresStore, owner: Principal
+) -> None:
     entry = write.remember(
         store, owner.id, title="pgvector indexing", body="original text"
     )
@@ -44,7 +46,9 @@ def test_editing_the_body_drops_the_vector(store, owner):
     assert [e.id for e in missing] == [entry.id]
 
 
-def test_a_write_that_changes_no_text_keeps_the_vector(store, owner):
+def test_a_write_that_changes_no_text_keeps_the_vector(
+    store: PostgresStore, owner: Principal
+) -> None:
     """Re-embedding on every touch would make `remem embed` never finish.
 
     Linking two entries calls put_entry, and so does superseding. Neither
@@ -58,7 +62,9 @@ def test_a_write_that_changes_no_text_keeps_the_vector(store, owner):
     assert store.entries_missing_vectors(owner.id, "m", limit=10) == []
 
 
-def test_the_semantic_tier_cannot_return_the_stale_wording(store, owner):
+def test_the_semantic_tier_cannot_return_the_stale_wording(
+    store: PostgresStore, owner: Principal
+) -> None:
     """The end-to-end version of the first test, stated as search behaviour."""
     entry = write.remember(store, owner.id, title="t", body="original")
     store.put_vector(entry.id, "m", 3, [1.0, 0.0, 0.0], owner.id)

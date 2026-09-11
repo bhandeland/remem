@@ -19,8 +19,10 @@ from remem.agents.base import HarnessEvent
 from remem.backends.postgres.migrate import migrate
 from remem.backends.postgres.store import PostgresStore
 from remem.domain import (
+    Entry,
     Event,
     EventKind,
+    ExtractJob,
     JobStatus,
     Kind,
     Origin,
@@ -55,7 +57,7 @@ def owner(store: PostgresStore) -> Principal:
     return store.ensure_principal("brandon")
 
 
-def a_harness_event(**kw):
+def a_harness_event(**kw: Any):
     return HarnessEvent(
         kind=kw.get("kind", EventKind.TOOL_CALL),
         session_id=kw.get("session_id", "s1"),
@@ -66,7 +68,13 @@ def a_harness_event(**kw):
     )
 
 
-def three_events(store, owner, session_id="s1", project="remem", base=None):
+def three_events(
+    store: PostgresStore,
+    owner: Principal,
+    session_id: str = "s1",
+    project: str = "remem",
+    base: datetime | None = None,
+):
     """Three events, spaced, all old enough for the idle trigger.
 
     `found` because `record.record` returns None when the project has not
@@ -100,13 +108,19 @@ class FakeExtractor:
     INPUT: the extractor must be handed events, and never a transcript path.
     """
 
-    def __init__(self, entries=None, error=None):
+    def __init__(
+        self,
+        entries: list[ExtractedEntry] | None = None,
+        error: Exception | None = None,
+    ):
         self.entries = entries or []
         self.error = error
         self.seen: list[list[Event]] = []
         self.known: list[list[str]] = []
 
-    def extract(self, events, project, known_titles=None):
+    def extract(
+        self, events: list[Event], project: str, known_titles: list[str] | None = None
+    ):
         self.seen.append(list(events))
         self.known.append(list(known_titles or []))
         if self.error:
@@ -115,8 +129,8 @@ class FakeExtractor:
 
 
 def an_entry(
-    title="pgvector needs no index yet",
-    body="Under 10k rows a sequential scan beats an ivfflat index.",
+    title: str = "pgvector needs no index yet",
+    body: str = "Under 10k rows a sequential scan beats an ivfflat index.",
 ):
     return ExtractedEntry(title=title, body=body, kind=Kind.NOTE, tags=["postgres"])
 
@@ -124,7 +138,9 @@ def an_entry(
 # --- the round trip ---------------------------------------------------------
 
 
-def test_an_extracted_rule_is_written_without_a_summary(store, owner):
+def test_an_extracted_rule_is_written_without_a_summary(
+    store: PostgresStore, owner: Principal
+) -> None:
     """ExtractedEntry has no summary field and the extraction prompt asks
     the model for kind: "rule" - so _write must be able to write a
     Kind.RULE entry with no summary. It can, because origin=EXTRACTED is
@@ -160,7 +176,9 @@ def test_an_extracted_rule_is_written_without_a_summary(store, owner):
     assert written["Always lint before committing"].summary is None
 
 
-def test_processing_a_quiet_session_writes_entries_and_provenance(store, owner):
+def test_processing_a_quiet_session_writes_entries_and_provenance(
+    store: PostgresStore, owner: Principal
+) -> None:
     record.enable(store, owner.id, "remem")
     events = three_events(store, owner)
     extractor = FakeExtractor([an_entry()])
@@ -182,7 +200,9 @@ def test_processing_a_quiet_session_writes_entries_and_provenance(store, owner):
     assert all(r[1:] == ("s1", "claude-code", True) for r in rows)
 
 
-def test_the_extractor_is_handed_events_not_a_transcript(store, owner):
+def test_the_extractor_is_handed_events_not_a_transcript(
+    store: PostgresStore, owner: Principal
+) -> None:
     """The input is rows, oldest first - nothing here reads a file."""
     record.enable(store, owner.id, "remem")
     events = three_events(store, owner)
@@ -199,7 +219,9 @@ def test_the_extractor_is_handed_events_not_a_transcript(store, owner):
     ]
 
 
-def test_a_second_run_extracts_nothing_new(store, owner):
+def test_a_second_run_extracts_nothing_new(
+    store: PostgresStore, owner: Principal
+) -> None:
     """Idempotence. `events process` is a cron command; running it twice
     must do the work once."""
     record.enable(store, owner.id, "remem")
@@ -219,7 +241,9 @@ def test_a_second_run_extracts_nothing_new(store, owner):
     assert len(extractor.seen) == 1
 
 
-def test_a_session_still_being_worked_in_is_left_alone(store, owner):
+def test_a_session_still_being_worked_in_is_left_alone(
+    store: PostgresStore, owner: Principal
+) -> None:
     """The idle window is the whole trigger: extracting a live session would
     read half a conversation and then never look again."""
     record.enable(store, owner.id, "remem")
@@ -232,7 +256,9 @@ def test_a_session_still_being_worked_in_is_left_alone(store, owner):
     assert extractor.seen == []
 
 
-def test_a_resumed_session_extracts_only_its_new_events(store, owner):
+def test_a_resumed_session_extracts_only_its_new_events(
+    store: PostgresStore, owner: Principal
+) -> None:
     record.enable(store, owner.id, "remem")
     three_events(store, owner)
     extractor = FakeExtractor([])
@@ -259,13 +285,20 @@ def test_a_resumed_session_extracts_only_its_new_events(store, owner):
     assert [e.id for e in extractor.seen[1]] == [e.id for e in later]
 
 
-def test_an_extractor_that_raises_fails_the_job_and_records_why(store, owner):
+def test_an_extractor_that_raises_fails_the_job_and_records_why(
+    store: PostgresStore, owner: Principal
+) -> None:
     record.enable(store, owner.id, "remem")
     three_events(store, owner)
     prose = "I read the session and found nothing worth remembering."
 
     class ProseExtractor:
-        def extract(self, events, project, known_titles=None):
+        def extract(
+            self,
+            events: list[Event],
+            project: str,
+            known_titles: list[str] | None = None,
+        ):
             return parse_entries(prose)
 
     report = extraction.process(
@@ -275,11 +308,13 @@ def test_an_extractor_that_raises_fails_the_job_and_records_why(store, owner):
     assert (report.claimed, report.succeeded, report.failed) == (1, 0, 1)
     [job] = store.recent_failed_extract_jobs(owner.id)
     assert job.status is JobStatus.FAILED
-    assert "no JSON array" in job.error
-    assert prose in job.error
+    assert "no JSON array" in found(job.error)
+    assert prose in found(job.error)
 
 
-def test_an_empty_event_list_is_a_quiet_session_not_a_failure(conn, store, owner):
+def test_an_empty_event_list_is_a_quiet_session_not_a_failure(
+    conn: psycopg.Connection[Any], store: PostgresStore, owner: Principal
+) -> None:
     """`process_job` on a session whose events have all been extracted
     already: nothing to read is not a broken job."""
     record.enable(store, owner.id, "remem")
@@ -292,10 +327,12 @@ def test_an_empty_event_list_is_a_quiet_session_not_a_failure(conn, store, owner
     report = extraction.process_job(store, owner.id, job_id, extractor)
 
     assert (report.claimed, report.succeeded, report.failed) == (1, 1, 0)
-    assert store.get_extract_job(job_id, owner.id).status is JobStatus.DONE
+    assert found(store.get_extract_job(job_id, owner.id)).status is JobStatus.DONE
 
 
-def _all_jobs(conn, store, owner):
+def _all_jobs(
+    conn: psycopg.Connection[Any], store: PostgresStore, owner: Principal
+) -> list[ExtractJob]:
     """Every extract job for this owner, whatever its status.
 
     The store exposes counts and recent failures but no listing - right for
@@ -309,10 +346,12 @@ def _all_jobs(conn, store, owner):
             (owner.id,),
         ).fetchall()
     ]
-    return [store.get_extract_job(i, owner.id) for i in ids]
+    return [found(store.get_extract_job(i, owner.id)) for i in ids]
 
 
-def test_the_attempt_cap_stops_a_job_and_process_job_overrides_it(conn, store, owner):
+def test_the_attempt_cap_stops_a_job_and_process_job_overrides_it(
+    conn: psycopg.Connection[Any], store: PostgresStore, owner: Principal
+) -> None:
     """A job that can never succeed must stop being retried and say so -
     and `--job ID` is the only way back for one that has given up."""
     record.enable(store, owner.id, "remem")
@@ -324,7 +363,7 @@ def test_the_attempt_cap_stops_a_job_and_process_job_overrides_it(conn, store, o
 
     [job] = _all_jobs(conn, store, owner)
     assert job.status is JobStatus.FAILED
-    assert "gave up" in job.error
+    assert "gave up" in found(job.error)
     # The extractor stopped being called once the cap was passed.
     assert len(boom.seen) == extraction.MAX_ATTEMPTS
 
@@ -333,10 +372,12 @@ def test_the_attempt_cap_stops_a_job_and_process_job_overrides_it(conn, store, o
     )
 
     assert (report.claimed, report.succeeded, report.entries_written) == (1, 1, 1)
-    assert store.get_extract_job(job.id, owner.id).status is JobStatus.DONE
+    assert found(store.get_extract_job(job.id, owner.id)).status is JobStatus.DONE
 
 
-def test_a_session_that_gave_up_leaves_the_backlog(conn, store, owner):
+def test_a_session_that_gave_up_leaves_the_backlog(
+    conn: psycopg.Connection[Any], store: PostgresStore, owner: Principal
+) -> None:
     """The failure mode discovery introduces: `sessions_awaiting_extraction`
     computes watermarks from DONE jobs only, so a session whose job failed
     still looks outstanding. Without the skip, every later run reclaims it,
@@ -356,12 +397,14 @@ def test_a_session_that_gave_up_leaves_the_backlog(conn, store, owner):
     report = extraction.process(store, owner.id, boom, idle_seconds=IDLE, limit=10)
 
     assert (report.claimed, report.failed, report.succeeded) == (0, 0, 0)
-    after = store.get_extract_job(job.id, owner.id)
+    after = found(store.get_extract_job(job.id, owner.id))
     assert after.attempts == attempts_at_giving_up
     assert after.error == job.error
 
 
-def test_a_dead_session_does_not_crowd_out_a_live_one(conn, store, owner):
+def test_a_dead_session_does_not_crowd_out_a_live_one(
+    conn: psycopg.Connection[Any], store: PostgresStore, owner: Principal
+) -> None:
     """Discovery is ordered oldest-event-first, so a session that has given
     up sorts ahead of a newer one. With --limit 1 it would take the whole
     batch, every run, and the newer session would never be extracted."""
@@ -380,12 +423,16 @@ def test_a_dead_session_does_not_crowd_out_a_live_one(conn, store, owner):
     assert [e.session_id for e in good.seen[0]] == ["live", "live", "live"]
 
 
-def test_process_job_rejects_an_unknown_id(store, owner):
+def test_process_job_rejects_an_unknown_id(
+    store: PostgresStore, owner: Principal
+) -> None:
     with pytest.raises(extraction.ExtractJobNotFound):
         extraction.process_job(store, owner.id, new_id(), FakeExtractor([]))
 
 
-def test_process_job_rejects_another_owners_job(conn, store, owner):
+def test_process_job_rejects_another_owners_job(
+    conn: psycopg.Connection[Any], store: PostgresStore, owner: Principal
+) -> None:
     """Owner scoping is not optional just because an id was supplied."""
     other = store.ensure_principal("someone-else")
     record.enable(store, other.id, "remem")
@@ -397,7 +444,9 @@ def test_process_job_rejects_another_owners_job(conn, store, owner):
         extraction.process_job(store, owner.id, job.id, FakeExtractor([]))
 
 
-def test_an_entry_the_project_already_holds_is_not_rewritten(store, owner):
+def test_an_entry_the_project_already_holds_is_not_rewritten(
+    store: PostgresStore, owner: Principal
+) -> None:
     """Carried over from capture unchanged: only a prior EXTRACTED entry
     with the same title suppresses a write. A human-written entry with that
     title is not a duplicate to swallow silently."""
@@ -428,7 +477,9 @@ def test_an_entry_the_project_already_holds_is_not_rewritten(store, owner):
     assert titles.count("Pool sizing") == 2
 
 
-def test_dedup_does_not_block_the_same_title_in_another_project(store, owner):
+def test_dedup_does_not_block_the_same_title_in_another_project(
+    store: PostgresStore, owner: Principal
+) -> None:
     record.enable(store, owner.id, "alpha")
     record.enable(store, owner.id, "beta")
     three_events(store, owner, project="alpha", session_id="a")
@@ -444,7 +495,9 @@ def test_dedup_does_not_block_the_same_title_in_another_project(store, owner):
     assert report.entries_written == 2
 
 
-def test_the_extractor_is_told_what_the_project_already_holds(store, owner):
+def test_the_extractor_is_told_what_the_project_already_holds(
+    store: PostgresStore, owner: Principal
+) -> None:
     """Including entries the USER wrote. The observed failure was extraction
     re-deriving a hand-written rule, so human titles are exactly the ones the
     extractor most needs to see."""
@@ -476,7 +529,9 @@ def test_the_extractor_is_told_what_the_project_already_holds(store, owner):
     assert "An earlier extraction" in extractor.known[0]
 
 
-def test_an_extractor_without_known_titles_support_still_works(store, owner):
+def test_an_extractor_without_known_titles_support_still_works(
+    store: PostgresStore, owner: Principal
+) -> None:
     """The protocol's third argument is optional; a two-argument extractor
     must keep working rather than failing with a TypeError recorded as an
     extraction failure."""
@@ -484,7 +539,7 @@ def test_an_extractor_without_known_titles_support_still_works(store, owner):
     three_events(store, owner)
 
     class TwoArg:
-        def extract(self, events, project) -> list[ExtractedEntry]:
+        def extract(self, events: list[Event], project: str) -> list[ExtractedEntry]:
             return []
 
     # cast because a two-argument extractor is deliberately NOT assignable to
@@ -497,35 +552,44 @@ def test_an_extractor_without_known_titles_support_still_works(store, owner):
     assert (report.claimed, report.succeeded) == (1, 1)
 
 
-def test_a_long_raw_output_is_truncated_but_keeps_the_reason(store, owner):
+def test_a_long_raw_output_is_truncated_but_keeps_the_reason(
+    store: PostgresStore, owner: Principal
+) -> None:
     record.enable(store, owner.id, "remem")
     three_events(store, owner)
 
     class ProseExtractor:
-        def extract(self, events, project, known_titles=None):
+        def extract(
+            self,
+            events: list[Event],
+            project: str,
+            known_titles: list[str] | None = None,
+        ):
             return parse_entries("z" * 5000)
 
     extraction.process(store, owner.id, ProseExtractor(), idle_seconds=IDLE, limit=10)
 
     [job] = store.recent_failed_extract_jobs(owner.id)
-    assert "no JSON array" in job.error
-    assert job.error.count("z") == extraction.MAX_RAW_IN_ERROR
+    assert "no JSON array" in found(job.error)
+    assert found(job.error).count("z") == extraction.MAX_RAW_IN_ERROR
 
 
-def test_a_write_that_explodes_is_recorded_not_raised(store, owner):
+def test_a_write_that_explodes_is_recorded_not_raised(
+    store: PostgresStore, owner: Principal
+) -> None:
     """A database error mid-write must be recorded against the job, and the
     loop must keep going rather than stranding it in `running`."""
     record.enable(store, owner.id, "remem")
     three_events(store, owner)
 
     class ExplodingStore:
-        def __init__(self, inner):
+        def __init__(self, inner: PostgresStore):
             self._inner = inner
 
-        def __getattr__(self, name):
+        def __getattr__(self, name: str):
             return getattr(self._inner, name)
 
-        def put_entry(self, entry):
+        def put_entry(self, entry: Entry):
             raise RuntimeError("connection lost")
 
     # cast: a __getattr__ proxy over the real store, so it satisfies Store at
@@ -540,10 +604,12 @@ def test_a_write_that_explodes_is_recorded_not_raised(store, owner):
 
     assert (report.claimed, report.failed) == (1, 1)
     [job] = store.recent_failed_extract_jobs(owner.id)
-    assert "connection lost" in job.error
+    assert "connection lost" in found(job.error)
 
 
-def test_one_failing_session_does_not_stop_the_others(store, owner):
+def test_one_failing_session_does_not_stop_the_others(
+    store: PostgresStore, owner: Principal
+) -> None:
     record.enable(store, owner.id, "remem")
     three_events(store, owner, session_id="a")
     three_events(store, owner, session_id="b", base=NOW - timedelta(hours=3))
@@ -552,7 +618,12 @@ def test_one_failing_session_does_not_stop_the_others(store, owner):
         def __init__(self):
             self.calls = 0
 
-        def extract(self, events, project, known_titles=None):
+        def extract(
+            self,
+            events: list[Event],
+            project: str,
+            known_titles: list[str] | None = None,
+        ):
             self.calls += 1
             if self.calls == 1:
                 raise ExtractionFailed("claude exploded", "raw")
@@ -566,7 +637,9 @@ def test_one_failing_session_does_not_stop_the_others(store, owner):
     assert report.entries_written == 1
 
 
-def test_process_on_an_idle_store_reports_nothing_claimed(store, owner):
+def test_process_on_an_idle_store_reports_nothing_claimed(
+    store: PostgresStore, owner: Principal
+) -> None:
     report = extraction.process(
         store, owner.id, FakeExtractor([]), idle_seconds=IDLE, limit=10
     )
@@ -578,7 +651,7 @@ def test_process_on_an_idle_store_reports_nothing_claimed(store, owner):
     ) == (0, 0, 0, 0)
 
 
-def test_the_limit_bounds_one_run(store, owner):
+def test_the_limit_bounds_one_run(store: PostgresStore, owner: Principal) -> None:
     record.enable(store, owner.id, "remem")
     for i, session in enumerate(("a", "b", "c")):
         three_events(
@@ -592,7 +665,9 @@ def test_the_limit_bounds_one_run(store, owner):
     assert report.claimed == 2
 
 
-def test_repeated_success_never_exhausts_the_attempt_budget(conn, store, owner):
+def test_repeated_success_never_exhausts_the_attempt_budget(
+    conn: psycopg.Connection[Any], store: PostgresStore, owner: Principal
+) -> None:
     """The counter is a *consecutive*-failure budget, and success clears it.
 
     Discovery-based claiming re-claims the SAME row every time a session
@@ -632,7 +707,9 @@ def test_repeated_success_never_exhausts_the_attempt_budget(conn, store, owner):
     assert job.attempts <= extraction.MAX_ATTEMPTS
 
 
-def test_a_watermark_survives_a_later_failure_on_the_same_session(store, owner):
+def test_a_watermark_survives_a_later_failure_on_the_same_session(
+    store: PostgresStore, owner: Principal
+) -> None:
     """Discovery keys on `covers_through`, not on job status.
 
     One row per session means a job that succeeded and later failed leaves

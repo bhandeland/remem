@@ -30,7 +30,7 @@ def owner(store: PostgresStore) -> Principal:
     return store.ensure_principal("brandon")
 
 
-def test_the_spool_is_renamed_not_dropped(conn):
+def test_the_spool_is_renamed_not_dropped(conn: psycopg.Connection[Any]) -> None:
     migrate(conn)
     names = {
         r[0]
@@ -43,7 +43,7 @@ def test_the_spool_is_renamed_not_dropped(conn):
     assert "capture_jobs" not in names
 
 
-def test_the_renamed_index_follows_the_table(conn):
+def test_the_renamed_index_follows_the_table(conn: psycopg.Connection[Any]) -> None:
     migrate(conn)
     row = conn.execute(
         "select indexdef from pg_indexes where indexname = %s",
@@ -55,11 +55,15 @@ def test_the_renamed_index_follows_the_table(conn):
     assert "status = 'pending'" in definition
 
 
-def test_a_fresh_install_has_nothing_pending(store, owner):
+def test_a_fresh_install_has_nothing_pending(
+    store: PostgresStore, owner: Principal
+) -> None:
     assert store.pending_legacy_capture_jobs(owner.id) == 0
 
 
-def test_a_left_over_job_is_counted_for_its_owner_only(conn, store, owner):
+def test_a_left_over_job_is_counted_for_its_owner_only(
+    conn: psycopg.Connection[Any], store: PostgresStore, owner: Principal
+) -> None:
     other = store.ensure_principal("someone-else")
     for principal in (owner, other):
         conn.execute(
@@ -71,7 +75,9 @@ def test_a_left_over_job_is_counted_for_its_owner_only(conn, store, owner):
     assert store.pending_legacy_capture_jobs(owner.id) == 1
 
 
-def test_a_finished_job_is_not_pending(conn, store, owner):
+def test_a_finished_job_is_not_pending(
+    conn: psycopg.Connection[Any], store: PostgresStore, owner: Principal
+) -> None:
     job_id = new_id()
     conn.execute(
         "insert into capture_jobs_legacy (id, owner_id, project, "

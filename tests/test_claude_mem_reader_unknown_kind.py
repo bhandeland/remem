@@ -84,7 +84,7 @@ def _row(item_id: str, kind: str) -> tuple[Any, ...]:
     )
 
 
-def test_an_unrecognised_kind_is_dropped_not_raised(tmp_path):
+def test_an_unrecognised_kind_is_dropped_not_raised(tmp_path: Path) -> None:
     db = _db(
         tmp_path,
         [_row("m1", "observation"), _row("m2", "from-a-future-schema")],
@@ -95,7 +95,9 @@ def test_an_unrecognised_kind_is_dropped_not_raised(tmp_path):
     assert [r.source_id for r in records] == ["m1"]
 
 
-def test_dropping_one_bad_row_does_not_cost_the_good_rows_around_it(tmp_path):
+def test_dropping_one_bad_row_does_not_cost_the_good_rows_around_it(
+    tmp_path: Path,
+) -> None:
     db = _db(
         tmp_path,
         [
@@ -111,7 +113,7 @@ def test_dropping_one_bad_row_does_not_cost_the_good_rows_around_it(tmp_path):
     assert records[1].kind is SourceKind.SUMMARY
 
 
-def test_the_dropped_row_is_named_in_skipped_not_merely_dropped(tmp_path):
+def test_the_dropped_row_is_named_in_skipped_not_merely_dropped(tmp_path: Path) -> None:
     """Dropping a row silently leaves nobody able to say afterward that
     anything was lost - `skipped` is what a later task reports as "N rows
     skipped" without re-reading the source database to diff totals."""

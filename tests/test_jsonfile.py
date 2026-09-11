@@ -7,13 +7,13 @@ from typing import Any
 from remem import jsonfile
 
 
-def test_read_json_returns_empty_for_a_missing_file(tmp_path):
+def test_read_json_returns_empty_for_a_missing_file(tmp_path: Path) -> None:
     data, warnings = jsonfile.read_json(tmp_path / "nope.json", set())
     assert data == {}
     assert warnings == []
 
 
-def test_read_json_backs_up_and_warns_on_invalid_json(tmp_path):
+def test_read_json_backs_up_and_warns_on_invalid_json(tmp_path: Path) -> None:
     path = tmp_path / "settings.json"
     path.write_text("{not valid json")
     backed_up: set[Path] = set()
@@ -26,7 +26,7 @@ def test_read_json_backs_up_and_warns_on_invalid_json(tmp_path):
     assert list(tmp_path.glob("settings.json.bak*"))
 
 
-def test_write_json_preserves_unrelated_keys_via_the_caller(tmp_path):
+def test_write_json_preserves_unrelated_keys_via_the_caller(tmp_path: Path) -> None:
     path = tmp_path / "settings.json"
     path.write_text(json.dumps({"theme": "dark"}))
     backed_up: set[Path] = set()
@@ -39,7 +39,7 @@ def test_write_json_preserves_unrelated_keys_via_the_caller(tmp_path):
     assert json.loads(path.read_text()) == {"theme": "dark", "hooks": {}}
 
 
-def test_backup_once_does_not_back_up_the_same_file_twice(tmp_path):
+def test_backup_once_does_not_back_up_the_same_file_twice(tmp_path: Path) -> None:
     path = tmp_path / "settings.json"
     path.write_text("{}")
     backed_up: set[Path] = set()
@@ -50,7 +50,7 @@ def test_backup_once_does_not_back_up_the_same_file_twice(tmp_path):
     assert len(list(tmp_path.glob("settings.json.bak*"))) == 1
 
 
-def test_backup_once_returns_where_the_copy_went(tmp_path):
+def test_backup_once_returns_where_the_copy_went(tmp_path: Path) -> None:
     # The caller is what tells the user, so the path has to come back out.
     path = tmp_path / "settings.json"
     path.write_text("{}")
@@ -58,11 +58,13 @@ def test_backup_once_returns_where_the_copy_went(tmp_path):
     assert made is not None and made.exists()
 
 
-def test_backup_once_returns_none_when_there_was_nothing_to_back_up(tmp_path):
+def test_backup_once_returns_none_when_there_was_nothing_to_back_up(
+    tmp_path: Path,
+) -> None:
     assert jsonfile.backup_once(tmp_path / "missing.json", set()) is None
 
 
-def test_read_document_never_leaves_a_backup_behind(tmp_path):
+def test_read_document_never_leaves_a_backup_behind(tmp_path: Path) -> None:
     """The reason this exists separately from read_json. A diagnostic that
     litters .bak files beside a user's config is one people stop running,
     and `remem doctor` reads config files it must not touch."""
@@ -72,7 +74,7 @@ def test_read_document_never_leaves_a_backup_behind(tmp_path):
     assert list(tmp_path.iterdir()) == [path]
 
 
-def test_read_document_tolerates_absence_and_a_non_object(tmp_path):
+def test_read_document_tolerates_absence_and_a_non_object(tmp_path: Path) -> None:
     assert jsonfile.read_document(tmp_path / "nope.json") == {}
     listy = tmp_path / "listy.json"
     listy.write_text("[1, 2, 3]")

@@ -40,7 +40,9 @@ def env(live_dsn: str, tmp_path: Path) -> dict[str, str]:
 
 
 @pytest.mark.db
-def test_user_scope_writes_the_plugin_under_the_config_directory(tmp_path, env):
+def test_user_scope_writes_the_plugin_under_the_config_directory(
+    tmp_path: Path, env: dict[str, str]
+) -> None:
     report = OpenCodeAdapter().install(scope="user", home=tmp_path, env=env)
 
     plugin = tmp_path / ".config" / "opencode" / "plugin" / "remem.js"
@@ -50,7 +52,9 @@ def test_user_scope_writes_the_plugin_under_the_config_directory(tmp_path, env):
 
 
 @pytest.mark.db
-def test_project_scope_writes_beside_the_repository(tmp_path, monkeypatch, env):
+def test_project_scope_writes_beside_the_repository(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, env: dict[str, str]
+) -> None:
     monkeypatch.chdir(tmp_path)
 
     OpenCodeAdapter().install(scope="project", home=tmp_path, env=env)
@@ -60,8 +64,8 @@ def test_project_scope_writes_beside_the_repository(tmp_path, monkeypatch, env):
 
 @pytest.mark.db
 def test_project_scope_from_a_subdirectory_writes_at_the_repository_root(
-    tmp_path, monkeypatch, env
-):
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, env: dict[str, str]
+) -> None:
     """CT-2: a project-scoped install used to resolve the plugin directory
     from raw `Path.cwd()`, so running it from a subdirectory wrote
     `<subdir>/.opencode/plugin/remem.js` - a location opencode, which scans
@@ -82,7 +86,7 @@ def test_project_scope_from_a_subdirectory_writes_at_the_repository_root(
     assert not (subdir / ".opencode").exists()
 
 
-def test_an_unknown_scope_refuses_rather_than_guessing(tmp_path):
+def test_an_unknown_scope_refuses_rather_than_guessing(tmp_path: Path) -> None:
     """UnsupportedScope over a fallback: an install that reports success
     while having written somewhere else is worse than one that refuses.
 
@@ -95,7 +99,9 @@ def test_an_unknown_scope_refuses_rather_than_guessing(tmp_path):
 
 
 @pytest.mark.db
-def test_a_second_install_overwrites_a_modified_plugin(tmp_path, env):
+def test_a_second_install_overwrites_a_modified_plugin(
+    tmp_path: Path, env: dict[str, str]
+) -> None:
     """No version marker, unconditional overwrite. remem owns the file."""
     adapter = OpenCodeAdapter()
     adapter.install(scope="user", home=tmp_path, env=env)
@@ -108,7 +114,9 @@ def test_a_second_install_overwrites_a_modified_plugin(tmp_path, env):
 
 
 @pytest.mark.db
-def test_the_install_never_touches_opencode_config(tmp_path, env):
+def test_the_install_never_touches_opencode_config(
+    tmp_path: Path, env: dict[str, str]
+) -> None:
     """The plugin directory IS the registration, so there is no user config
     file to merge or corrupt. That is a property worth pinning."""
     config = tmp_path / ".config" / "opencode" / "config.json"
@@ -121,7 +129,9 @@ def test_the_install_never_touches_opencode_config(tmp_path, env):
 
 
 @pytest.mark.db
-def test_the_install_reports_the_opt_in_gate(tmp_path, env):
+def test_the_install_reports_the_opt_in_gate(
+    tmp_path: Path, env: dict[str, str]
+) -> None:
     """Recording is off until the user enables it per project, and an
     install that does not say so leaves them waiting for events that will
     never come."""
@@ -131,7 +141,9 @@ def test_the_install_reports_the_opt_in_gate(tmp_path, env):
 
 
 @pytest.mark.db
-def test_the_install_folds_in_a_live_verification_round_trip(tmp_path, env):
+def test_the_install_folds_in_a_live_verification_round_trip(
+    tmp_path: Path, env: dict[str, str]
+) -> None:
     """The thing CT-1 exists to catch: install() now calls verify() (Task 6),
     and a test suite that never asserts on the result would not have noticed
     when that round-trip silently failed. Modelled on

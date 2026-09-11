@@ -37,7 +37,7 @@ def test_the_table_keys_match_the_variable_names():
         "ANTHROPIC_VERTEX_BASE_URL",
     ],
 )
-def test_no_credential_or_endpoint_is_ever_settable(forbidden):
+def test_no_credential_or_endpoint_is_ever_settable(forbidden: str) -> None:
     # remem must never be the tool that writes a credential into a JSON file
     # on disk, and repointing an agent at another inference endpoint silently
     # exfiltrates prompts. Excluded by design, asserted so it stays that way.

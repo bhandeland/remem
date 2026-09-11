@@ -6,22 +6,24 @@ import remem.agents.registry as registry
 from remem.agents.registry import UnknownAgent, discover, get
 
 
-def test_claude_code_is_discovered():
+def test_claude_code_is_discovered() -> None:
     assert "claude-code" in discover()
 
 
-def test_get_returns_the_adapter_class():
+def test_get_returns_the_adapter_class() -> None:
     adapter = get("claude-code")
     assert adapter.name == "claude-code"
 
 
-def test_unknown_agent_raises_with_a_helpful_message():
+def test_unknown_agent_raises_with_a_helpful_message() -> None:
     with pytest.raises(UnknownAgent) as exc:
         get("emacs-doctor")
     assert "claude-code" in str(exc.value)
 
 
-def test_a_broken_entry_point_is_reported_but_does_not_break_discovery(monkeypatch):
+def test_a_broken_entry_point_is_reported_but_does_not_break_discovery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     real = list(entry_points(group=registry.GROUP))
     broken = EntryPoint(
         name="broken-agent",
@@ -29,7 +31,7 @@ def test_a_broken_entry_point_is_reported_but_does_not_break_discovery(monkeypat
         group=registry.GROUP,
     )
 
-    def fake_entry_points(*, group):
+    def fake_entry_points(*, group: str) -> list[EntryPoint]:
         assert group == registry.GROUP
         return real + [broken]
 

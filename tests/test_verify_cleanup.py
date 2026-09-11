@@ -8,18 +8,24 @@ __remem_verify__ recording for the rest of the process's life.
 
 from __future__ import annotations
 
+from typing import Any
+
+import pytest
+
 import remem.services.record  # noqa: F401 - makes the submodule patchable by string path below
 from remem.agents import verify
 
 
-def test_a_failing_delete_still_disables_recording(monkeypatch):
+def test_a_failing_delete_still_disables_recording(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     disabled: list[str] = []
 
     class FakeStore:
-        def delete_session_events(self, *args):
+        def delete_session_events(self, *args: Any) -> int:
             raise RuntimeError("delete blew up")
 
-        def events_for_session(self, *args):
+        def events_for_session(self, *args: Any) -> list[object]:
             return [object()]
 
     class FakeOwner:
@@ -33,7 +39,7 @@ def test_a_failing_delete_still_disables_recording(monkeypatch):
         def __enter__(self):
             return self
 
-        def __exit__(self, *exc):
+        def __exit__(self, *exc: object) -> bool:
             return False
 
     def fake_enable(store: object, owner: object, project: str) -> None:
@@ -72,16 +78,16 @@ def test_a_failing_delete_still_disables_recording(monkeypatch):
     assert any("delete blew up" in w for w in report.warnings)
 
 
-def test_a_failing_disable_is_reported_too(monkeypatch):
+def test_a_failing_disable_is_reported_too(monkeypatch: pytest.MonkeyPatch) -> None:
     """The two cleanup obligations are independent, so a failure in
     either one has to reach the report on its own."""
     deleted: list[str] = []
 
     class FakeStore:
-        def delete_session_events(self, *args):
+        def delete_session_events(self, *args: Any) -> None:
             deleted.append(args[1])
 
-        def events_for_session(self, *args):
+        def events_for_session(self, *args: Any) -> list[object]:
             return [object()]
 
     class FakeOwner:
@@ -95,10 +101,10 @@ def test_a_failing_disable_is_reported_too(monkeypatch):
         def __enter__(self):
             return self
 
-        def __exit__(self, *exc):
+        def __exit__(self, *exc: object) -> bool:
             return False
 
-    def raising_disable(store, owner, project):
+    def raising_disable(store: object, owner: object, project: str) -> None:
         raise RuntimeError("disable blew up")
 
     def fake_enable(store: object, owner: object, project: str) -> None:

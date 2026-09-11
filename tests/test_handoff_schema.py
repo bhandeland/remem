@@ -1,3 +1,6 @@
+from typing import Any
+
+import psycopg
 import pytest
 
 from remem.backends.postgres.migrate import migrate, pending_versions
@@ -8,7 +11,7 @@ from tests.conftest import found
 pytestmark = pytest.mark.db
 
 
-def test_the_handoff_origin_round_trips(conn):
+def test_the_handoff_origin_round_trips(conn: psycopg.Connection[Any]) -> None:
     migrate(conn)
     store = PostgresStore(conn)
     owner = store.ensure_principal("brandon")
@@ -26,6 +29,6 @@ def test_the_handoff_origin_round_trips(conn):
     assert found(store.get_entry(entry.id, owner.id)).origin == Origin.HANDOFF
 
 
-def test_the_migration_is_applied_by_migrate(conn):
+def test_the_migration_is_applied_by_migrate(conn: psycopg.Connection[Any]) -> None:
     migrate(conn)
     assert "005_handoff" not in pending_versions(conn)

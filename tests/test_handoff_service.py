@@ -27,7 +27,9 @@ def owner(store: PostgresStore) -> Principal:
 BODY = "## Done\nshipped it\n\n## In flight\n\n## Next steps\n\n## Gotchas\n"
 
 
-def test_a_handoff_is_a_doc_entry_tagged_with_its_topic(store, owner):
+def test_a_handoff_is_a_doc_entry_tagged_with_its_topic(
+    store: PostgresStore, owner: Principal
+) -> None:
     entry, superseded = handoff.write(
         store,
         owner.id,
@@ -44,12 +46,16 @@ def test_a_handoff_is_a_doc_entry_tagged_with_its_topic(store, owner):
     assert superseded is None
 
 
-def test_the_topic_defaults_to_the_project(store, owner):
+def test_the_topic_defaults_to_the_project(
+    store: PostgresStore, owner: Principal
+) -> None:
     entry, _ = handoff.write(store, owner.id, project="remem", body=BODY)
     assert entry.tags == ["topic:remem"]
 
 
-def test_writing_a_handoff_supersedes_the_previous_one_for_that_topic(store, owner):
+def test_writing_a_handoff_supersedes_the_previous_one_for_that_topic(
+    store: PostgresStore, owner: Principal
+) -> None:
     first, _ = handoff.write(store, owner.id, project="remem", topic="ci", body=BODY)
     second, superseded = handoff.write(
         store, owner.id, project="remem", topic="ci", body=BODY
@@ -62,24 +68,26 @@ def test_writing_a_handoff_supersedes_the_previous_one_for_that_topic(store, own
     )
 
 
-def test_another_topic_is_left_alone(store, owner):
+def test_another_topic_is_left_alone(store: PostgresStore, owner: Principal) -> None:
     other, _ = handoff.write(
         store, owner.id, project="remem", topic="search", body=BODY
     )
     handoff.write(store, owner.id, project="remem", topic="ci", body=BODY)
     handoff.write(store, owner.id, project="remem", topic="ci", body=BODY)
-    assert store.get_entry(other.id, owner.id).superseded_by is None
+    assert found(store.get_entry(other.id, owner.id)).superseded_by is None
 
 
-def test_another_project_is_left_alone(store, owner):
+def test_another_project_is_left_alone(store: PostgresStore, owner: Principal) -> None:
     other, _ = handoff.write(
         store, owner.id, project="elsewhere", topic="ci", body=BODY
     )
     handoff.write(store, owner.id, project="remem", topic="ci", body=BODY)
-    assert store.get_entry(other.id, owner.id).superseded_by is None
+    assert found(store.get_entry(other.id, owner.id)).superseded_by is None
 
 
-def test_latest_without_a_topic_returns_the_newest_for_the_project(store, owner):
+def test_latest_without_a_topic_returns_the_newest_for_the_project(
+    store: PostgresStore, owner: Principal
+) -> None:
     handoff.write(store, owner.id, project="remem", topic="ci", body=BODY)
     newest, _ = handoff.write(
         store, owner.id, project="remem", topic="search", body=BODY
@@ -87,21 +95,27 @@ def test_latest_without_a_topic_returns_the_newest_for_the_project(store, owner)
     assert found(handoff.latest(store, owner.id, project="remem")).id == newest.id
 
 
-def test_latest_is_none_when_nothing_was_handed_off(store, owner):
+def test_latest_is_none_when_nothing_was_handed_off(
+    store: PostgresStore, owner: Principal
+) -> None:
     assert handoff.latest(store, owner.id, project="remem") is None
 
 
-def test_a_handoff_without_a_project_is_rejected(store, owner):
+def test_a_handoff_without_a_project_is_rejected(
+    store: PostgresStore, owner: Principal
+) -> None:
     with pytest.raises(handoff.NoProject):
         handoff.write(store, owner.id, project=None, topic="ci", body=BODY)
 
 
-def test_an_empty_body_is_rejected(store, owner):
+def test_an_empty_body_is_rejected(store: PostgresStore, owner: Principal) -> None:
     with pytest.raises(ValueError):
         handoff.write(store, owner.id, project="remem", body="   ")
 
 
-def test_the_untouched_blank_template_is_rejected(store, owner):
+def test_the_untouched_blank_template_is_rejected(
+    store: PostgresStore, owner: Principal
+) -> None:
     """`--edit` seeds the editor with BLANK_BODY, which is non-empty, so
     quitting without typing anything must be caught here rather than by the
     `not body.strip()` check, which it defeats."""
@@ -109,41 +123,43 @@ def test_the_untouched_blank_template_is_rejected(store, owner):
         handoff.write(store, owner.id, project="remem", body=handoff.BLANK_BODY)
 
 
-def test_an_unslugable_topic_is_rejected(store, owner):
+def test_an_unslugable_topic_is_rejected(
+    store: PostgresStore, owner: Principal
+) -> None:
     with pytest.raises(ValueError):
         handoff.write(store, owner.id, project="remem", topic="!!!", body=BODY)
 
 
 def test_rejecting_an_unslugable_topic_leaves_another_topics_handoff_untouched(
-    store, owner
-):
+    store: PostgresStore, owner: Principal
+) -> None:
     """The test that would have caught the silent-data-loss bug: a rejected
     write for one topic must never fall through to superseding another."""
     live, _ = handoff.write(store, owner.id, project="remem", topic="ci", body=BODY)
     with pytest.raises(ValueError):
         handoff.write(store, owner.id, project="remem", topic="!!!", body=BODY)
-    assert store.get_entry(live.id, owner.id).superseded_by is None
+    assert found(store.get_entry(live.id, owner.id)).superseded_by is None
 
 
 def test_latest_with_an_unslugable_topic_does_not_return_another_topics_handoff(
-    store, owner
-):
+    store: PostgresStore, owner: Principal
+) -> None:
     handoff.write(store, owner.id, project="remem", topic="ci", body=BODY)
     with pytest.raises(ValueError):
         handoff.latest(store, owner.id, project="remem", topic="!!!")
 
 
-def test_slugify_makes_a_tag_safe_topic():
+def test_slugify_makes_a_tag_safe_topic() -> None:
     assert handoff.slugify("GitLab CI / runners") == "gitlab-ci-runners"
     assert handoff.slugify("  spaced  out  ") == "spaced-out"
 
 
-def test_topic_of_reads_the_tag_back(store, owner):
+def test_topic_of_reads_the_tag_back(store: PostgresStore, owner: Principal) -> None:
     entry, _ = handoff.write(store, owner.id, project="remem", topic="ci", body=BODY)
     assert handoff.topic_of(entry) == "ci"
 
 
-def test_age_phrase_is_terse():
+def test_age_phrase_is_terse() -> None:
     now = datetime(2026, 8, 27, 12, 0, tzinfo=UTC)
     assert handoff.age_phrase(now - timedelta(seconds=30), now) == "just now"
     assert handoff.age_phrase(now - timedelta(minutes=9), now) == "9m ago"

@@ -11,10 +11,11 @@ row was skipped, not to assert anything about how it is mapped.
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from remem.importers.base import SourceKind
+from remem.importers.base import SourceKind, SourceRecord
 from remem.importers.claude_mem import read
 
 MODERN_SCHEMA = """
@@ -79,11 +80,11 @@ def _prompt_row(
     )
 
 
-def _by_kind(records, kind):
+def _by_kind(records: Sequence[SourceRecord], kind: SourceKind) -> list[SourceRecord]:
     return [r for r in records if r.kind is kind]
 
 
-def test_modern_prompts_are_grouped_into_one_record_per_session(tmp_path):
+def test_modern_prompts_are_grouped_into_one_record_per_session(tmp_path: Path) -> None:
     """The spec rejects one entry per prompt in terms that are not schema
     specific ("seventeen near-empty entries would compete in search results
     against real memories forever") - the modern reader must obey the same
@@ -111,7 +112,7 @@ def test_modern_prompts_are_grouped_into_one_record_per_session(tmp_path):
     assert "now summarise it" in sess_a.body
 
 
-def test_modern_prompts_never_become_one_entry_each(tmp_path):
+def test_modern_prompts_never_become_one_entry_each(tmp_path: Path) -> None:
     """Pinning the defect directly: reading two prompts from the same
     session through `_record` with no grouping would produce two records,
     not one."""
@@ -128,7 +129,9 @@ def test_modern_prompts_never_become_one_entry_each(tmp_path):
     assert len(prompts) == 1
 
 
-def test_a_modern_summary_row_maps_through_the_generic_rendering(tmp_path):
+def test_a_modern_summary_row_maps_through_the_generic_rendering(
+    tmp_path: Path,
+) -> None:
     """The unified table has no `request`/`investigated`/`learned`/
     `completed`/`next_steps` columns - `_summary`'s five-field rendering has
     nothing to read from a modern row. `_record`'s narrative/text/facts/
@@ -164,7 +167,7 @@ def test_a_modern_summary_row_maps_through_the_generic_rendering(tmp_path):
     assert "investigated X and learned Y" in record.body
 
 
-def test_a_modern_manual_row_maps_through_the_generic_rendering(tmp_path):
+def test_a_modern_manual_row_maps_through_the_generic_rendering(tmp_path: Path) -> None:
     row = (
         "m1",
         "p1",
@@ -193,7 +196,9 @@ def test_a_modern_manual_row_maps_through_the_generic_rendering(tmp_path):
     assert "Written by hand" in record.body
 
 
-def test_a_migrated_in_place_database_names_its_unread_legacy_tables(tmp_path):
+def test_a_migrated_in_place_database_names_its_unread_legacy_tables(
+    tmp_path: Path,
+) -> None:
     """`memory_items.legacy_observation_id` is direct evidence that a v33
     database can be one migrated in place from the pre-33 shape - claude-mem's
     own migration is not guaranteed to have dropped the old tables. Reading

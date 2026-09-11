@@ -6,6 +6,7 @@ comes back empty, and a fuzzy hit is always labelled as one so a caller never
 mistakes an approximate match for a certain one.
 """
 
+from pathlib import Path
 from typing import Any
 
 import psycopg
@@ -31,7 +32,7 @@ def owner(store: PostgresStore) -> Principal:
     return store.ensure_principal("brandon")
 
 
-def _indexdef(conn, name):
+def _indexdef(conn: psycopg.Connection[Any], name: str) -> str | None:
     row = conn.execute(
         "select indexdef from pg_indexes where indexname = %s", (name,)
     ).fetchone()
@@ -41,14 +42,18 @@ def _indexdef(conn, name):
 # --- schema -----------------------------------------------------------------
 
 
-def test_pg_trgm_is_installed(store, conn):
+def test_pg_trgm_is_installed(
+    store: PostgresStore, conn: psycopg.Connection[Any]
+) -> None:
     assert (
         conn.execute("select 1 from pg_extension where extname = 'pg_trgm'").fetchone()
         is not None
     )
 
 
-def test_trigram_indexes_exist_and_exclude_superseded(store, conn):
+def test_trigram_indexes_exist_and_exclude_superseded(
+    store: PostgresStore, conn: psycopg.Connection[Any]
+) -> None:
     for name in ("entries_title_trgm_idx", "entries_body_trgm_idx"):
         definition = _indexdef(conn, name)
         assert definition is not None, name
@@ -59,14 +64,16 @@ def test_trigram_indexes_exist_and_exclude_superseded(store, conn):
 # --- fallback behaviour -----------------------------------------------------
 
 
-def test_exact_matches_are_never_fuzzy(store, owner):
+def test_exact_matches_are_never_fuzzy(store: PostgresStore, owner: Principal) -> None:
     remember(store, owner.id, title="Postgres tuning", body="raise work_mem")
     hits = find(store, owner.id, Query(text="work_mem"))
     assert [h.entry.title for h in hits] == ["Postgres tuning"]
     assert hits[0].match is Match.EXACT
 
 
-def test_a_typo_in_the_title_still_finds_the_entry(store, owner):
+def test_a_typo_in_the_title_still_finds_the_entry(
+    store: PostgresStore, owner: Principal
+) -> None:
     remember(
         store,
         owner.id,
@@ -78,7 +85,9 @@ def test_a_typo_in_the_title_still_finds_the_entry(store, owner):
     assert hits[0].match is Match.FUZZY
 
 
-def test_a_typo_in_a_body_word_still_finds_the_entry(store, owner):
+def test_a_typo_in_a_body_word_still_finds_the_entry(
+    store: PostgresStore, owner: Principal
+) -> None:
     remember(
         store,
         owner.id,
@@ -90,7 +99,9 @@ def test_a_typo_in_a_body_word_still_finds_the_entry(store, owner):
     assert hits[0].match is Match.FUZZY
 
 
-def test_fuzzy_never_runs_when_exact_search_found_anything(store, owner):
+def test_fuzzy_never_runs_when_exact_search_found_anything(
+    store: PostgresStore, owner: Principal
+) -> None:
     """The whole point of fallback: good results are never diluted."""
     remember(store, owner.id, title="Migrations", body="run them first")
     remember(store, owner.id, title="Migratoins typo entry", body="unrelated")
@@ -99,18 +110,20 @@ def test_fuzzy_never_runs_when_exact_search_found_anything(store, owner):
     assert "Migrations" in [h.entry.title for h in hits]
 
 
-def test_nonsense_still_returns_nothing(store, owner):
+def test_nonsense_still_returns_nothing(store: PostgresStore, owner: Principal) -> None:
     remember(store, owner.id, title="Postgres tuning", body="raise work_mem")
     assert find(store, owner.id, Query(text="zzzqqqxxvv")) == []
 
 
-def test_fuzzy_respects_owner_scoping(store, owner):
+def test_fuzzy_respects_owner_scoping(store: PostgresStore, owner: Principal) -> None:
     other = store.ensure_principal("someone-else")
     remember(store, other.id, title="Postgres connection pooling", body="theirs")
     assert find(store, owner.id, Query(text="postgres conection pooling")) == []
 
 
-def test_fuzzy_excludes_superseded_entries(store, owner):
+def test_fuzzy_excludes_superseded_entries(
+    store: PostgresStore, owner: Principal
+) -> None:
     from remem.services.write import supersede
 
     old = remember(
@@ -121,7 +134,7 @@ def test_fuzzy_excludes_superseded_entries(store, owner):
     assert "Postgres connection pooling" not in [h.entry.title for h in hits]
 
 
-def test_fuzzy_respects_other_filters(store, owner):
+def test_fuzzy_respects_other_filters(store: PostgresStore, owner: Principal) -> None:
     remember(
         store,
         owner.id,
@@ -141,7 +154,7 @@ def test_fuzzy_respects_other_filters(store, owner):
     assert len(hits) == 1
 
 
-def test_fuzzy_respects_the_limit(store, owner):
+def test_fuzzy_respects_the_limit(store: PostgresStore, owner: Principal) -> None:
     for i in range(5):
         remember(store, owner.id, title=f"Postgres connection pooling {i}", body="x")
     assert (
@@ -150,7 +163,7 @@ def test_fuzzy_respects_the_limit(store, owner):
     )
 
 
-def test_a_fuzzy_hit_carries_a_snippet(store, owner):
+def test_a_fuzzy_hit_carries_a_snippet(store: PostgresStore, owner: Principal) -> None:
     remember(
         store,
         owner.id,
@@ -165,7 +178,9 @@ def test_a_fuzzy_hit_carries_a_snippet(store, owner):
 
 
 @pytest.mark.db
-def test_cli_marks_fuzzy_results_and_says_so(live_dsn, monkeypatch, tmp_path):
+def test_cli_marks_fuzzy_results_and_says_so(
+    live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """A caller must be able to tell an approximate match from an exact one."""
     import json as _json
 
@@ -205,7 +220,9 @@ def test_cli_marks_fuzzy_results_and_says_so(live_dsn, monkeypatch, tmp_path):
 
 
 @pytest.mark.db
-def test_mcp_recall_labels_fuzzy_results(live_dsn, monkeypatch, tmp_path):
+def test_mcp_recall_labels_fuzzy_results(
+    live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     import psycopg
 
     with psycopg.connect(live_dsn) as c:

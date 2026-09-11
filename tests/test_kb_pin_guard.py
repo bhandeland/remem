@@ -37,7 +37,9 @@ def owner(store: PostgresStore) -> Principal:
     return store.ensure_principal("brandon")
 
 
-def test_pin_raises_when_the_store_reports_it_wrote_nothing(store, owner, monkeypatch):
+def test_pin_raises_when_the_store_reports_it_wrote_nothing(
+    store: PostgresStore, owner: Principal, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """A pin that matched no rows is a failure, not a silent success.
 
     Reaching this through real data is not possible from the service - it

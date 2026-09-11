@@ -33,7 +33,9 @@ def env(live_dsn: str, tmp_path: Path) -> dict[str, str]:
     }
 
 
-def test_install_verification_round_trips_a_real_event(env, tmp_path):
+def test_install_verification_round_trips_a_real_event(
+    env: dict[str, str], tmp_path: Path
+) -> None:
     """An install that cannot demonstrate recording says so.
 
     One live round-trip - record, read back, delete - is what makes that
@@ -45,7 +47,9 @@ def test_install_verification_round_trips_a_real_event(env, tmp_path):
     assert report.warnings == []
 
 
-def test_install_verification_cleans_up_after_itself(env, tmp_path):
+def test_install_verification_cleans_up_after_itself(
+    env: dict[str, str], tmp_path: Path
+) -> None:
     """Nothing is left behind: not the test event, not the setting."""
     ClaudeCodeAdapter().verify(env=env, home=tmp_path)
 
@@ -67,8 +71,8 @@ def test_install_verification_cleans_up_after_itself(env, tmp_path):
 
 
 def test_install_verification_does_not_touch_events_outside_the_verify_project(
-    env, tmp_path
-):
+    env: dict[str, str], tmp_path: Path
+) -> None:
     """The bug this test exists to catch: cleanup scoped only to
     (owner_id, before) rather than to the reserved project, harness, and
     session would delete every event this owner has ever recorded, not just
@@ -107,7 +111,7 @@ def test_install_verification_does_not_touch_events_outside_the_verify_project(
         )
 
 
-def test_install_verification_reports_a_failure_rather_than_raising():
+def test_install_verification_reports_a_failure_rather_than_raising() -> None:
     """An unreachable database becomes a warning naming what could not be
     demonstrated - never an exception, and the caller still finishes."""
     report = ClaudeCodeAdapter().verify(
@@ -119,7 +123,7 @@ def test_install_verification_reports_a_failure_rather_than_raising():
     assert report.actions == []
 
 
-def test_the_hook_table_names_every_hook_the_install_registers():
+def test_the_hook_table_names_every_hook_the_install_registers() -> None:
     """The table install() reads and the table hook_state() reads are one
     table. Literals, not the constant: a guard that agrees with a wrong
     table is how PostToolUse went missing for the life of the pipeline."""
@@ -133,7 +137,7 @@ def test_the_hook_table_names_every_hook_the_install_registers():
     ]
 
 
-def test_only_the_hooks_that_lose_events_are_required():
+def test_only_the_hooks_that_lose_events_are_required() -> None:
     """SessionEnd loses no events, only the promptness of the idle timer.
     UserPromptSubmit is the handoff warning, not the record path."""
     from remem.agents.claude_code.adapter import HOOK_ENTRIES
@@ -142,7 +146,7 @@ def test_only_the_hooks_that_lose_events_are_required():
     assert required == {"SessionStart", "PostToolUse"}
 
 
-def test_every_expected_hook_says_what_is_lost_without_it():
+def test_every_expected_hook_says_what_is_lost_without_it() -> None:
     from remem.agents.claude_code.adapter import HOOK_ENTRIES
 
     assert all(h.provides.strip() for h in HOOK_ENTRIES)

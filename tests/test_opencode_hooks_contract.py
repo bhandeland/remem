@@ -43,7 +43,7 @@ def test_the_vendored_list_records_where_it_came_from():
     assert PLUGIN_TYPES_VERSION == "1.17.7"
 
 
-def test_parsing_a_hooks_interface(tmp_path):
+def test_parsing_a_hooks_interface(tmp_path: Path) -> None:
     """The parser, exercised without needing opencode installed."""
     d = tmp_path / "@opencode-ai" / "plugin" / "dist"
     d.mkdir(parents=True)

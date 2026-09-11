@@ -28,14 +28,14 @@ def env(live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> str:
     return live_dsn
 
 
-def _write(title, body):
+def _write(title: str, body: str) -> str:
     r = runner.invoke(app, ["remember", title, "--body", body])
     assert r.exit_code == 0, r.stdout
     s = runner.invoke(app, ["search", title, "--json"])
     return json.loads(s.stdout)[0]["id"]
 
 
-def test_report_exits_zero_when_it_finds_duplicates(env):
+def test_report_exits_zero_when_it_finds_duplicates(env: str) -> None:
     """Finding them is the normal condition, not an error."""
     _write("alpha", "same body")
     _write("beta", "same body")
@@ -47,7 +47,7 @@ def test_report_exits_zero_when_it_finds_duplicates(env):
     assert "remem dedupe resolve" in result.stdout
 
 
-def test_report_says_so_when_there_is_nothing(env):
+def test_report_says_so_when_there_is_nothing(env: str) -> None:
     _write("alpha", "one")
 
     result = runner.invoke(app, ["dedupe", "report"])
@@ -56,7 +56,7 @@ def test_report_says_so_when_there_is_nothing(env):
     assert "Exact duplicates: none." in result.stdout
 
 
-def test_report_json_carries_both_tiers_and_coverage(env):
+def test_report_json_carries_both_tiers_and_coverage(env: str) -> None:
     _write("alpha", "same body")
     _write("beta", "same body")
 
@@ -71,7 +71,7 @@ def test_report_json_carries_both_tiers_and_coverage(env):
     assert payload["threshold"] == 0.95
 
 
-def test_resolve_supersedes_and_reports_both_titles(env):
+def test_resolve_supersedes_and_reports_both_titles(env: str) -> None:
     drop = _write("drop me", "same body")
     keep = _write("keep me", "same body")
 
@@ -84,7 +84,7 @@ def test_resolve_supersedes_and_reports_both_titles(env):
     assert "Exact duplicates: none." in after.stdout
 
 
-def test_resolve_refuses_loudly(env):
+def test_resolve_refuses_loudly(env: str) -> None:
     e = _write("alpha", "body")
 
     result = runner.invoke(app, ["dedupe", "resolve", e, "--keep", e])
@@ -93,7 +93,7 @@ def test_resolve_refuses_loudly(env):
     assert "itself" in result.stdout
 
 
-def test_resolve_refuses_a_malformed_id(env):
+def test_resolve_refuses_a_malformed_id(env: str) -> None:
     keep = _write("alpha", "body")
 
     result = runner.invoke(app, ["dedupe", "resolve", "not-a-uuid", "--keep", keep])

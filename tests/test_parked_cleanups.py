@@ -14,6 +14,7 @@ from remem.backends.postgres.store import PostgresStore
 from remem.domain import CollectionQuery, Principal, Query
 from remem.services import kb, write
 from remem.services.search import MAX_LIMIT, find
+from tests.conftest import found, scalar
 
 pytestmark = pytest.mark.db
 
@@ -32,21 +33,23 @@ def owner(store: PostgresStore) -> Principal:
 # --- update() could not clear a project -------------------------------------
 
 
-def test_update_can_clear_project(store, owner):
+def test_update_can_clear_project(store: PostgresStore, owner: Principal) -> None:
     """`None` means "unchanged", so clearing needs an explicit sentinel."""
     e = write.remember(store, owner.id, title="T", body="B", project="alpha")
     cleared = write.update(store, owner.id, e.id, project=write.CLEAR)
     assert cleared.project is None
-    assert store.get_entry(e.id, owner.id).project is None
+    assert found(store.get_entry(e.id, owner.id)).project is None
 
 
-def test_update_none_project_still_means_unchanged(store, owner):
+def test_update_none_project_still_means_unchanged(
+    store: PostgresStore, owner: Principal
+) -> None:
     e = write.remember(store, owner.id, title="T", body="B", project="alpha")
     unchanged = write.update(store, owner.id, e.id, title="T2")
     assert unchanged.project == "alpha"
 
 
-def test_update_can_clear_tags(store, owner):
+def test_update_can_clear_tags(store: PostgresStore, owner: Principal) -> None:
     e = write.remember(store, owner.id, title="T", body="B", tags=["a", "b"])
     assert write.update(store, owner.id, e.id, tags=[]).tags == []
 
@@ -54,32 +57,38 @@ def test_update_can_clear_tags(store, owner):
 # --- link() did not guard self-linking --------------------------------------
 
 
-def test_link_refuses_to_link_an_entry_to_itself(store, owner):
+def test_link_refuses_to_link_an_entry_to_itself(
+    store: PostgresStore, owner: Principal
+) -> None:
     e = write.remember(store, owner.id, title="T", body="B")
     with pytest.raises(write.CannotLinkToSelf):
         write.link(store, owner.id, e.id, e.id)
-    assert store.get_entry(e.id, owner.id).links == []
+    assert found(store.get_entry(e.id, owner.id)).links == []
 
 
 # --- no services-layer cross-owner coverage ---------------------------------
 
 
-def test_update_refuses_another_owners_entry(store, owner):
+def test_update_refuses_another_owners_entry(
+    store: PostgresStore, owner: Principal
+) -> None:
     other = store.ensure_principal("someone-else")
     e = write.remember(store, owner.id, title="Mine", body="B")
     with pytest.raises(write.EntryNotFound):
         write.update(store, other.id, e.id, title="PWNED")
-    assert store.get_entry(e.id, owner.id).title == "Mine"
+    assert found(store.get_entry(e.id, owner.id)).title == "Mine"
 
 
-def test_supersede_refuses_another_owners_entry(store, owner):
+def test_supersede_refuses_another_owners_entry(
+    store: PostgresStore, owner: Principal
+) -> None:
     other = store.ensure_principal("someone-else")
     e = write.remember(store, owner.id, title="Mine", body="B")
     with pytest.raises(write.EntryNotFound):
         write.supersede(store, other.id, e.id, title="X", body="Y")
 
 
-def test_link_refuses_across_owners(store, owner):
+def test_link_refuses_across_owners(store: PostgresStore, owner: Principal) -> None:
     other = store.ensure_principal("someone-else")
     mine = write.remember(store, owner.id, title="Mine", body="B")
     theirs = write.remember(store, other.id, title="Theirs", body="B")
@@ -90,7 +99,7 @@ def test_link_refuses_across_owners(store, owner):
 # --- the limit-cap test could not fail --------------------------------------
 
 
-def test_find_actually_caps_the_limit(store, owner):
+def test_find_actually_caps_the_limit(store: PostgresStore, owner: Principal) -> None:
     """Needs more rows than MAX_LIMIT for the cap to be observable at all."""
     for i in range(MAX_LIMIT + 25):
         write.remember(store, owner.id, title=f"Entry {i}", body="shared body")
@@ -98,7 +107,9 @@ def test_find_actually_caps_the_limit(store, owner):
     assert len(hits) == MAX_LIMIT
 
 
-def test_clamping_an_oversized_limit_preserves_the_origins_filter(store, owner):
+def test_clamping_an_oversized_limit_preserves_the_origins_filter(
+    store: PostgresStore, owner: Principal
+) -> None:
     """A filter that survives normal limits but vanishes on large ones is
     worse than no filter: nothing reports the loss."""
     from remem.domain import Origin
@@ -117,7 +128,9 @@ def test_clamping_an_oversized_limit_preserves_the_origins_filter(store, owner):
 # --- store.pin returned None, so failure was silent -------------------------
 
 
-def test_pin_reports_success_and_failure(store, owner):
+def test_pin_reports_success_and_failure(
+    store: PostgresStore, owner: Principal
+) -> None:
     collection = kb.create(store, owner.id, slug="s", title="T")
     entry = write.remember(store, owner.id, title="E", body="B")
     assert store.pin(collection.id, entry.id, 0, owner.id) is True
@@ -130,27 +143,27 @@ def test_pin_reports_success_and_failure(store, owner):
 # --- db status wrote to the database it was only inspecting -----------------
 
 
-def test_applied_versions_does_not_create_the_tracking_table(conn):
+def test_applied_versions_does_not_create_the_tracking_table(
+    conn: psycopg.Connection[Any],
+) -> None:
     """Inspecting an unmigrated database must not write to it."""
     from remem.backends.postgres.migrate import applied_versions, pending_versions
 
     assert applied_versions(conn) == []
-    exists = conn.execute("select to_regclass('public.schema_migrations')").fetchone()[
-        0
-    ]
+    exists = scalar(conn.execute("select to_regclass('public.schema_migrations')"))
     assert exists is None, "reading migration state created the tracking table"
 
     assert "001_initial" in pending_versions(conn)
-    exists = conn.execute("select to_regclass('public.schema_migrations')").fetchone()[
-        0
-    ]
+    exists = scalar(conn.execute("select to_regclass('public.schema_migrations')"))
     assert exists is None
 
 
 # --- a knowledge base's query was write-once --------------------------------
 
 
-def test_set_query_replaces_a_collections_query(store, owner):
+def test_set_query_replaces_a_collections_query(
+    store: PostgresStore, owner: Principal
+) -> None:
     kb.create(store, owner.id, slug="s", title="T")
     assert kb.resolve(store, owner.id, "s") == []
 
@@ -160,7 +173,7 @@ def test_set_query_replaces_a_collections_query(store, owner):
     assert [e.title for e in kb.resolve(store, owner.id, "s")] == ["Styled"]
 
 
-def test_set_query_can_empty_a_query(store, owner):
+def test_set_query_can_empty_a_query(store: PostgresStore, owner: Principal) -> None:
     write.remember(store, owner.id, title="Styled", body="B", tags=["style"])
     kb.create(
         store, owner.id, slug="s", title="T", query=CollectionQuery(tags=["style"])
@@ -171,7 +184,9 @@ def test_set_query_can_empty_a_query(store, owner):
     assert kb.resolve(store, owner.id, "s") == []
 
 
-def test_set_query_preserves_title_description_and_pins(store, owner):
+def test_set_query_preserves_title_description_and_pins(
+    store: PostgresStore, owner: Principal
+) -> None:
     kb.create(store, owner.id, slug="s", title="Original", description="keep me")
     pinned = write.remember(store, owner.id, title="Pinned", body="B")
     kb.pin(store, owner.id, "s", pinned.id)
@@ -185,12 +200,14 @@ def test_set_query_preserves_title_description_and_pins(store, owner):
     assert [e.title for e in kb.resolve(store, owner.id, "s")] == ["Pinned"]
 
 
-def test_set_query_refuses_an_unknown_slug(store, owner):
+def test_set_query_refuses_an_unknown_slug(
+    store: PostgresStore, owner: Principal
+) -> None:
     with pytest.raises(kb.CollectionNotFound):
         kb.set_query(store, owner.id, "nope", CollectionQuery())
 
 
-def test_set_query_is_owner_scoped(store, owner):
+def test_set_query_is_owner_scoped(store: PostgresStore, owner: Principal) -> None:
     other = store.ensure_principal("someone-else")
     kb.create(store, owner.id, slug="s", title="T")
     with pytest.raises(kb.CollectionNotFound):

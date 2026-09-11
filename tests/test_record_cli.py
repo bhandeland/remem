@@ -9,12 +9,15 @@ hand, which is why REMEM_HOOK_DEBUG and --strict exist.
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Any
 
 import psycopg
 import pytest
 from typer.testing import CliRunner
 
+from remem.agents.base import HarnessEvent
 from remem.agents.claude_code.adapter import ClaudeCodeAdapter
 from remem.backends.postgres.migrate import migrate
 from remem.cli import app
@@ -43,7 +46,7 @@ def repo(tmp_path: Path) -> Path:
     return root
 
 
-def _payload(cwd, **overrides):
+def _payload(cwd: Path, **overrides: Any) -> dict[str, Any]:
     payload = {
         "hook_event_name": "PostToolUse",
         "session_id": "s1",
@@ -55,7 +58,7 @@ def _payload(cwd, **overrides):
     return payload
 
 
-def test_record_event_writes_one_row(env, repo):
+def test_record_event_writes_one_row(env: str, repo: Path) -> None:
     runner.invoke(app, ["record", "enable", "--project", "myrepo"])
 
     result = runner.invoke(app, ["record", "event"], input=json.dumps(_payload(repo)))
@@ -70,7 +73,9 @@ def test_record_event_writes_one_row(env, repo):
     assert payload["tool_input"] == {"command": "ls"}
 
 
-def test_record_event_records_nothing_when_the_project_has_not_opted_in(env, repo):
+def test_record_event_records_nothing_when_the_project_has_not_opted_in(
+    env: str, repo: Path
+) -> None:
     result = runner.invoke(app, ["record", "event"], input=json.dumps(_payload(repo)))
     assert result.exit_code == 0
     with psycopg.connect(env) as c:
@@ -78,14 +83,16 @@ def test_record_event_records_nothing_when_the_project_has_not_opted_in(env, rep
     assert count == 0
 
 
-def test_record_event_exits_zero_on_garbage_stdin(env):
+def test_record_event_exits_zero_on_garbage_stdin(env: str) -> None:
     """Fail-soft: this runs as a hook on every tool call."""
     result = runner.invoke(app, ["record", "event"], input="not json")
     assert result.exit_code == 0
     assert result.stdout == ""
 
 
-def test_record_event_explains_itself_under_hook_debug(env, monkeypatch, repo):
+def test_record_event_explains_itself_under_hook_debug(
+    env: str, monkeypatch: pytest.MonkeyPatch, repo: Path
+) -> None:
     monkeypatch.setenv("REMEM_HOOK_DEBUG", "1")
     result = runner.invoke(app, ["record", "event"], input=json.dumps(_payload(repo)))
     assert result.exit_code == 0
@@ -93,12 +100,16 @@ def test_record_event_explains_itself_under_hook_debug(env, monkeypatch, repo):
     assert "remem record enable" in result.stderr
 
 
-def test_an_adapter_whose_event_capability_raises_degrades(env, monkeypatch, repo):
+def test_an_adapter_whose_event_capability_raises_degrades(
+    env: str, monkeypatch: pytest.MonkeyPatch, repo: Path
+) -> None:
     """Same contract as env_settings()/settings_path(): warn, degrade, keep
     going. A broken third-party adapter must never be why recording stops
     for everyone - and on this path, "stops" would be silent."""
 
-    def boom(self, env, payload):
+    def boom(
+        self: ClaudeCodeAdapter, env: Mapping[str, str], payload: dict[str, Any]
+    ) -> HarnessEvent | None:
         raise RuntimeError("boom")
 
     monkeypatch.setattr(ClaudeCodeAdapter, "event", boom)
@@ -106,7 +117,9 @@ def test_an_adapter_whose_event_capability_raises_degrades(env, monkeypatch, rep
     assert result.exit_code == 0
 
 
-def test_an_adapter_with_no_event_capability_says_so(env, monkeypatch, repo):
+def test_an_adapter_with_no_event_capability_says_so(
+    env: str, monkeypatch: pytest.MonkeyPatch, repo: Path
+) -> None:
     """Not an error and not a crash - "this agent cannot record" is an
     answer, and it is the one Cursor and opencode give until their adapters
     ship."""
@@ -122,7 +135,7 @@ def test_an_adapter_with_no_event_capability_says_so(env, monkeypatch, repo):
     )
 
 
-def test_record_event_reads_a_named_agent(env, repo):
+def test_record_event_reads_a_named_agent(env: str, repo: Path) -> None:
     runner.invoke(app, ["record", "enable", "--project", "myrepo"])
     result = runner.invoke(
         app,
@@ -135,13 +148,13 @@ def test_record_event_reads_a_named_agent(env, repo):
     assert count == 1
 
 
-def test_malformed_stdin_is_loud_under_strict(env):
+def test_malformed_stdin_is_loud_under_strict(env: str) -> None:
     result = runner.invoke(app, ["record", "event", "--strict"], input="not json")
     assert result.exit_code == 1
     assert result.stderr != ""
 
 
-def test_record_enable_then_disable(env):
+def test_record_enable_then_disable(env: str) -> None:
     assert (
         runner.invoke(app, ["record", "enable", "--project", "myrepo"]).exit_code == 0
     )
@@ -150,7 +163,7 @@ def test_record_enable_then_disable(env):
     )
 
 
-def test_record_enable_states_the_model_and_cost(env):
+def test_record_enable_states_the_model_and_cost(env: str) -> None:
     result = runner.invoke(app, ["record", "enable", "--project", "myrepo"])
     assert result.exit_code == 0
     out = result.stdout.lower()

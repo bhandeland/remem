@@ -71,7 +71,7 @@ def _modern(tmp_path: Path) -> Path:
     return db
 
 
-def test_an_observation_becomes_one_record(tmp_path):
+def test_an_observation_becomes_one_record(tmp_path: Path) -> None:
     [record] = read(_modern(tmp_path)).records
 
     assert record.source_id == "m1"
@@ -80,7 +80,7 @@ def test_an_observation_becomes_one_record(tmp_path):
     assert record.title == "Workspace technology inventory"
 
 
-def test_the_subtitle_becomes_the_summary(tmp_path):
+def test_the_subtitle_becomes_the_summary(tmp_path: Path) -> None:
     """claude-mem's subtitle is already a one-line hook written to sit under
     a title, which is exactly what remem's summary field is for."""
     [record] = read(_modern(tmp_path)).records
@@ -88,7 +88,7 @@ def test_the_subtitle_becomes_the_summary(tmp_path):
     assert record.summary == "Mapped 80+ projects across Python, Node and Terraform"
 
 
-def test_facts_and_concepts_are_rendered_into_the_body(tmp_path):
+def test_facts_and_concepts_are_rendered_into_the_body(tmp_path: Path) -> None:
     """Facts and concepts render as prose (bullet lists), not JSON.
 
     The body is half the embedding text and the bulk of the tsvector, so a
@@ -107,7 +107,7 @@ def test_facts_and_concepts_are_rendered_into_the_body(tmp_path):
     assert "## Concepts\n\n- how-it-works: git repos are the unit" in record.body
 
 
-def test_facts_never_become_tags(tmp_path):
+def test_facts_never_become_tags(tmp_path: Path) -> None:
     """Tags are the highest-weighted tsvector field after the title, so a
     sentence in a tag distorts ranking for every query sharing a word."""
     [record] = read(_modern(tmp_path)).records
@@ -115,7 +115,7 @@ def test_facts_never_become_tags(tmp_path):
     assert record.tags == ("cmem-type:discovery",)
 
 
-def test_a_file_that_is_not_a_database_is_refused_by_name(tmp_path):
+def test_a_file_that_is_not_a_database_is_refused_by_name(tmp_path: Path) -> None:
     junk = tmp_path / "notes.txt"
     junk.write_text("this is not sqlite")
 
@@ -123,7 +123,9 @@ def test_a_file_that_is_not_a_database_is_refused_by_name(tmp_path):
         read(junk)
 
 
-def test_a_database_with_no_recognised_tables_names_what_it_looked_for(tmp_path):
+def test_a_database_with_no_recognised_tables_names_what_it_looked_for(
+    tmp_path: Path,
+) -> None:
     db = tmp_path / "other.db"
     conn = sqlite3.connect(db)
     conn.executescript("create table unrelated (id integer primary key);")

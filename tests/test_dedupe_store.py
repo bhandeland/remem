@@ -7,6 +7,7 @@ no model runs here, and the expected ordering is verifiable by eye.
 from __future__ import annotations
 
 from typing import Any
+from uuid import UUID
 
 import psycopg
 import pytest
@@ -26,7 +27,13 @@ def store(conn: psycopg.Connection[Any]) -> PostgresStore:
     return PostgresStore(conn)
 
 
-def _entry(store, owner_id, title, body="shared body", **kw):
+def _entry(
+    store: PostgresStore,
+    owner_id: UUID,
+    title: str,
+    body: str = "shared body",
+    **kw: Any,
+):
     return store.put_entry(
         Entry(
             id=new_id(), kind=Kind.NOTE, title=title, body=body, owner_id=owner_id, **kw
@@ -34,7 +41,7 @@ def _entry(store, owner_id, title, body="shared body", **kw):
     )
 
 
-def test_identical_bodies_group(store):
+def test_identical_bodies_group(store: PostgresStore) -> None:
     owner = store.ensure_principal("dedupe-exact")
     a = _entry(store, owner.id, "first")
     b = _entry(store, owner.id, "second")
@@ -46,7 +53,7 @@ def test_identical_bodies_group(store):
     assert {e.id for e in sets[0].entries} == {a.id, b.id}
 
 
-def test_entries_differing_only_in_title_still_group(store):
+def test_entries_differing_only_in_title_still_group(store: PostgresStore) -> None:
     """The checksum is over the body alone - see the spec."""
     owner = store.ensure_principal("dedupe-title")
     a = _entry(store, owner.id, "a title")
@@ -57,7 +64,7 @@ def test_entries_differing_only_in_title_still_group(store):
     assert {e.id for e in sets[0].entries} == {a.id, b.id}
 
 
-def test_a_trailing_newline_is_not_a_different_fact(store):
+def test_a_trailing_newline_is_not_a_different_fact(store: PostgresStore) -> None:
     owner = store.ensure_principal("dedupe-trim")
     a = _entry(store, owner.id, "a", body="one fact")
     b = _entry(store, owner.id, "b", body="one fact\n")
@@ -67,7 +74,7 @@ def test_a_trailing_newline_is_not_a_different_fact(store):
     assert {e.id for e in sets[0].entries} == {a.id, b.id}
 
 
-def test_internal_whitespace_is_a_different_body(store):
+def test_internal_whitespace_is_a_different_body(store: PostgresStore) -> None:
     """btrim and nothing looser. The near tier catches these, with a score."""
     owner = store.ensure_principal("dedupe-inner")
     _entry(store, owner.id, "a", body="one  fact")
@@ -76,7 +83,7 @@ def test_internal_whitespace_is_a_different_body(store):
     assert store.exact_duplicate_groups(Query(limit=50), owner.id) == []
 
 
-def test_a_superseded_member_is_excluded(store):
+def test_a_superseded_member_is_excluded(store: PostgresStore) -> None:
     owner = store.ensure_principal("dedupe-superseded")
     a = _entry(store, owner.id, "old")
     b = _entry(store, owner.id, "new")
@@ -85,7 +92,7 @@ def test_a_superseded_member_is_excluded(store):
     assert store.exact_duplicate_groups(Query(limit=50), owner.id) == []
 
 
-def test_another_principal_identical_bodies_never_appear(store):
+def test_another_principal_identical_bodies_never_appear(store: PostgresStore) -> None:
     """A fresh fixture guarantees no other rows, which is why one is seeded."""
     mine = store.ensure_principal("dedupe-mine")
     theirs = store.ensure_principal("dedupe-theirs")
@@ -101,7 +108,7 @@ def test_another_principal_identical_bodies_never_appear(store):
     assert t1.id not in found and t2.id not in found
 
 
-def test_filters_narrow_the_population(store):
+def test_filters_narrow_the_population(store: PostgresStore) -> None:
     owner = store.ensure_principal("dedupe-filter")
     _entry(store, owner.id, "a", project="one")
     _entry(store, owner.id, "b", project="two")
@@ -110,7 +117,7 @@ def test_filters_narrow_the_population(store):
     assert store.exact_duplicate_groups(Query(project="one", limit=50), owner.id) == []
 
 
-def test_origins_are_not_filtered_by_default(store):
+def test_origins_are_not_filtered_by_default(store: PostgresStore) -> None:
     """An EXTRACTED twin of a hand-written entry is the point of this report."""
     owner = store.ensure_principal("dedupe-origins")
     a = _entry(store, owner.id, "human one", origin=Origin.HUMAN)
@@ -121,11 +128,13 @@ def test_origins_are_not_filtered_by_default(store):
     assert {e.id for e in sets[0].entries} == {a.id, b.id}
 
 
-def _vec(store, entry, xy, owner_id):
+def _vec(store: PostgresStore, entry: Entry, xy: tuple[float, float], owner_id: UUID):
     store.put_vector(entry.id, MODEL, 2, list(xy), owner_id)
 
 
-def test_near_pairs_are_returned_once_with_their_similarity(store):
+def test_near_pairs_are_returned_once_with_their_similarity(
+    store: PostgresStore,
+) -> None:
     owner = store.ensure_principal("dedupe-near")
     a = _entry(store, owner.id, "a", body="one")
     b = _entry(store, owner.id, "b", body="two")
@@ -142,7 +151,7 @@ def test_near_pairs_are_returned_once_with_their_similarity(store):
     assert pairs[0].similarity == pytest.approx(1.0)
 
 
-def test_a_pair_below_the_threshold_is_absent(store):
+def test_a_pair_below_the_threshold_is_absent(store: PostgresStore) -> None:
     owner = store.ensure_principal("dedupe-below")
     a = _entry(store, owner.id, "a", body="one")
     b = _entry(store, owner.id, "b", body="two")
@@ -156,7 +165,9 @@ def test_a_pair_below_the_threshold_is_absent(store):
     assert (pairs, total) == ([], 0)
 
 
-def test_an_entry_with_no_vector_is_absent_rather_than_an_error(store):
+def test_an_entry_with_no_vector_is_absent_rather_than_an_error(
+    store: PostgresStore,
+) -> None:
     owner = store.ensure_principal("dedupe-novec")
     a = _entry(store, owner.id, "a", body="one")
     b = _entry(store, owner.id, "b", body="two")
@@ -170,7 +181,7 @@ def test_an_entry_with_no_vector_is_absent_rather_than_an_error(store):
     assert b.id is not None  # b simply never joins
 
 
-def test_the_total_counts_past_the_limit(store):
+def test_the_total_counts_past_the_limit(store: PostgresStore) -> None:
     """Truncation must be visible - the renderer says 'showing N of M'."""
     owner = store.ensure_principal("dedupe-limit")
     for i in range(4):
@@ -185,7 +196,7 @@ def test_the_total_counts_past_the_limit(store):
     assert len(pairs) == 2
 
 
-def test_near_pairs_never_cross_owners(store):
+def test_near_pairs_never_cross_owners(store: PostgresStore) -> None:
     mine = store.ensure_principal("near-mine")
     theirs = store.ensure_principal("near-theirs")
     a = _entry(store, mine.id, "a", body="one")
@@ -200,7 +211,7 @@ def test_near_pairs_never_cross_owners(store):
     assert (pairs, total) == ([], 0)
 
 
-def test_a_superseded_entry_is_not_a_near_duplicate(store):
+def test_a_superseded_entry_is_not_a_near_duplicate(store: PostgresStore) -> None:
     owner = store.ensure_principal("near-superseded")
     a = _entry(store, owner.id, "a", body="one")
     b = _entry(store, owner.id, "b", body="two")
@@ -215,7 +226,7 @@ def test_a_superseded_entry_is_not_a_near_duplicate(store):
     assert (pairs, total) == ([], 0)
 
 
-def test_coverage_counts_embedded_against_total(store):
+def test_coverage_counts_embedded_against_total(store: PostgresStore) -> None:
     owner = store.ensure_principal("dedupe-coverage")
     a = _entry(store, owner.id, "a", body="one")
     _entry(store, owner.id, "b", body="two")
@@ -224,14 +235,14 @@ def test_coverage_counts_embedded_against_total(store):
     assert store.vector_coverage(Query(limit=50), owner.id, MODEL) == (1, 2)
 
 
-def test_coverage_is_zero_when_nothing_is_embedded(store):
+def test_coverage_is_zero_when_nothing_is_embedded(store: PostgresStore) -> None:
     owner = store.ensure_principal("dedupe-nocoverage")
     _entry(store, owner.id, "a", body="one")
 
     assert store.vector_coverage(Query(limit=50), owner.id, MODEL) == (0, 1)
 
 
-def test_coverage_ignores_another_model(store):
+def test_coverage_ignores_another_model(store: PostgresStore) -> None:
     owner = store.ensure_principal("dedupe-othermodel")
     a = _entry(store, owner.id, "a", body="one")
     store.put_vector(a.id, "some-other-model", 2, [1.0, 0.0], owner.id)

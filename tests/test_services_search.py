@@ -1,4 +1,5 @@
 from typing import Any, override
+from uuid import UUID
 
 import psycopg
 import pytest
@@ -6,7 +7,7 @@ import pytest
 from remem.backends.postgres.migrate import migrate
 from remem.backends.postgres.store import PostgresStore
 from remem.domain import Entry, Hit, Kind, Match, Principal, Query, new_id
-from remem.embed import EmbedderUnavailable
+from remem.embed import Embedder, EmbedderUnavailable
 from remem.services import search
 from remem.services.search import find
 from remem.services.write import remember
@@ -25,20 +26,22 @@ def owner(store: PostgresStore) -> Principal:
     return store.ensure_principal("brandon")
 
 
-def test_find_delegates_to_the_store(store, owner):
+def test_find_delegates_to_the_store(store: PostgresStore, owner: Principal) -> None:
     remember(store, owner.id, title="Postgres", body="tune work_mem")
     hits = find(store, owner.id, Query(text="work_mem"))
     assert [h.entry.title for h in hits] == ["Postgres"]
 
 
-def test_find_caps_an_absurd_limit(store, owner):
+def test_find_caps_an_absurd_limit(store: PostgresStore, owner: Principal) -> None:
     for i in range(3):
         remember(store, owner.id, title=f"E{i}", body="shared")
     hits = find(store, owner.id, Query(text="shared", limit=100000))
     assert len(hits) == 3
 
 
-def test_find_rejects_a_nonpositive_limit(store, owner):
+def test_find_rejects_a_nonpositive_limit(
+    store: PostgresStore, owner: Principal
+) -> None:
     remember(store, owner.id, title="E", body="shared")
     assert find(store, owner.id, Query(text="shared", limit=0)) == []
 
@@ -54,21 +57,33 @@ class StubStore:
     would make the test about SQL instead.
     """
 
-    def __init__(self, exact=None, semantic=None, fuzzy=None):
+    def __init__(
+        self,
+        exact: list[Hit] | None = None,
+        semantic: list[Hit] | None = None,
+        fuzzy: list[Hit] | None = None,
+    ) -> None:
         self._exact = exact or []
         self._semantic = semantic or []
         self._fuzzy = fuzzy or []
         self.called: list[str] = []
 
-    def search(self, query, owner_id):
+    def search(self, query: Query, owner_id: UUID) -> list[Hit]:
         self.called.append("exact")
         return list(self._exact)
 
-    def semantic_search(self, query, owner_id, vector, model, threshold):
+    def semantic_search(
+        self,
+        query: Query,
+        owner_id: UUID,
+        vector: list[float],
+        model: str,
+        threshold: float,
+    ) -> list[Hit]:
         self.called.append("semantic")
         return list(self._semantic)
 
-    def fuzzy_search(self, query, owner_id, threshold):
+    def fuzzy_search(self, query: Query, owner_id: UUID, threshold: float) -> list[Hit]:
         self.called.append("fuzzy")
         return list(self._fuzzy)
 
@@ -77,16 +92,16 @@ class StubEmbedder:
     name = "stub"
     dim = 2
 
-    def embed(self, texts):
+    def embed(self, texts: list[str]) -> list[list[float]]:
         return [[1.0, 0.0] for _ in texts]
 
 
-def _hit(match=Match.EXACT):
+def _hit(match: Match = Match.EXACT) -> Hit:
     e = Entry(id=new_id(), kind=Kind.NOTE, title="t", body="b", owner_id=new_id())
     return Hit(entry=e, rank=1.0, snippet="s", match=match)
 
 
-def test_exact_results_stop_the_chain():
+def test_exact_results_stop_the_chain() -> None:
     store = StubStore(exact=[_hit()], semantic=[_hit(Match.SEMANTIC)])
 
     hits = find(store, new_id(), Query(text="q"), embedder=StubEmbedder())
@@ -95,7 +110,7 @@ def test_exact_results_stop_the_chain():
     assert hits[0].match is Match.EXACT
 
 
-def test_semantic_runs_only_when_exact_is_empty():
+def test_semantic_runs_only_when_exact_is_empty() -> None:
     store = StubStore(semantic=[_hit(Match.SEMANTIC)], fuzzy=[_hit(Match.FUZZY)])
 
     hits = find(store, new_id(), Query(text="q"), embedder=StubEmbedder())
@@ -104,7 +119,7 @@ def test_semantic_runs_only_when_exact_is_empty():
     assert [h.match for h in hits] == [Match.SEMANTIC]
 
 
-def test_fuzzy_runs_only_when_both_above_are_empty():
+def test_fuzzy_runs_only_when_both_above_are_empty() -> None:
     store = StubStore(fuzzy=[_hit(Match.FUZZY)])
 
     hits = find(store, new_id(), Query(text="q"), embedder=StubEmbedder())
@@ -113,7 +128,7 @@ def test_fuzzy_runs_only_when_both_above_are_empty():
     assert [h.match for h in hits] == [Match.FUZZY]
 
 
-def test_no_embedder_degrades_to_two_tiers():
+def test_no_embedder_degrades_to_two_tiers() -> None:
     # The documented degradation: without the optional dependency installed,
     # search still works and simply skips the middle tier. It must not error.
     store = StubStore(fuzzy=[_hit(Match.FUZZY)])
@@ -124,7 +139,9 @@ def test_no_embedder_degrades_to_two_tiers():
     assert [h.match for h in hits] == [Match.FUZZY]
 
 
-def test_omitting_the_embedder_builds_the_shared_one(monkeypatch):
+def test_omitting_the_embedder_builds_the_shared_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """The sentinel's whole reason for existing, and the half no test pinned.
 
     An omitted `embedder` is not the same as `embedder=None`: None says
@@ -135,7 +152,7 @@ def test_omitting_the_embedder_builds_the_shared_one(monkeypatch):
     """
     built: list[str] = []
 
-    def fake_shared(model):
+    def fake_shared(model: str) -> StubEmbedder:
         built.append(model)
         return StubEmbedder()
 
@@ -149,7 +166,9 @@ def test_omitting_the_embedder_builds_the_shared_one(monkeypatch):
     assert [h.match for h in hits] == [Match.SEMANTIC]
 
 
-def test_the_shared_embedder_is_not_built_when_the_exact_tier_answers(monkeypatch):
+def test_the_shared_embedder_is_not_built_when_the_exact_tier_answers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Constructing one imports fastembed and can download ~130MB, so the
     tier that never runs must never pay for it."""
     built: list[str] = []
@@ -166,14 +185,14 @@ def test_the_shared_embedder_is_not_built_when_the_exact_tier_answers(monkeypatc
     assert built == []
 
 
-def test_an_embedder_that_raises_degrades_rather_than_failing_the_search():
+def test_an_embedder_that_raises_degrades_rather_than_failing_the_search() -> None:
     # A missing model file must cost the semantic tier, not the search. The
     # user asked a question; two tiers can still answer it. An embedder that
     # raises never reaches store.semantic_search, so "semantic" never lands
     # in store.called - only ["exact", "fuzzy"] is a correct outcome here.
     class Broken(StubEmbedder):
         @override
-        def embed(self, texts):
+        def embed(self, texts: list[str]) -> list[list[float]]:
             raise RuntimeError("no model")
 
     store = StubStore(fuzzy=[_hit(Match.FUZZY)])
@@ -183,7 +202,7 @@ def test_an_embedder_that_raises_degrades_rather_than_failing_the_search():
     assert [h.match for h in hits] == [Match.FUZZY]
 
 
-def test_empty_query_text_skips_both_fallbacks():
+def test_empty_query_text_skips_both_fallbacks() -> None:
     # A listing query - no text, just filters. There is nothing to be
     # approximately like.
     store = StubStore(semantic=[_hit(Match.SEMANTIC)], fuzzy=[_hit(Match.FUZZY)])
@@ -194,12 +213,14 @@ def test_empty_query_text_skips_both_fallbacks():
     assert hits == []
 
 
-def test_an_exact_match_never_constructs_an_embedder(monkeypatch):
+def test_an_exact_match_never_constructs_an_embedder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     # The cost of building the local embedder is a model download on a cold
     # machine and an ONNX session on a warm one, and an exact match needs
     # neither. Blowing up in load_embedder is the only way to assert that it
     # was not called anywhere down the chain.
-    def explode(model_name):
+    def explode(model_name: str) -> Embedder:
         raise AssertionError(f"built an embedder for {model_name!r}")
 
     monkeypatch.setattr("remem.services.search.load_embedder", explode)
@@ -211,10 +232,12 @@ def test_an_exact_match_never_constructs_an_embedder(monkeypatch):
     assert [h.match for h in hits] == [Match.EXACT]
 
 
-def test_the_semantic_tier_builds_the_shared_embedder_once(monkeypatch):
-    calls = []
+def test_the_semantic_tier_builds_the_shared_embedder_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
 
-    def build(model_name):
+    def build(model_name: str) -> StubEmbedder:
         calls.append(model_name)
         return StubEmbedder()
 
@@ -229,8 +252,8 @@ def test_the_semantic_tier_builds_the_shared_embedder_once(monkeypatch):
 
 
 def test_a_raising_embedder_constructor_costs_the_tier_and_not_the_search(
-    store, owner, monkeypatch
-):
+    store: PostgresStore, owner: Principal, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """The probe is a real inference call, and it is outside the old try.
 
     shared_embedder caught EmbedderUnavailable only. A LocalEmbedder that
@@ -240,7 +263,7 @@ def test_a_raising_embedder_constructor_costs_the_tier_and_not_the_search(
     """
     monkeypatch.setattr("remem.services.search._EMBEDDERS", {})
 
-    def explode(name):
+    def explode(name: str) -> Embedder:
         raise RuntimeError("onnxruntime session failed")
 
     monkeypatch.setattr("remem.services.search.load_embedder", explode)
@@ -250,13 +273,15 @@ def test_a_raising_embedder_constructor_costs_the_tier_and_not_the_search(
     assert hits == []  # degraded to two tiers, did not raise
 
 
-def test_an_unavailable_embedder_is_a_none_and_is_not_retried(monkeypatch):
+def test_an_unavailable_embedder_is_a_none_and_is_not_retried(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     # The policy the frontends used to each restate: search degrades, and it
     # degrades once. Re-attempting the fastembed import on every search would
     # repay the failure without ever changing the answer.
-    calls = []
+    calls: list[str] = []
 
-    def unavailable(model_name):
+    def unavailable(model_name: str) -> Embedder:
         calls.append(model_name)
         raise EmbedderUnavailable("no extra")
 

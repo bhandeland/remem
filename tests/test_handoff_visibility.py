@@ -27,25 +27,31 @@ def owner(store: PostgresStore) -> Principal:
     return store.ensure_principal("brandon")
 
 
-def test_handoffs_are_absent_from_search_by_default(store, owner):
+def test_handoffs_are_absent_from_search_by_default(
+    store: PostgresStore, owner: Principal
+) -> None:
     handoff.write(store, owner.id, project="remem", topic="ci", body=BODY)
     hits = find(store, owner.id, Query(text="pipeline"))
     assert hits == []
 
 
-def test_handoffs_appear_when_asked_for(store, owner):
+def test_handoffs_appear_when_asked_for(store: PostgresStore, owner: Principal) -> None:
     handoff.write(store, owner.id, project="remem", topic="ci", body=BODY)
     hits = find(store, owner.id, Query(text="pipeline"), include_handoffs=True)
     assert [h.entry.origin for h in hits] == [Origin.HANDOFF]
 
 
-def test_an_explicit_origin_filter_is_never_overridden(store, owner):
+def test_an_explicit_origin_filter_is_never_overridden(
+    store: PostgresStore, owner: Principal
+) -> None:
     handoff.write(store, owner.id, project="remem", topic="ci", body=BODY)
     hits = find(store, owner.id, Query(text="pipeline", origins=[Origin.HANDOFF]))
     assert len(hits) == 1
 
 
-def test_ordinary_entries_are_still_found(store, owner):
+def test_ordinary_entries_are_still_found(
+    store: PostgresStore, owner: Principal
+) -> None:
     write.remember(
         store,
         owner.id,
@@ -56,7 +62,9 @@ def test_ordinary_entries_are_still_found(store, owner):
     assert len(find(store, owner.id, Query(text="pipeline"))) == 1
 
 
-def test_handoffs_never_reach_a_context_block(store, owner):
+def test_handoffs_never_reach_a_context_block(
+    store: PostgresStore, owner: Principal
+) -> None:
     kb.create(
         store,
         owner.id,

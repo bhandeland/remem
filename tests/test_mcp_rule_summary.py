@@ -24,7 +24,7 @@ def env(live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> str:
     return live_dsn
 
 
-def test_a_rule_without_a_summary_returns_an_error_not_a_raise(env):
+def test_a_rule_without_a_summary_returns_an_error_not_a_raise(env: str) -> None:
     """An MCP tool that raises hands the model a stack trace where a
     sentence would do. Same shape as the invalid-kind response."""
     from remem.mcp_server import remember_tool
@@ -35,7 +35,7 @@ def test_a_rule_without_a_summary_returns_an_error_not_a_raise(env):
     assert "summary" in result["error"]
 
 
-def test_a_rule_with_a_summary_is_written(env):
+def test_a_rule_with_a_summary_is_written(env: str) -> None:
     from remem.mcp_server import remember_tool
 
     result = remember_tool(
@@ -45,7 +45,7 @@ def test_a_rule_with_a_summary_is_written(env):
     assert "id" in result
 
 
-def test_a_note_still_needs_no_summary(env):
+def test_a_note_still_needs_no_summary(env: str) -> None:
     from remem.mcp_server import remember_tool
 
     assert "id" in remember_tool(title="A note", body="learned something")

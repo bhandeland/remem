@@ -13,7 +13,7 @@ runner = CliRunner()
 
 
 @pytest.mark.db
-def test_installer_registers_the_session_end_hook(tmp_path):
+def test_installer_registers_the_session_end_hook(tmp_path: Path) -> None:
     """SessionEnd now points at the same command PostToolUse does - the
     idle trigger replaced it as the requirement, and it is kept only as a
     hint that shortens the wait."""
@@ -28,7 +28,7 @@ def test_installer_registers_the_session_end_hook(tmp_path):
 
 
 @pytest.mark.db
-def test_installing_twice_leaves_one_session_end_hook(tmp_path):
+def test_installing_twice_leaves_one_session_end_hook(tmp_path: Path) -> None:
     ClaudeCodeAdapter().install(scope="user", home=tmp_path)
     ClaudeCodeAdapter().install(scope="user", home=tmp_path)
     settings = json.loads((tmp_path / ".claude" / "settings.json").read_text())
@@ -36,7 +36,7 @@ def test_installing_twice_leaves_one_session_end_hook(tmp_path):
 
 
 @pytest.mark.db
-def test_install_report_says_recording_is_off_by_default(tmp_path):
+def test_install_report_says_recording_is_off_by_default(tmp_path: Path) -> None:
     report = ClaudeCodeAdapter().install(scope="user", home=tmp_path)
     combined = " ".join(report.actions + report.notes).lower()
     assert "record" in combined
@@ -55,7 +55,7 @@ def env(live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> str:
 
 
 @pytest.mark.db
-def test_enable_then_status_reports_the_project(env):
+def test_enable_then_status_reports_the_project(env: str) -> None:
     assert (
         runner.invoke(app, ["capture", "enable", "--project", "remem"]).exit_code == 0
     )
@@ -65,7 +65,7 @@ def test_enable_then_status_reports_the_project(env):
 
 
 @pytest.mark.db
-def test_status_json_is_valid_when_nothing_has_happened(env):
+def test_status_json_is_valid_when_nothing_has_happened(env: str) -> None:
     result = runner.invoke(app, ["capture", "status", "--json"])
     assert result.exit_code == 0
     payload = json.loads(result.stdout)
@@ -75,7 +75,7 @@ def test_status_json_is_valid_when_nothing_has_happened(env):
 
 
 @pytest.mark.db
-def test_disable_removes_the_project_from_status(env):
+def test_disable_removes_the_project_from_status(env: str) -> None:
     runner.invoke(app, ["capture", "enable", "--project", "remem"])
     runner.invoke(app, ["capture", "disable", "--project", "remem"])
     payload = json.loads(runner.invoke(app, ["capture", "status", "--json"]).stdout)
@@ -83,7 +83,7 @@ def test_disable_removes_the_project_from_status(env):
 
 
 @pytest.mark.db
-def test_enable_states_the_model_and_cost(env):
+def test_enable_states_the_model_and_cost(env: str) -> None:
     """Borrowed from claude-mem, which quotes a rate at install time. The
     moment a user opts in is the moment the tradeoff is actionable."""
     result = runner.invoke(app, ["capture", "enable", "--project", "remem"])
@@ -94,6 +94,6 @@ def test_enable_states_the_model_and_cost(env):
 
 
 @pytest.mark.db
-def test_status_reports_the_configured_model(env):
+def test_status_reports_the_configured_model(env: str) -> None:
     payload = json.loads(runner.invoke(app, ["capture", "status", "--json"]).stdout)
     assert payload["model"] == "sonnet"

@@ -44,21 +44,21 @@ def docs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return tmp_path
 
 
-def test_ingest_reports_counts(env, docs):
+def test_ingest_reports_counts(env: str, docs: Path) -> None:
     result = runner.invoke(app, ["ingest", str(docs), "--project", "remem"])
 
     assert result.exit_code == 0
     assert "2 new" in result.stdout
 
 
-def test_dry_run_says_so_and_writes_nothing(env, docs):
+def test_dry_run_says_so_and_writes_nothing(env: str, docs: Path) -> None:
     runner.invoke(app, ["ingest", str(docs), "--project", "remem", "--dry-run"])
 
     result = runner.invoke(app, ["search", "body one", "--project", "remem"])
     assert "No matches." in result.stdout
 
 
-def test_dry_run_does_not_tell_you_to_embed(env, docs):
+def test_dry_run_does_not_tell_you_to_embed(env: str, docs: Path) -> None:
     result = runner.invoke(
         app, ["ingest", str(docs), "--project", "remem", "--dry-run"]
     )
@@ -67,7 +67,7 @@ def test_dry_run_does_not_tell_you_to_embed(env, docs):
     assert "remem embed" not in result.stdout
 
 
-def test_archived_chunks_are_hidden_until_asked_for(env, docs):
+def test_archived_chunks_are_hidden_until_asked_for(env: str, docs: Path) -> None:
     runner.invoke(app, ["ingest", str(docs), "--project", "remem", "--archive"])
 
     hidden = runner.invoke(app, ["search", "body one", "--project", "remem"])
@@ -79,7 +79,7 @@ def test_archived_chunks_are_hidden_until_asked_for(env, docs):
     assert "Alpha doc § One" in shown.stdout
 
 
-def test_a_failure_is_named_and_exits_non_zero(env, docs):
+def test_a_failure_is_named_and_exits_non_zero(env: str, docs: Path) -> None:
     (docs / "bad.md").write_bytes(b"\xff\xfe\x00 not utf-8 \xff")
 
     result = runner.invoke(app, ["ingest", str(docs), "--project", "remem"])
@@ -102,8 +102,8 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def test_ingest_from_a_subdirectory_supersedes_rather_than_duplicates(
-    env, repo, monkeypatch
-):
+    env: str, repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     first = runner.invoke(app, ["ingest", "docs/a.md"])
     assert first.exit_code == 0, first.output
     assert "2 new" in first.stdout
@@ -116,7 +116,9 @@ def test_ingest_from_a_subdirectory_supersedes_rather_than_duplicates(
     assert "0 new, 1 changed, 1 unchanged" in second.stdout
 
 
-def test_ingest_refuses_a_path_outside_the_repository(env, repo, tmp_path):
+def test_ingest_refuses_a_path_outside_the_repository(
+    env: str, repo: Path, tmp_path: Path
+) -> None:
     outside = tmp_path / "elsewhere.md"
     outside.write_text("# E\n\nbody\n")
 
@@ -126,7 +128,7 @@ def test_ingest_refuses_a_path_outside_the_repository(env, repo, tmp_path):
     assert "outside the repository" in result.output
 
 
-def test_ingest_records_a_manual_run_row(env, repo):
+def test_ingest_records_a_manual_run_row(env: str, repo: Path) -> None:
     runner.invoke(app, ["ingest", "docs/a.md"])
 
     result = runner.invoke(app, ["reingest", "status"])
@@ -136,7 +138,7 @@ def test_ingest_records_a_manual_run_row(env, repo):
     assert "all designated paths present" not in result.stdout
 
 
-def test_ingest_prints_a_twin_and_still_exits_zero(env, repo):
+def test_ingest_prints_a_twin_and_still_exits_zero(env: str, repo: Path) -> None:
     (repo / "notes").mkdir()
     (repo / "notes" / "a.md").write_text("# A\n\nlead\n\n## One\n\nbody one\n")
     runner.invoke(app, ["ingest", "notes/a.md"])

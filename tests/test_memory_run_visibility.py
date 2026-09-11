@@ -16,7 +16,7 @@ from remem.domain import MemoryTrigger
 pytestmark = pytest.mark.db
 
 
-def test_a_started_row_is_visible_from_another_connection(live_dsn):
+def test_a_started_row_is_visible_from_another_connection(live_dsn: str) -> None:
     with psycopg.connect(live_dsn) as setup:
         migrate(setup)
         setup.commit()

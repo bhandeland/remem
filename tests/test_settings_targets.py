@@ -73,7 +73,7 @@ class BrokenTableAdapter:
         return home / ".broken" / "settings.json"
 
 
-def test_the_agents_own_settings_path_is_used(tmp_path):
+def test_the_agents_own_settings_path_is_used(tmp_path: Path) -> None:
     # The failure this guards against: routing through a second adapter's
     # table and then writing the value into Claude Code's settings.json,
     # which is silent and corrupts another tool's config.
@@ -82,7 +82,9 @@ def test_the_agents_own_settings_path_is_used(tmp_path):
     assert "FAKE_TIMEOUT_MS" in targets.table
 
 
-def test_an_adapter_without_env_settings_has_no_settable_variables(tmp_path):
+def test_an_adapter_without_env_settings_has_no_settable_variables(
+    tmp_path: Path,
+) -> None:
     # The spec's documented outcome for an adapter that predates the
     # capability: reported as having no settable env vars, never a crash.
     targets = resolve_targets(BareAdapter(), tmp_path, {})
@@ -90,7 +92,7 @@ def test_an_adapter_without_env_settings_has_no_settable_variables(tmp_path):
     assert targets.agent_path is None
 
 
-def test_a_table_without_a_settings_path_is_not_offered(tmp_path):
+def test_a_table_without_a_settings_path_is_not_offered(tmp_path: Path) -> None:
     # Knowing what exists is useless without knowing where to write it, and
     # offering the keys anyway would route a write at nothing. Same outcome
     # as having no table at all.
@@ -99,7 +101,7 @@ def test_a_table_without_a_settings_path_is_not_offered(tmp_path):
     assert targets.agent_path is None
 
 
-def test_a_capability_that_raises_degrades_instead_of_crashing(tmp_path):
+def test_a_capability_that_raises_degrades_instead_of_crashing(tmp_path: Path) -> None:
     # The registry contract for this repo is that a broken third-party adapter
     # warns rather than breaking remem - see agents/registry.discover, which
     # catches a failed entry point load for the same reason. A probe that
@@ -111,7 +113,7 @@ def test_a_capability_that_raises_degrades_instead_of_crashing(tmp_path):
     assert targets.agent_path is None
 
 
-def test_a_raising_env_settings_also_degrades(tmp_path):
+def test_a_raising_env_settings_also_degrades(tmp_path: Path) -> None:
     # Both probes, not just the one that happened to be found first.
     with pytest.warns(UserWarning, match="broken-table"):
         targets = resolve_targets(BrokenTableAdapter(), tmp_path, {})
@@ -119,7 +121,7 @@ def test_a_raising_env_settings_also_degrades(tmp_path):
     assert targets.agent_path is None
 
 
-def test_a_broken_adapter_degrades_loudly_rather_than_silently(tmp_path):
+def test_a_broken_adapter_degrades_loudly_rather_than_silently(tmp_path: Path) -> None:
     # Silent degradation would leave the user's keys quietly missing from
     # `remem config list` with nothing to explain it. The adapter is named so
     # the warning points at what to fix.
@@ -127,7 +129,7 @@ def test_a_broken_adapter_degrades_loudly_rather_than_silently(tmp_path):
         resolve_targets(BrokenAdapter(), tmp_path, {})
 
 
-def test_a_broken_adapter_still_leaves_remem_settings_usable(tmp_path):
+def test_a_broken_adapter_still_leaves_remem_settings_usable(tmp_path: Path) -> None:
     # Degrading must not cost the user the half that works: remem's own keys
     # do not come from the adapter at all.
     with pytest.warns(UserWarning):
@@ -136,13 +138,15 @@ def test_a_broken_adapter_still_leaves_remem_settings_usable(tmp_path):
     assert any(row.key == "REMEM_MAX_CHARS" for row in rows)
 
 
-def test_remem_config_honours_an_injected_remem_config_var(tmp_path):
+def test_remem_config_honours_an_injected_remem_config_var(tmp_path: Path) -> None:
     elsewhere = tmp_path / "somewhere" / "config.toml"
     targets = resolve_targets(BareAdapter(), tmp_path, {"REMEM_CONFIG": str(elsewhere)})
     assert targets.remem_path == elsewhere
 
 
-def test_listing_an_agent_with_no_settings_file_still_lists_remem(tmp_path):
+def test_listing_an_agent_with_no_settings_file_still_lists_remem(
+    tmp_path: Path,
+) -> None:
     targets = resolve_targets(BareAdapter(), tmp_path, {})
     rows = list_settings(targets.remem_path, targets.agent_path, targets.table, {})
     assert [r.key for r in rows]

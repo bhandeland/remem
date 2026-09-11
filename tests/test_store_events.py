@@ -30,7 +30,14 @@ def owner(store: PostgresStore) -> Principal:
     return store.ensure_principal("brandon")
 
 
-def an_event(owner, *, at=NOW, tool="Bash", session="s1", payload=None):
+def an_event(
+    owner: Principal,
+    *,
+    at: datetime = NOW,
+    tool: str = "Bash",
+    session: str = "s1",
+    payload: dict[str, Any] | None = None,
+) -> Event:
     return Event(
         id=new_id(),
         owner_id=owner.id,
@@ -44,7 +51,9 @@ def an_event(owner, *, at=NOW, tool="Bash", session="s1", payload=None):
     )
 
 
-def test_an_event_round_trips_with_its_payload_whole(store, owner):
+def test_an_event_round_trips_with_its_payload_whole(
+    store: PostgresStore, owner: Principal
+) -> None:
     big = {"output": "x" * 50_000, "nested": {"a": [1, 2, 3]}}
     stored = store.put_event(an_event(owner, payload=big))
 
@@ -55,7 +64,7 @@ def test_an_event_round_trips_with_its_payload_whole(store, owner):
     assert got[0].kind is EventKind.TOOL_CALL
 
 
-def test_events_come_back_oldest_first(store, owner):
+def test_events_come_back_oldest_first(store: PostgresStore, owner: Principal) -> None:
     later = store.put_event(an_event(owner, at=NOW + timedelta(minutes=5)))
     earlier = store.put_event(an_event(owner, at=NOW))
 
@@ -63,7 +72,9 @@ def test_events_come_back_oldest_first(store, owner):
     assert [e.id for e in got] == [earlier.id, later.id]
 
 
-def test_since_excludes_events_at_or_before_the_watermark(store, owner):
+def test_since_excludes_events_at_or_before_the_watermark(
+    store: PostgresStore, owner: Principal
+) -> None:
     store.put_event(an_event(owner, at=NOW))
     after = store.put_event(an_event(owner, at=NOW + timedelta(minutes=5)))
 
@@ -71,13 +82,17 @@ def test_since_excludes_events_at_or_before_the_watermark(store, owner):
     assert [e.id for e in got] == [after.id]
 
 
-def test_another_principals_events_are_invisible(store, owner):
+def test_another_principals_events_are_invisible(
+    store: PostgresStore, owner: Principal
+) -> None:
     store.put_event(an_event(owner))
     other = store.ensure_principal("someone-else")
     assert store.events_for_session(other.id, "remem", "claude-code", "s1") == []
 
 
-def test_delete_session_events_is_scoped_to_all_four_keys(store, owner):
+def test_delete_session_events_is_scoped_to_all_four_keys(
+    store: PostgresStore, owner: Principal
+) -> None:
     """This is install verification's cleanup primitive - it exists because
     `prune_events` deletes by owner and a time window, and reaching for that
     to clean up one known event would take every other event this owner has
@@ -126,7 +141,9 @@ def test_delete_session_events_is_scoped_to_all_four_keys(store, owner):
     assert survivors == {other_session.id, other_project.id, other_harness.id}
 
 
-def test_provenance_survives_the_events_it_names(store, owner):
+def test_provenance_survives_the_events_it_names(
+    store: PostgresStore, owner: Principal
+) -> None:
     entry = write.remember(store, owner.id, title="t", body="b")
     event = store.put_event(an_event(owner))
     store.link_entry_events(entry.id, [event], owner.id)
@@ -140,7 +157,9 @@ def test_provenance_survives_the_events_it_names(store, owner):
     assert rows == [(event.id, "s1", "claude-code", False)]
 
 
-def test_provenance_for_another_owners_entry_raises(store, owner):
+def test_provenance_for_another_owners_entry_raises(
+    store: PostgresStore, owner: Principal
+) -> None:
     entry = write.remember(store, owner.id, title="t", body="b")
     event = store.put_event(an_event(owner))
     other = store.ensure_principal("someone-else")
@@ -162,8 +181,15 @@ def test_provenance_for_another_owners_entry_raises(store, owner):
 # real duplicates and risks dropping legitimate ones.
 
 
-def a_cursor_event(owner, *, hook, gen, kind=EventKind.MESSAGE, tool_use_id=None):
-    payload = {"hook_event_name": hook, "generation_id": gen}
+def a_cursor_event(
+    owner: Principal,
+    *,
+    hook: str,
+    gen: str,
+    kind: EventKind = EventKind.MESSAGE,
+    tool_use_id: str | None = None,
+) -> Event:
+    payload: dict[str, Any] = {"hook_event_name": hook, "generation_id": gen}
     if tool_use_id is not None:
         payload["tool_use_id"] = tool_use_id
     return Event(
@@ -179,7 +205,9 @@ def a_cursor_event(owner, *, hook, gen, kind=EventKind.MESSAGE, tool_use_id=None
     )
 
 
-def test_the_same_tool_use_id_is_recorded_once(store, owner):
+def test_the_same_tool_use_id_is_recorded_once(
+    store: PostgresStore, owner: Principal
+) -> None:
     """The duplicate a twice-registered hook produces.
 
     Both recordings carry the harness's id for one tool call. The second is
@@ -194,7 +222,9 @@ def test_the_same_tool_use_id_is_recorded_once(store, owner):
     assert got[0].payload == {"tool_use_id": "tu_1"}, "first write wins"
 
 
-def test_a_repeated_tool_call_with_no_harness_id_is_still_recorded_twice(store, owner):
+def test_a_repeated_tool_call_with_no_harness_id_is_still_recorded_twice(
+    store: PostgresStore, owner: Principal
+) -> None:
     """The legitimate repeat that payload-equality dedup would have eaten.
 
     Running the same command twice in a session is ordinary. With no id in
@@ -208,7 +238,9 @@ def test_a_repeated_tool_call_with_no_harness_id_is_still_recorded_twice(store, 
     assert len(got) == 2
 
 
-def test_a_prompt_and_its_response_share_a_generation_id_and_both_survive(store, owner):
+def test_a_prompt_and_its_response_share_a_generation_id_and_both_survive(
+    store: PostgresStore, owner: Principal
+) -> None:
     """The bug this key was one edit away from shipping.
 
     generation_id identifies a GENERATION, not an event: cursor's
@@ -227,7 +259,9 @@ def test_a_prompt_and_its_response_share_a_generation_id_and_both_survive(store,
     assert {e.id for e in got} == {prompt.id, response.id}
 
 
-def test_the_same_generation_and_hook_is_recorded_once(store, owner):
+def test_the_same_generation_and_hook_is_recorded_once(
+    store: PostgresStore, owner: Principal
+) -> None:
     """A duplicated cursor message hook still dedupes."""
     first = store.put_event(a_cursor_event(owner, hook="afterAgentResponse", gen="g1"))
     store.put_event(a_cursor_event(owner, hook="afterAgentResponse", gen="g1"))
@@ -236,7 +270,9 @@ def test_the_same_generation_and_hook_is_recorded_once(store, owner):
     assert [e.id for e in got] == [first.id]
 
 
-def test_tool_use_id_wins_over_the_generation_it_belongs_to(store, owner):
+def test_tool_use_id_wins_over_the_generation_it_belongs_to(
+    store: PostgresStore, owner: Principal
+) -> None:
     """Two tool calls in one generation share generation_id and differ only
     by tool_use_id - so the tool id has to be preferred, not appended to."""
     a = store.put_event(
@@ -262,7 +298,9 @@ def test_tool_use_id_wins_over_the_generation_it_belongs_to(store, owner):
     assert {e.id for e in got} == {a.id, b.id}
 
 
-def test_the_same_id_in_two_sessions_is_two_events(store, owner):
+def test_the_same_id_in_two_sessions_is_two_events(
+    store: PostgresStore, owner: Principal
+) -> None:
     """The key is scoped to the session, not global. Harness ids are only
     promised unique within their own session, and a collision across two
     should never cost an event."""
@@ -273,7 +311,9 @@ def test_the_same_id_in_two_sessions_is_two_events(store, owner):
     assert len(store.events_for_session(owner.id, "remem", "claude-code", "s2")) == 1
 
 
-def test_a_dropped_duplicate_still_returns_a_usable_event(store, owner):
+def test_a_dropped_duplicate_still_returns_a_usable_event(
+    store: PostgresStore, owner: Principal
+) -> None:
     """put_event returns the stored event either way.
 
     It reads recorded_at off the INSERT, and `on conflict do nothing`

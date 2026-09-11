@@ -9,12 +9,15 @@ something already written is the expected outcome rather than a bug.
 
 import subprocess
 from datetime import datetime, timezone
+from typing import Any
+
+import pytest
 
 from remem.domain import Event, EventKind, new_id
 from remem.extract.claude_cli import ClaudeCliExtractor, build_prompt
 
 
-def an_event(payload=None):
+def an_event(payload: dict[str, Any] | None = None):
     return Event(
         id=new_id(),
         owner_id=new_id(),
@@ -28,25 +31,25 @@ def an_event(payload=None):
     )
 
 
-def test_the_prompt_lists_what_is_already_recorded():
+def test_the_prompt_lists_what_is_already_recorded() -> None:
     prompt = build_prompt(["Pin the model for any repeated LLM call"])
     assert "Pin the model for any repeated LLM call" in prompt
 
 
-def test_the_prompt_says_not_to_repeat_them():
+def test_the_prompt_says_not_to_repeat_them() -> None:
     prompt = build_prompt(["Some existing title"])
     lowered = prompt.lower()
     assert "already" in lowered
     assert "again" in lowered or "not record" in lowered
 
 
-def test_the_prompt_is_unchanged_when_nothing_is_recorded_yet():
+def test_the_prompt_is_unchanged_when_nothing_is_recorded_yet() -> None:
     """A fresh project should not carry an empty 'already recorded' section
     that reads as an instruction with no content."""
     assert "already recorded" not in build_prompt([]).lower()
 
 
-def test_known_titles_are_bounded():
+def test_known_titles_are_bounded() -> None:
     """A project with hundreds of entries must not push the session's own
     events out of the context window with its titles."""
     from remem.extract.claude_cli import MAX_KNOWN_TITLES
@@ -55,10 +58,12 @@ def test_known_titles_are_bounded():
     assert prompt.count("Title number") <= MAX_KNOWN_TITLES
 
 
-def test_the_extractor_passes_known_titles_into_the_prompt(monkeypatch):
+def test_the_extractor_passes_known_titles_into_the_prompt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     seen = {}
 
-    def fake_run(cmd, **kwargs):
+    def fake_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         seen["cmd"] = cmd
         return subprocess.CompletedProcess(cmd, 0, stdout="[]", stderr="")
 
@@ -69,10 +74,10 @@ def test_the_extractor_passes_known_titles_into_the_prompt(monkeypatch):
     assert any("An existing rule" in part for part in seen["cmd"])
 
 
-def test_known_titles_are_optional(monkeypatch):
+def test_known_titles_are_optional(monkeypatch: pytest.MonkeyPatch) -> None:
     """The protocol's older two-argument call must keep working."""
 
-    def fake_run(cmd, **kwargs):
+    def fake_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(cmd, 0, stdout="[]", stderr="")
 
     monkeypatch.setattr(subprocess, "run", fake_run)

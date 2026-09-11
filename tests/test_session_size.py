@@ -1,15 +1,17 @@
 import json
+from collections.abc import Sequence
+from pathlib import Path
 
 from remem import session_size
 
 
-def _transcript(tmp_path, lines):
+def _transcript(tmp_path: Path, lines: Sequence[str]) -> Path:
     p = tmp_path / "transcript.jsonl"
     p.write_text("\n".join(lines) + "\n")
     return p
 
 
-def test_counts_user_turns_only(tmp_path):
+def test_counts_user_turns_only(tmp_path: Path) -> None:
     p = _transcript(
         tmp_path,
         [
@@ -21,7 +23,7 @@ def test_counts_user_turns_only(tmp_path):
     assert session_size.count_turns(p) == 2
 
 
-def test_malformed_lines_do_not_stop_the_count(tmp_path):
+def test_malformed_lines_do_not_stop_the_count(tmp_path: Path) -> None:
     p = _transcript(
         tmp_path,
         [
@@ -34,7 +36,7 @@ def test_malformed_lines_do_not_stop_the_count(tmp_path):
     assert session_size.count_turns(p) == 2
 
 
-def test_a_missing_transcript_counts_zero(tmp_path):
+def test_a_missing_transcript_counts_zero(tmp_path: Path) -> None:
     assert session_size.count_turns(tmp_path / "nope.jsonl") == 0
 
 
@@ -56,7 +58,7 @@ def test_a_stride_larger_than_one_still_warns():
     assert session_size.should_warn(213, 157, 150, 50)
 
 
-def test_warn_state_round_trips(tmp_path):
+def test_warn_state_round_trips(tmp_path: Path) -> None:
     path = tmp_path / "session-size.json"
     assert session_size.read_last_warned("sess-1", path) == 0
     session_size.record_warned("sess-1", 150, path)
@@ -64,13 +66,13 @@ def test_warn_state_round_trips(tmp_path):
     assert session_size.read_last_warned("sess-2", path) == 0
 
 
-def test_a_corrupt_state_file_reads_as_never_warned(tmp_path):
+def test_a_corrupt_state_file_reads_as_never_warned(tmp_path: Path) -> None:
     path = tmp_path / "session-size.json"
     path.write_text("{not json")
     assert session_size.read_last_warned("sess-1", path) == 0
 
 
-def test_old_sessions_are_pruned_on_write(tmp_path):
+def test_old_sessions_are_pruned_on_write(tmp_path: Path) -> None:
     path = tmp_path / "session-size.json"
     stale = 1_000_000.0
     session_size.record_warned("old", 150, path, now=stale)
