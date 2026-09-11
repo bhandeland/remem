@@ -288,6 +288,49 @@ Environment variable, then config file, then default.
 | session-size warning | `REMEM_TURN_WARN_AT` | `150` |
 | warning interval | `REMEM_TURN_WARN_EVERY` | `50` |
 
+## Compatibility
+
+remem follows semantic versioning. A major version is a promise about the
+surfaces below, and about nothing else - the distinction matters more than the
+usual boilerplate, because this project deliberately has seams that look public
+and are not.
+
+**Stable within a major version:**
+
+- CLI command and subcommand names, and their flags.
+- The shape of every `--json` output.
+- The MCP tool names, their arguments, and their return shapes.
+- The `remem.agents` entry point contract that third-party adapters register
+  against, and the `AgentAdapter` protocol they implement - including which of
+  its capabilities are optional.
+- The migration sequence. Migrations are forward-only; an applied file is
+  never edited.
+
+**Not stable, and deliberately so:**
+
+- Anything under `backends/`.
+- The Postgres schema as a queryable surface. It is remem's private storage,
+  not an API. Read it through `remem`, not through `psql`.
+- Internal module layout, function signatures, and the services layer.
+
+**The `Store` protocol sits between those two, so it gets its own rule.**
+Existing method signatures do not change within a major version: a caller can
+rely on them. New methods may be added in a minor release, which means anyone
+*implementing* a storage backend should expect to track additions - adding a
+method to a protocol does not break callers, but it does break implementers.
+Postgres is the only implementation today, and the seam stays provisional
+until a second one exists to prove it.
+
+**Not covered by any version promise:**
+
+- `remem serve --http` has no authentication. Binding it to an address whose
+  network you do not control exposes the store to that network. This is not an
+  oversight to be fixed in a patch release; it is the documented shape of the
+  feature.
+- Recorded events are stored in full and kept indefinitely. Nothing prunes
+  them on a schedule. Cursor's hook payloads include the user's email address,
+  and remem does not filter it.
+
 ## Development
 
 ```bash
