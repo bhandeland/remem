@@ -9,6 +9,7 @@ hand, which is why REMEM_HOOK_DEBUG and --strict exist.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import psycopg
 import pytest
@@ -25,7 +26,7 @@ pytestmark = pytest.mark.db
 
 
 @pytest.fixture
-def env(live_dsn, monkeypatch, tmp_path):
+def env(live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> str:
     with psycopg.connect(live_dsn) as c:
         migrate(c)
         c.commit()
@@ -36,7 +37,7 @@ def env(live_dsn, monkeypatch, tmp_path):
 
 
 @pytest.fixture
-def repo(tmp_path):
+def repo(tmp_path: Path) -> Path:
     root = tmp_path / "myrepo"
     root.mkdir()
     return root

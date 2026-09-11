@@ -38,7 +38,7 @@ PROJECT = resolve_project() or "remem"
 
 
 @pytest.fixture
-def env(live_dsn, tmp_path):
+def env(live_dsn: str, tmp_path: Path) -> dict[str, str]:
     with psycopg.connect(live_dsn) as c:
         migrate(c)
         c.commit()
@@ -71,7 +71,7 @@ def _designate(env):
 
 
 @pytest.fixture
-def designated_with_one_stray(env):
+def designated_with_one_stray(env: dict[str, str]) -> Path:
     """A designated project holding one file remem has never seen."""
     _store, conn, _owner = _designate(env)
     conn.commit()
@@ -94,7 +94,7 @@ def designated_with_one_stray(env):
 
 
 @pytest.fixture
-def designated_in_conflict(env):
+def designated_in_conflict(env: dict[str, str]) -> Path:
     """Entry and file disagree with no watermark to say which side moved."""
     store, conn, owner = _designate(env)
     remember(

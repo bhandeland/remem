@@ -6,6 +6,9 @@ no model runs here, and the expected ordering is verifiable by eye.
 
 from __future__ import annotations
 
+from typing import Any
+
+import psycopg
 import pytest
 
 from remem.backends.postgres.migrate import migrate
@@ -18,7 +21,7 @@ MODEL = "test-2d"
 
 
 @pytest.fixture
-def store(conn):
+def store(conn: psycopg.Connection[Any]) -> PostgresStore:
     migrate(conn)
     return PostgresStore(conn)
 

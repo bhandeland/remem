@@ -11,14 +11,24 @@ look like one that was never recorded at all.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
+import psycopg
 import pytest
 from typer.testing import CliRunner
 
 from remem.backends.postgres.migrate import migrate
 from remem.backends.postgres.store import PostgresStore
 from remem.cli import app
-from remem.domain import Event, EventKind, IngestTrigger, JobStatus, SessionRef, new_id
+from remem.domain import (
+    Event,
+    EventKind,
+    IngestTrigger,
+    JobStatus,
+    Principal,
+    SessionRef,
+    new_id,
+)
 from remem.services import events, extraction, ingest, record, write
 
 runner = CliRunner()
@@ -30,13 +40,13 @@ IDLE = 1200
 
 
 @pytest.fixture
-def store(conn):
+def store(conn: psycopg.Connection[Any]) -> PostgresStore:
     migrate(conn)
     return PostgresStore(conn)
 
 
 @pytest.fixture
-def owner(store):
+def owner(store: PostgresStore) -> Principal:
     return store.ensure_principal("brandon")
 
 

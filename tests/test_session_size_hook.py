@@ -1,5 +1,6 @@
 import io
 import json
+from pathlib import Path
 
 import pytest
 
@@ -8,7 +9,7 @@ from remem.extract.base import CHILD_ENV_VAR
 
 
 @pytest.fixture(autouse=True)
-def _isolated_state(tmp_path, monkeypatch):
+def _isolated_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The warn-state path comes from platformdirs, which reads the real
     environment - without this the tests would read and write the
     developer's own cache file and depend on earlier runs."""

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import psycopg
 import pytest
@@ -32,7 +33,7 @@ LONG_AGO = datetime.now(timezone.utc) - timedelta(hours=2)
 
 
 @pytest.fixture
-def env(live_dsn, monkeypatch, tmp_path):
+def env(live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> str:
     with psycopg.connect(live_dsn) as c:
         migrate(c)
         c.commit()

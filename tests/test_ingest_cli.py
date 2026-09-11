@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
@@ -14,7 +15,7 @@ runner = CliRunner()
 
 
 @pytest.fixture
-def env(live_dsn, monkeypatch, tmp_path):
+def env(live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> str:
     """Same bootstrap as tests/test_cli.py: the CLI opens its own session, so
     the schema has to be committed before it connects."""
     import psycopg
@@ -29,7 +30,7 @@ def env(live_dsn, monkeypatch, tmp_path):
 
 
 @pytest.fixture
-def docs(tmp_path, monkeypatch):
+def docs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     # The chunk title comes from the h1, not the filename stem, so this file
     # produces "Alpha doc" and "Alpha doc § One".
     #
@@ -90,7 +91,7 @@ def test_a_failure_is_named_and_exits_non_zero(env, docs):
 
 
 @pytest.fixture
-def repo(tmp_path, monkeypatch):
+def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """A real repository, because identity resolves against its top level."""
     root = tmp_path / "repo"
     (root / "docs").mkdir(parents=True)

@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
+import psycopg
 import pytest
 
 from remem.backends.postgres.migrate import migrate
 from remem.backends.postgres.store import PostgresStore
-from remem.domain import Event, EventKind, new_id
+from remem.domain import Event, EventKind, Principal, new_id
 from remem.services import write
 from remem.store import NotOwner
 
@@ -18,13 +20,13 @@ NOW = datetime(2026, 8, 29, 12, 0, tzinfo=timezone.utc)
 
 
 @pytest.fixture
-def store(conn):
+def store(conn: psycopg.Connection[Any]) -> PostgresStore:
     migrate(conn)
     return PostgresStore(conn)
 
 
 @pytest.fixture
-def owner(store):
+def owner(store: PostgresStore) -> Principal:
     return store.ensure_principal("brandon")
 
 

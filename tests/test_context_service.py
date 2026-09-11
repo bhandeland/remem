@@ -6,11 +6,14 @@ harness could record events but could not be told anything.
 
 from __future__ import annotations
 
+from typing import Any
+
+import psycopg
 import pytest
 
 from remem.backends.postgres.migrate import migrate
 from remem.backends.postgres.store import PostgresStore
-from remem.domain import CollectionQuery
+from remem.domain import CollectionQuery, Principal
 from remem.services import context, handoff, kb
 from remem.services.write import remember
 
@@ -20,13 +23,13 @@ BODY = "## Done\nx\n\n## In flight\n\n## Next steps\n\n## Gotchas\n"
 
 
 @pytest.fixture
-def store(conn):
+def store(conn: psycopg.Connection[Any]) -> PostgresStore:
     migrate(conn)
     return PostgresStore(conn)
 
 
 @pytest.fixture
-def owner(store):
+def owner(store: PostgresStore) -> Principal:
     return store.ensure_principal("brandon")
 
 

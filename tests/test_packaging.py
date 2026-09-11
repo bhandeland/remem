@@ -28,7 +28,7 @@ OPENCODE_PLUGIN = SRC / "agents" / "opencode" / "plugin.js"
 
 
 @pytest.fixture(scope="module")
-def wheel_names(tmp_path_factory) -> set[str]:
+def wheel_names(tmp_path_factory: pytest.TempPathFactory) -> set[str]:
     """Build a wheel once and return the archive paths it contains."""
     out = tmp_path_factory.mktemp("wheel")
     result = subprocess.run(

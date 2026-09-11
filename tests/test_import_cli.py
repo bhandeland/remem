@@ -37,7 +37,7 @@ create table memory_items (
 
 
 @pytest.fixture
-def env(live_dsn, tmp_path):
+def env(live_dsn: str, tmp_path: Path) -> dict[str, str]:
     """CliRunner's `env=` merges into os.environ for the invoke call, which
     is what lets `_memory_dir`'s `Path.cwd()` call see CLAUDE_CONFIG_DIR
     pointed at tmp_path - so this is returned as a dict rather than set via
@@ -55,7 +55,7 @@ def env(live_dsn, tmp_path):
 
 
 @pytest.fixture
-def source(tmp_path) -> Path:
+def source(tmp_path: Path) -> Path:
     db = tmp_path / "claude-mem.db"
     conn = sqlite3.connect(db)
     conn.executescript(SCHEMA)

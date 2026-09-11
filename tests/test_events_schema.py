@@ -9,6 +9,9 @@ deleted on purpose.
 
 from __future__ import annotations
 
+from typing import Any
+
+import psycopg
 import pytest
 
 from remem.backends.postgres.migrate import migrate
@@ -17,7 +20,7 @@ pytestmark = pytest.mark.db
 
 
 @pytest.fixture
-def migrated(conn):
+def migrated(conn: psycopg.Connection[Any]) -> psycopg.Connection[Any]:
     migrate(conn)
     return conn
 

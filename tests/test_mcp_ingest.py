@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from remem.backends.postgres.migrate import migrate
@@ -8,7 +10,7 @@ pytestmark = pytest.mark.db
 
 
 @pytest.fixture
-def env(live_dsn, monkeypatch, tmp_path):
+def env(live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> str:
     import psycopg
 
     with psycopg.connect(live_dsn) as c:

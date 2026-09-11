@@ -1,5 +1,6 @@
 import json
 from collections.abc import Mapping
+from pathlib import Path
 
 import pytest
 
@@ -15,7 +16,9 @@ BODY = "## Done\nx\n\n## In flight\n\n## Next steps\n\n## Gotchas\n"
 
 
 @pytest.fixture
-def live(live_dsn, monkeypatch, tmp_path):
+def live(
+    live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> dict[str, str]:
     import psycopg
 
     with psycopg.connect(live_dsn) as c:
@@ -66,7 +69,7 @@ def _payload(cwd):
 
 
 @pytest.fixture
-def repo(tmp_path):
+def repo(tmp_path: Path) -> Path:
     """A real git repository, since the project comes from git, not the dir."""
     import subprocess
 

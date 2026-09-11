@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from typing import Any
+
+import psycopg
 import pytest
 
 from remem import memory_file
 from remem.backends.postgres.migrate import migrate
 from remem.backends.postgres.store import PostgresStore
-from remem.domain import CollectionQuery, Entry, Kind, Origin, new_id
+from remem.domain import CollectionQuery, Entry, Kind, Origin, Principal, new_id
 from remem.services import kb, memory
 from remem.services.write import remember, supersede
 from tests.conftest import found
@@ -14,13 +17,13 @@ pytestmark = pytest.mark.db
 
 
 @pytest.fixture
-def store(conn):
+def store(conn: psycopg.Connection[Any]) -> PostgresStore:
     migrate(conn)
     return PostgresStore(conn)
 
 
 @pytest.fixture
-def owner(store):
+def owner(store: PostgresStore) -> Principal:
     return store.ensure_principal("brandon")
 
 

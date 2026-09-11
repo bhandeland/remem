@@ -5,8 +5,9 @@ idempotency and what happens when the model chokes on one batch - none of
 which needs real embeddings, all of which needs to be exercised.
 """
 
-from typing import override
+from typing import Any, override
 
+import psycopg
 import pytest
 
 from remem.backends.postgres.migrate import migrate
@@ -39,7 +40,7 @@ class BrokenEmbedder(FakeEmbedder):
 
 
 @pytest.fixture
-def store(conn):
+def store(conn: psycopg.Connection[Any]) -> PostgresStore:
     migrate(conn)
     return PostgresStore(conn)
 

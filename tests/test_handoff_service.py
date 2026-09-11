@@ -1,10 +1,12 @@
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
+import psycopg
 import pytest
 
 from remem.backends.postgres.migrate import migrate
 from remem.backends.postgres.store import PostgresStore
-from remem.domain import Kind, Origin
+from remem.domain import Kind, Origin, Principal
 from remem.services import handoff
 from tests.conftest import found
 
@@ -12,13 +14,13 @@ pytestmark = pytest.mark.db
 
 
 @pytest.fixture
-def store(conn):
+def store(conn: psycopg.Connection[Any]) -> PostgresStore:
     migrate(conn)
     return PostgresStore(conn)
 
 
 @pytest.fixture
-def owner(store):
+def owner(store: PostgresStore) -> Principal:
     return store.ensure_principal("brandon")
 
 

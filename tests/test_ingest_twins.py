@@ -10,11 +10,14 @@ question for the user, never an automatic supersede.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
+import psycopg
 import pytest
 
-from remem.domain import Entry, Kind, Origin
+from remem.backends.postgres.store import PostgresStore
+from remem.domain import Entry, Kind, Origin, Principal
 from remem.services import ingest
 
 
@@ -56,7 +59,7 @@ def test_no_anchors_no_twin():
 
 
 @pytest.fixture
-def store(conn):
+def store(conn: psycopg.Connection[Any]) -> PostgresStore:
     from remem.backends.postgres.migrate import migrate
     from remem.backends.postgres.store import PostgresStore
 
@@ -65,12 +68,12 @@ def store(conn):
 
 
 @pytest.fixture
-def owner(store):
+def owner(store: PostgresStore) -> Principal:
     return store.ensure_principal("brandon")
 
 
 @pytest.fixture
-def other(store):
+def other(store: PostgresStore) -> Principal:
     return store.ensure_principal("someone-else")
 
 

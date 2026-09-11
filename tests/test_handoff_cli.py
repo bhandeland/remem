@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
@@ -14,7 +15,7 @@ BODY = "## Done\nlanded it\n\n## In flight\n\n## Next steps\n\n## Gotchas\n"
 
 
 @pytest.fixture
-def env(live_dsn, monkeypatch, tmp_path):
+def env(live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> str:
     import psycopg
 
     with psycopg.connect(live_dsn) as c:

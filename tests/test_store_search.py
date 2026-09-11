@@ -1,22 +1,24 @@
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
+import psycopg
 import pytest
 
 from remem.backends.postgres.migrate import migrate
 from remem.backends.postgres.store import PostgresStore
-from remem.domain import Entry, Kind, Query, new_id
+from remem.domain import Entry, Kind, Principal, Query, new_id
 
 pytestmark = pytest.mark.db
 
 
 @pytest.fixture
-def store(conn):
+def store(conn: psycopg.Connection[Any]) -> PostgresStore:
     migrate(conn)
     return PostgresStore(conn)
 
 
 @pytest.fixture
-def owner(store):
+def owner(store: PostgresStore) -> Principal:
     return store.ensure_principal("brandon")
 
 

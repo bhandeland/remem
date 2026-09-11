@@ -18,7 +18,7 @@ from tests.conftest import found
 
 
 @pytest.fixture
-def repo(tmp_path):
+def repo(tmp_path: Path) -> Path:
     """A real git repository, so resolve_project has something to resolve."""
     import subprocess
 

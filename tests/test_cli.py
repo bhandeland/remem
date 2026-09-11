@@ -1,4 +1,6 @@
 import json
+from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
@@ -14,7 +16,7 @@ runner = CliRunner()
 
 
 @pytest.fixture
-def env(live_dsn, monkeypatch, tmp_path):
+def env(live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> str:
     import psycopg
 
     with psycopg.connect(live_dsn) as c:
@@ -189,7 +191,7 @@ def test_commands_report_an_unreachable_postgres_without_a_traceback(
 
 
 @pytest.fixture
-def unmigrated_dsn():
+def unmigrated_dsn() -> Iterator[str]:
     """A freshly created database with no migrations applied."""
     import uuid
 

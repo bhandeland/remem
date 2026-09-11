@@ -37,7 +37,7 @@ PROJECT = resolve_project() or "remem"
 
 
 @pytest.fixture
-def env(live_dsn, tmp_path):
+def env(live_dsn: str, tmp_path: Path) -> dict[str, str]:
     """CliRunner's `env=` merges into os.environ for the invoke call, which
     is what lets `_memory_dir`'s `Path.cwd()` call see CLAUDE_CONFIG_DIR
     pointed at tmp_path - so this is returned as a dict rather than set via
@@ -78,7 +78,7 @@ def _memory_directory(env) -> Path:
 
 
 @pytest.fixture
-def memory_dir_with_one_stray(env):
+def memory_dir_with_one_stray(env: dict[str, str]) -> Path:
     """A designated project whose directory holds one file remem has never
     seen. `remem memory sync` should adopt it - the case the brief's
     "1 adopted" assertion exercises."""
@@ -104,7 +104,7 @@ def memory_dir_with_one_stray(env):
 
 
 @pytest.fixture
-def memory_dir_in_conflict(env):
+def memory_dir_in_conflict(env: dict[str, str]) -> Path:
     """A designated project where the entry and the file already disagree
     and no watermark says which one moved - classify()'s "mark is None"
     conflict case, reached without a prior sync."""

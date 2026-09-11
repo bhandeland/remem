@@ -21,7 +21,7 @@ runner = CliRunner()
 
 
 @pytest.fixture
-def env(live_dsn, monkeypatch, tmp_path):
+def env(live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> str:
     import psycopg
 
     with psycopg.connect(live_dsn) as c:

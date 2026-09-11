@@ -10,11 +10,14 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
+import psycopg
 import pytest
 
-from remem.domain import IngestDesignation, IngestRun, IngestTrigger
+from remem.backends.postgres.store import PostgresStore
+from remem.domain import IngestDesignation, IngestRun, IngestTrigger, Principal
 from remem.services import ingest
 from tests.conftest import found
 
@@ -160,7 +163,7 @@ def test_status_to_dict_carries_the_run_and_the_check():
 
 
 @pytest.fixture
-def store(conn):
+def store(conn: psycopg.Connection[Any]) -> PostgresStore:
     from remem.backends.postgres.migrate import migrate
     from remem.backends.postgres.store import PostgresStore
 
@@ -169,12 +172,12 @@ def store(conn):
 
 
 @pytest.fixture
-def owner(store):
+def owner(store: PostgresStore) -> Principal:
     return store.ensure_principal("brandon")
 
 
 @pytest.fixture
-def root(tmp_path):
+def root(tmp_path: Path) -> Path:
     (tmp_path / "docs" / "specs").mkdir(parents=True)
     (tmp_path / "docs" / "specs" / "one.md").write_text("# One\n\nbody\n")
     return tmp_path

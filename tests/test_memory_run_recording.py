@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import NoReturn
+from typing import Any, NoReturn
 
+import psycopg
 import pytest
 
 from remem.backends.postgres.migrate import migrate
@@ -17,7 +18,7 @@ pytestmark = pytest.mark.db
 
 
 @pytest.fixture
-def store(conn):
+def store(conn: psycopg.Connection[Any]) -> PostgresStore:
     migrate(conn)
     return PostgresStore(conn)
 

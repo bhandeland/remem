@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from typing import Any
 
 import pytest
 
 
 @pytest.fixture(autouse=True)
-def reset_module_state():
+def reset_module_state() -> Iterator[None]:
     """mcp_server keeps launch configuration in module globals, so a test that
     sets them would otherwise leak into every test that runs after it."""
     from remem import mcp_server

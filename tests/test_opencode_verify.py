@@ -6,6 +6,8 @@ recording nothing. This is the check that would have caught it.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import psycopg
 import pytest
 
@@ -17,7 +19,7 @@ pytestmark = pytest.mark.db
 
 
 @pytest.fixture
-def env(live_dsn, tmp_path):
+def env(live_dsn: str, tmp_path: Path) -> dict[str, str]:
     with psycopg.connect(live_dsn) as c:
         migrate(c)
         c.commit()

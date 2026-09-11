@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+from pathlib import Path
+from typing import Any
+
+import psycopg
 import pytest
 
 from remem.backends.postgres.migrate import migrate
 from remem.backends.postgres.store import PostgresStore
-from remem.domain import Kind, Origin, Query
+from remem.domain import Kind, Origin, Principal, Query
 from remem.services import ingest
 
 pytestmark = pytest.mark.db
@@ -13,18 +17,18 @@ DOC = "# Design\n\nlead matter\n\n## Alpha\n\nbody a\n\n## Beta\n\nbody b\n"
 
 
 @pytest.fixture
-def store(conn):
+def store(conn: psycopg.Connection[Any]) -> PostgresStore:
     migrate(conn)
     return PostgresStore(conn)
 
 
 @pytest.fixture
-def owner(store):
+def owner(store: PostgresStore) -> Principal:
     return store.ensure_principal("brandon")
 
 
 @pytest.fixture
-def doc(tmp_path):
+def doc(tmp_path: Path) -> Path:
     path = tmp_path / "design.md"
     path.write_text(DOC)
     return path

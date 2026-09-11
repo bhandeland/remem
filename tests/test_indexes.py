@@ -6,6 +6,9 @@ query could actually return. Tested because an index that silently stops being
 used is indistinguishable from one that was never there.
 """
 
+from typing import Any
+
+import psycopg
 import pytest
 
 from remem.backends.postgres.migrate import migrate
@@ -16,7 +19,7 @@ pytestmark = pytest.mark.db
 
 
 @pytest.fixture
-def store(conn):
+def store(conn: psycopg.Connection[Any]) -> PostgresStore:
     migrate(conn)
     return PostgresStore(conn)
 

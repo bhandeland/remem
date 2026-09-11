@@ -7,6 +7,7 @@ under the worktree's directory name rather than the repository's.
 """
 
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -18,7 +19,7 @@ def _git(path, *args):
 
 
 @pytest.fixture
-def repo(tmp_path):
+def repo(tmp_path: Path) -> Path:
     root = tmp_path / "myrepo"
     root.mkdir()
     _git(root, "init", "-q")

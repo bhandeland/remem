@@ -6,6 +6,8 @@ machine-generated and machine-replaced, and the install says where it went.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import psycopg
 import pytest
 
@@ -15,7 +17,7 @@ from remem.backends.postgres.migrate import migrate
 
 
 @pytest.fixture
-def env(live_dsn, tmp_path):
+def env(live_dsn: str, tmp_path: Path) -> dict[str, str]:
     """A real, migrated database for install() to round-trip through.
 
     Every test below except the unknown-scope one calls install(), and

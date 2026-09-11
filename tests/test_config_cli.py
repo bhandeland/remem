@@ -18,7 +18,7 @@ runner = CliRunner()
 
 
 @pytest.fixture(autouse=True)
-def _clean_environment(monkeypatch):
+def _clean_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     """Strip every settable key from the real process environment.
 
     CliRunner's `env=` *merges* into os.environ rather than replacing it, and
@@ -292,7 +292,7 @@ class _OtherAgent:
 
 
 @pytest.fixture
-def other_agent(monkeypatch):
+def other_agent(monkeypatch: pytest.MonkeyPatch) -> None:
     real = registry.discover()
     monkeypatch.setattr(registry, "discover", lambda: {**real, "other": _OtherAgent})
 

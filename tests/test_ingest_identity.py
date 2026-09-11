@@ -23,7 +23,7 @@ def _git(path, *args):
 
 
 @pytest.fixture
-def repo(tmp_path):
+def repo(tmp_path: Path) -> Path:
     root = tmp_path / "myrepo"
     (root / "docs" / "deep").mkdir(parents=True)
     _git(root, "init", "-q")

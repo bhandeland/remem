@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import uuid
+from collections.abc import Iterator
 from typing import Any, TypeVar
 
 import psycopg
@@ -76,7 +77,7 @@ def _server_is_up() -> bool:
 
 
 @pytest.fixture(scope="session")
-def db_dsn():
+def db_dsn() -> Iterator[str]:
     if not _server_is_up():
         pytest.skip(SKIP_REASON)
 
@@ -96,7 +97,7 @@ def db_dsn():
 
 
 @pytest.fixture
-def conn(db_dsn):
+def conn(db_dsn: str) -> Iterator[psycopg.Connection[Any]]:
     """A connection whose work is rolled back when the test ends."""
     with psycopg.connect(db_dsn) as c:
         yield c
@@ -104,7 +105,7 @@ def conn(db_dsn):
 
 
 @pytest.fixture(scope="session")
-def live_dsn():
+def live_dsn() -> Iterator[str]:
     """A SECOND scratch database, for tests that must commit.
 
     The CLI, MCP, and hook tests open their own connections through
@@ -131,7 +132,7 @@ def live_dsn():
 
 
 @pytest.fixture(autouse=True)
-def _reset_live_db(request):
+def _reset_live_db(request: pytest.FixtureRequest) -> Iterator[None]:
     """Commit-based tests share one database; reset it between them.
 
     `live_dsn` is session-scoped and never rolled back (see its docstring),
@@ -168,7 +169,7 @@ def _reset_live_db(request):
 
 
 @pytest.fixture(autouse=True)
-def _no_shared_embedder(monkeypatch):
+def _no_shared_embedder(monkeypatch: pytest.MonkeyPatch) -> None:
     """No test ever builds the real embedder through the shared accessor.
 
     `services.search.find` builds one on demand when the caller does not

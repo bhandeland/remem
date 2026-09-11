@@ -6,6 +6,7 @@ never show, even though the write succeeded.
 """
 
 import json
+from pathlib import Path
 
 import psycopg
 import pytest
@@ -18,7 +19,7 @@ runner = CliRunner()
 
 
 @pytest.fixture
-def env(live_dsn, monkeypatch, tmp_path):
+def env(live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> str:
     with psycopg.connect(live_dsn) as c:
         migrate(c)
         c.commit()

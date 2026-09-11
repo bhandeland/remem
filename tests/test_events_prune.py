@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
 
 import psycopg
 import pytest
@@ -17,7 +19,7 @@ from typer.testing import CliRunner
 from remem.backends.postgres.migrate import migrate
 from remem.backends.postgres.store import PostgresStore
 from remem.cli import app
-from remem.domain import Event, EventKind, JobStatus, SessionRef, new_id
+from remem.domain import Event, EventKind, JobStatus, Principal, SessionRef, new_id
 from remem.services import events, write
 
 runner = CliRunner()
@@ -28,13 +30,13 @@ NOW = datetime(2026, 8, 29, 12, 0, tzinfo=timezone.utc)
 
 
 @pytest.fixture
-def store(conn):
+def store(conn: psycopg.Connection[Any]) -> PostgresStore:
     migrate(conn)
     return PostgresStore(conn)
 
 
 @pytest.fixture
-def owner(store):
+def owner(store: PostgresStore) -> Principal:
     return store.ensure_principal("brandon")
 
 
@@ -195,7 +197,7 @@ def _seed_prunable(dsn):
 
 
 @pytest.fixture
-def cli_env(live_dsn, monkeypatch, tmp_path):
+def cli_env(live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> str:
     with psycopg.connect(live_dsn) as c:
         migrate(c)
         c.commit()

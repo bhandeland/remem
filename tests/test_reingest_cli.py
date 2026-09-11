@@ -8,6 +8,7 @@ automatic half: what a session start runs with nobody watching.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
@@ -21,7 +22,7 @@ runner = CliRunner()
 
 
 @pytest.fixture
-def env(live_dsn, monkeypatch, tmp_path):
+def env(live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> str:
     import psycopg
 
     with psycopg.connect(live_dsn) as c:
@@ -42,7 +43,7 @@ class FakeEmbedder:
 
 
 @pytest.fixture(autouse=True)
-def _no_real_embedder(monkeypatch):
+def _no_real_embedder(monkeypatch: pytest.MonkeyPatch) -> None:
     """`run` embeds what it ingested, so these tests reach load_embedder.
 
     Left alone that builds a real LocalEmbedder - importing fastembed,
@@ -58,7 +59,7 @@ def _no_real_embedder(monkeypatch):
 
 
 @pytest.fixture
-def repo(tmp_path, monkeypatch):
+def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """A real git repository, because the paths resolve against its root."""
     import subprocess
 

@@ -1,10 +1,11 @@
-from typing import override
+from typing import Any, override
 
+import psycopg
 import pytest
 
 from remem.backends.postgres.migrate import migrate
 from remem.backends.postgres.store import PostgresStore
-from remem.domain import Entry, Hit, Kind, Match, Query, new_id
+from remem.domain import Entry, Hit, Kind, Match, Principal, Query, new_id
 from remem.embed import EmbedderUnavailable
 from remem.services import search
 from remem.services.search import find
@@ -14,13 +15,13 @@ pytestmark = pytest.mark.db
 
 
 @pytest.fixture
-def store(conn):
+def store(conn: psycopg.Connection[Any]) -> PostgresStore:
     migrate(conn)
     return PostgresStore(conn)
 
 
 @pytest.fixture
-def owner(store):
+def owner(store: PostgresStore) -> Principal:
     return store.ensure_principal("brandon")
 
 

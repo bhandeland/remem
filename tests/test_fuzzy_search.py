@@ -6,11 +6,14 @@ comes back empty, and a fuzzy hit is always labelled as one so a caller never
 mistakes an approximate match for a certain one.
 """
 
+from typing import Any
+
+import psycopg
 import pytest
 
 from remem.backends.postgres.migrate import migrate
 from remem.backends.postgres.store import PostgresStore
-from remem.domain import Kind, Match, Query
+from remem.domain import Kind, Match, Principal, Query
 from remem.services.search import find
 from remem.services.write import remember
 
@@ -18,13 +21,13 @@ pytestmark = pytest.mark.db
 
 
 @pytest.fixture
-def store(conn):
+def store(conn: psycopg.Connection[Any]) -> PostgresStore:
     migrate(conn)
     return PostgresStore(conn)
 
 
 @pytest.fixture
-def owner(store):
+def owner(store: PostgresStore) -> Principal:
     return store.ensure_principal("brandon")
 
 
