@@ -1503,6 +1503,17 @@ def record_status(
         except Exception:
             memory_advisories: list[str] = []
 
+        # Wrapped like the three calls above, and for the same reason. The
+        # judgement - which knowledge bases are over or near the budget,
+        # and what "near" means - lives in `kb.budget_advisories`; this
+        # only hands it the budget the injecting hooks would have used.
+        try:
+            kb_advisories = kb.budget_advisories(
+                s.store, s.owner.id, s.config.max_chars
+            )
+        except Exception:
+            kb_advisories: list[str] = []
+
         report = events.status(
             s.store,
             s.owner.id,
@@ -1510,6 +1521,7 @@ def record_status(
             hook_advisories=advisories,
             ingest_advisories=ingest_advisories,
             memory_advisories=memory_advisories,
+            kb_advisories=kb_advisories,
         )
 
     if as_json:

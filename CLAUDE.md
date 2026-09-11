@@ -939,7 +939,34 @@ independent as the seam suggests. And a `kb.RulesExceedBudget` failure is
 `REMEM_MAX_CHARS`, context injection silently died on *every* harness, Claude
 Code included, with a 0 exit and no output. Fail-soft is still the right
 contract, but the budget is the one failure it hides that a user would want to
-know about.
+know about - so `kb.budget_advisories` says so in `remem record status`, the
+place that already carries the doctor, ingest and memory advisories. See
+"The context block budget" below.
+
+### The context block budget
+
+`kb.budget_advisories` is the one place a dead context block becomes
+visible. Fail-soft stays: `RulesExceedBudget` still escapes into hooks that
+exit 0 and print nothing, and this is the fail-loud half asked for on
+demand, exactly as `record status` is for recording.
+
+- It measures **rules plus header** (`kb.rules_chars`), never the rendered
+  block's length. Rules never truncate and notes are dropped whole to make
+  room, so a shipped block is pinned at or under the budget by
+  construction - and is zero characters for a knowledge base that raised.
+  Block length is uncorrelated with the failure in both directions; only
+  rules plus header predicts it, and only pruning rules moves it back.
+- `rules_chars` and the raise site both sum `_header_and_rules`. Two
+  copies of that arithmetic drifting apart would mean the advisory
+  reporting healthy on a knowledge base that is raising, which is the
+  whole bug.
+- Two tiers, and the warning below the limit (`BUDGET_WARN_FRACTION`,
+  0.8) is the valuable one: by the time the hard failure fires, injection
+  has already been dead in every session since the rule that tipped it
+  over was written.
+- **Not in `remem doctor`**, deliberately: doctor reads files and opens no
+  database so that it still works when the system does not, and this
+  question cannot be answered without resolving a collection.
 
 ## Verification
 
