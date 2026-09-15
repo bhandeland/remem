@@ -15,15 +15,15 @@ def test_returns_empty_when_the_database_is_unreachable():
     out = session_start(
         payload, env={"BAG_DSN": "postgresql://nobody@127.0.0.1:1/none"}
     )
-    assert out == ""
+    assert out is None
 
 
 def test_returns_empty_on_malformed_stdin():
-    assert session_start("{not json", env={}) == ""
+    assert session_start("{not json", env={}) is None
 
 
 def test_returns_empty_on_empty_stdin():
-    assert session_start("", env={}) == ""
+    assert session_start("", env={}) is None
 
 
 def test_main_exits_zero_when_the_database_is_unreachable(
@@ -45,7 +45,10 @@ def test_main_exits_zero_on_garbage_input(
 
 @pytest.mark.db
 def test_injects_the_project_knowledge_base(
-    live_dsn: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    live_dsn: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     import psycopg
 
@@ -104,7 +107,24 @@ def test_injects_the_project_knowledge_base(
             "BAG_CONFIG": str(tmp_path / "none.toml"),
         },
     )
-    assert "Run ruff linter" in out
+    assert out is not None
+    assert "Run ruff linter" in out.text
+
+    # The same session, through main(): what Claude Code actually reads. A
+    # JSON document, because that is the only shape that carries both a
+    # line for the user (systemMessage) and the block for the model
+    # (additionalContext) - plain stdout can only do the second.
+    monkeypatch.setattr(
+        "sys.stdin",
+        io.StringIO(json.dumps({"cwd": str(project_dir), "session_id": "s1"})),
+    )
+    assert main() == 0
+    doc = json.loads(capsys.readouterr().out)
+    assert doc["hookSpecificOutput"]["hookEventName"] == "SessionStart"
+    assert "Run ruff linter" in doc["hookSpecificOutput"]["additionalContext"]
+    assert (
+        doc["systemMessage"] == "saddlebag · kb myproj: 1 rule, 0 notes · recording off"
+    )
 
 
 @pytest.mark.db
@@ -129,7 +149,11 @@ def test_returns_empty_when_the_project_has_no_knowledge_base(
         "BAG_CONFIG": str(tmp_path / "none.toml"),
     }
     out = session_start(json.dumps({"cwd": str(tmp_path / "unknown-proj")}), env=env)
-    assert out == ""
+    # No block for the model - but the database answered, so the user gets
+    # a banner saying which knowledge base was looked for and not found.
+    assert out is not None
+    assert out.text == ""
+    assert out.found is False
 
 
 def test_debug_is_silent_unless_asked_for(capsys: pytest.CaptureFixture[str]) -> None:
@@ -138,7 +162,7 @@ def test_debug_is_silent_unless_asked_for(capsys: pytest.CaptureFixture[str]) ->
         payload, env={"BAG_DSN": "postgresql://nobody@127.0.0.1:1/none"}
     )
     captured = capsys.readouterr()
-    assert out == ""
+    assert out is None
     assert captured.out == ""
     assert captured.err == ""
 
@@ -167,20 +191,20 @@ def test_debug_explains_an_unreachable_database_on_stderr(
         },
     )
     captured = capsys.readouterr()
-    assert out == ""
+    assert out is None
     assert captured.out == ""
     assert "bag hook" in captured.err
 
 
 def test_debug_never_breaks_fail_soft(capsys: pytest.CaptureFixture[str]) -> None:
-    """Even if writing the diagnostic blows up, the hook still returns ""."""
+    """Even if writing the diagnostic blows up, the hook still returns None."""
 
     class Exploding(dict[str, str]):
         @override
         def get(self, key: str, default: object = None, /) -> Never:
             raise RuntimeError("boom")
 
-    assert session_start(json.dumps({"cwd": "/tmp/x"}), env=Exploding()) == ""
+    assert session_start(json.dumps({"cwd": "/tmp/x"}), env=Exploding()) is None
 
 
 @pytest.mark.db
@@ -210,7 +234,7 @@ def test_debug_names_the_missing_knowledge_base(
     }
     out = session_start(json.dumps({"cwd": str(tmp_path / "unknown-proj")}), env=env)
     err = capsys.readouterr().err
-    assert out == ""
+    assert out is not None and out.text == ""
     assert "unknown-proj" in err
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from uuid import UUID
 
 from saddlebag.domain import (
@@ -303,12 +304,36 @@ def budget_advisories(
     return lines
 
 
+@dataclass(frozen=True)
+class Rendered:
+    """A context block plus what it carries.
+
+    The counts exist for the session banner, which reports what the model
+    actually received. `rules` equals the number of rules resolved, since a
+    rule is never dropped; `notes` is only the notes that fit, and
+    `notes_dropped` the rest - counting resolved entries would claim notes
+    the block never carried.
+    """
+
+    text: str
+    rules: int
+    notes: int
+    notes_dropped: int
+
+
 def render(collection: Collection, entries: list[Entry], max_chars: int) -> str:
     """Render a knowledge base as a context block.
 
     Rules first and never truncated; then other entries, whole ones only,
     until the budget runs out; then an explicit count of what was dropped.
     """
+    return render_block(collection, entries, max_chars).text
+
+
+def render_block(
+    collection: Collection, entries: list[Entry], max_chars: int
+) -> Rendered:
+    """`render`, plus the counts. See `Rendered` for why they exist."""
     others = [e for e in entries if e.kind != Kind.RULE]
 
     parts = _header_and_rules(collection, entries)
@@ -360,4 +385,9 @@ def render(collection: Collection, entries: list[Entry], max_chars: int) -> str:
         # the complete picture.
         parts.append(_notice(omitted))
 
-    return "".join(parts)
+    return Rendered(
+        text="".join(parts),
+        rules=len(entries) - len(others),
+        notes=included,
+        notes_dropped=omitted,
+    )

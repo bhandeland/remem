@@ -191,3 +191,24 @@ def test_notice_still_appears_when_it_forces_dropping_another_entry() -> None:
     out = render(collection(slug="my-kb"), entries, max_chars=600)
     assert "more entries not shown" in out
     assert len(out) <= 600
+
+
+def test_render_block_counts_the_notes_it_kept_not_the_notes_it_was_given() -> None:
+    """The banner reports what the model received. Notes are dropped whole
+    for budget, so the count has to come from the renderer - counting the
+    resolved entries would claim notes the block never carried."""
+    from saddlebag.services.kb import render_block
+
+    rule = entry("R", "r", kind=Kind.RULE, summary="do r")
+    notes = [entry(f"N{i}", "x" * 40) for i in range(3)]
+    c = collection()
+    # Room for the rule, exactly one note, and the "2 more" notice.
+    notice = "\n- 2 more entries not shown (bag kb show s --full)\n"
+    budget = len(render(c, [rule, notes[0]], max_chars=10_000)) + len(notice)
+
+    out = render_block(c, [rule, *notes], max_chars=budget)
+
+    assert out.text == render(c, [rule, *notes], max_chars=budget)
+    assert out.rules == 1
+    assert out.notes == 1
+    assert out.notes_dropped == 2

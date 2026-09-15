@@ -23,23 +23,29 @@ from saddlebag.services import context, record
 from saddlebag.session import open_session
 
 
-def session_start(stdin_text: str, env: Mapping[str, str]) -> str:
-    """Return a context block for the session's project, or "" for any problem."""
+def session_start(stdin_text: str, env: Mapping[str, str]) -> context.Injection | None:
+    """What the session's project gets, or None for any problem.
+
+    None is the fail-soft answer - nothing reached the database, so there
+    is nothing true to tell anyone. A project with no knowledge base is not
+    that: the database answered, and the `Injection` says so with an empty
+    block and `found=False`, which is how the user comes to see it.
+    """
     try:
         payload = json.loads(stdin_text) if stdin_text.strip() else {}
     except json.JSONDecodeError, AttributeError:
         _debug(env, "stdin was not valid JSON")
-        return ""
+        return None
 
     try:
         identity = ClaudeCodeAdapter().identity(env, payload)
         if not identity.project:
             _debug(env, "the hook payload carried no cwd")
-            return ""
+            return None
 
         config = load(env=env)
         with open_session(config) as s:
-            return context.block(
+            return context.injection(
                 s.store,
                 s.owner.id,
                 identity.project,
@@ -51,15 +57,34 @@ def session_start(stdin_text: str, env: Mapping[str, str]) -> str:
         # Any failure at all - unreachable database, missing migrations, an
         # over-budget knowledge base - is silence, never a broken session.
         _debug(env, f"{type(exc).__name__}: {exc}")
-        return ""
+        return None
+
+
+def render_output(got: context.Injection) -> str:
+    """The JSON document Claude Code reads from a SessionStart hook.
+
+    JSON rather than the bare block because it is the only shape that
+    carries two things: `additionalContext`, which is the block and goes to
+    the model exactly as plain stdout used to, and `systemMessage`, which
+    Claude Code prints to the user as `SessionStart:startup says: ...`. Once
+    stdout is JSON, plain text is no longer read as context, so the block
+    must travel inside it - never write both.
+    """
+    specific: dict[str, str] = {"hookEventName": "SessionStart"}
+    if got.text:
+        specific["additionalContext"] = got.text
+    return json.dumps(
+        {"hookSpecificOutput": specific, "systemMessage": context.banner(got)},
+        ensure_ascii=False,
+    )
 
 
 def main() -> int:
     try:
         env = dict(os.environ)
-        block = session_start(sys.stdin.read(), env=env)
-        if block:
-            sys.stdout.write(block)
+        got = session_start(sys.stdin.read(), env=env)
+        if got is not None:
+            sys.stdout.write(render_output(got))
         spawn_process(env)
         spawn_ingest(env)
         spawn_memory(env)

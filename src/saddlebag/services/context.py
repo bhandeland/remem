@@ -11,12 +11,40 @@ differs between harnesses.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Callable
 from uuid import UUID
 
-from saddlebag.services import kb
+from saddlebag.services import kb, record
 from saddlebag.store import Store
+
+
+@dataclass(frozen=True)
+class Handoff:
+    topic: str
+    age: str
+
+
+@dataclass(frozen=True)
+class Injection:
+    """What one session was handed, as facts rather than as a block.
+
+    `text` is the block itself - what `block()` returns. The rest exists so
+    a frontend can tell the user what happened without parsing it: which
+    knowledge base (`project`), whether one existed (`found`), how many
+    rules and notes the block actually carried (`rules`, `notes` - notes are
+    dropped whole for budget, so this is the renderer's count, not the
+    resolver's), whether the project records events, and the live handoff.
+    """
+
+    text: str
+    project: str
+    found: bool
+    rules: int
+    notes: int
+    recording: bool
+    handoff: Handoff | None
 
 
 def block(
@@ -28,6 +56,22 @@ def block(
     owner_handle: str | None = None,
 ) -> str:
     """The knowledge base context block for one project, or "".
+
+    `injection()` with only the text kept - what every caller that has no
+    channel to a human wants (`bag hook context`, opencode, Cursor).
+    """
+    return injection(store, owner_id, project, max_chars, note, owner_handle).text
+
+
+def injection(
+    store: Store,
+    owner_id: UUID,
+    project: str,
+    max_chars: int,
+    note: Callable[[str], None] | None = None,
+    owner_handle: str | None = None,
+) -> Injection:
+    """The context block for one project, plus the facts about it.
 
     Returns "" rather than raising for a project with no knowledge base:
     every caller is a fail-soft hook, and a missing knowledge base is an
@@ -52,6 +96,8 @@ def block(
     say = note or (lambda _reason: None)
 
     rendered = ""
+    found = False
+    rules = notes = 0
     try:
         collection = kb.get(store, owner_id, project)
     except kb.CollectionNotFound:
@@ -62,9 +108,11 @@ def block(
             f"repository name - create one with `bag kb new {project}`.",
         )
     else:
+        found = True
         entries = kb.resolve(store, owner_id, project)
         if entries:
-            rendered = kb.render(collection, entries, max_chars)
+            block_ = kb.render_block(collection, entries, max_chars)
+            rendered, rules, notes = block_.text, block_.rules, block_.notes
         else:
             say(f"knowledge base '{project}' matched no entries")
 
@@ -72,14 +120,34 @@ def block(
     # ~20 tokens, and making it compete with rules for the budget would be
     # absurd. It is also emitted for a project with no knowledge base at
     # all, which is why the block is built rather than returned early.
-    pointer = handoff_pointer(store, owner_id, project)
-    return "\n".join(part for part in (rendered, pointer) if part)
+    live = live_handoff(store, owner_id, project)
+    pointer = handoff_pointer(live)
+    return Injection(
+        text="\n".join(part for part in (rendered, pointer) if part),
+        project=project,
+        found=found,
+        rules=rules,
+        notes=notes,
+        recording=_recording(store, owner_id, project),
+        handoff=live,
+    )
 
 
-def handoff_pointer(
+def _recording(store: Store, owner_id: UUID, project: str) -> bool:
+    # A fact for the banner only. Same bargain as `live_handoff`: a helper
+    # that can throw would turn a working knowledge base into no output at
+    # all, and "off" is the safe answer for a question that could not be
+    # asked.
+    try:
+        return record.is_enabled(store, owner_id, project)
+    except Exception:
+        return False
+
+
+def live_handoff(
     store: Store, owner_id: UUID, project: str, now: datetime | None = None
-) -> str:
-    """One line naming the live handoff, or "".
+) -> Handoff | None:
+    """The live handoff for a project, as topic and age, or None.
 
     Never raises: block()'s caller treats any exception as silence, but a
     helper that can throw turns a working knowledge base into no output at
@@ -90,11 +158,52 @@ def handoff_pointer(
 
         entry = handoff.latest(store, owner_id, project=project)
         if entry is None or entry.created_at is None:
-            return ""
+            return None
         topic = handoff.topic_of(entry) or project
         age = handoff.age_phrase(
             entry.created_at, now or datetime.now(tz=entry.created_at.tzinfo)
         )
-        return f"Handoff available: {topic} ({age}) - run bag-prime {topic}"
+        return Handoff(topic=topic, age=age)
     except Exception:
+        return None
+
+
+def handoff_pointer(live: Handoff | None) -> str:
+    """One line naming the live handoff, or ""."""
+    if live is None:
         return ""
+    return f"Handoff available: {live.topic} ({live.age}) - run bag-prime {live.topic}"
+
+
+def banner(got: Injection) -> str:
+    """One line telling the user what this session was handed.
+
+    Rendered from the facts, not parsed back out of the block, and here in
+    the service so any frontend with a channel to a human prints the same
+    line. Claude Code shows it prefixed with `SessionStart:startup says:`,
+    which is why it is terse and why there is no version stamp.
+
+    A missing knowledge base is the one state that gets more words: it is
+    the likeliest reason a session gets no context, the hook has always
+    swallowed it, and the fix is one command.
+    """
+    if not got.found:
+        kb_part = f"no knowledge base '{got.project}' (bag kb new {got.project})"
+    elif got.rules == 0 and got.notes == 0:
+        kb_part = f"kb {got.project}: empty"
+    else:
+        counts = f"{_count(got.rules, 'rule')}, {_count(got.notes, 'note')}"
+        kb_part = f"kb {got.project}: {counts}"
+
+    parts = [
+        "saddlebag",
+        kb_part,
+        f"recording {'on' if got.recording else 'off'}",
+    ]
+    if got.handoff is not None:
+        parts.append(f"handoff: {got.handoff.topic} ({got.handoff.age})")
+    return " · ".join(parts)
+
+
+def _count(n: int, noun: str) -> str:
+    return f"{n} {noun}" if n == 1 else f"{n} {noun}s"

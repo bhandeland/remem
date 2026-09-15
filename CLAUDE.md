@@ -772,6 +772,23 @@ never raise. A knowledge tool must never be why a session will not start. Becaus
 is ambiguous, `BAG_HOOK_DEBUG=1` writes the reason to **stderr** - stdout is the context
 block and nothing else.
 
+The SessionStart hook writes a **JSON document**, not the bare block:
+`hookSpecificOutput.additionalContext` carries the block to the model, exactly as
+plain stdout used to, and `systemMessage` carries a one-line banner Claude Code
+shows the user as `SessionStart:startup says: ...`. JSON is the only shape that
+can do both, and once stdout is JSON plain text is no longer read as context -
+so never write both. The banner is `context.banner()`, rendered from
+`context.Injection` (the facts: knowledge base found, rules and notes the block
+actually carried, recording on/off, live handoff), never parsed back out of the
+block. `context.block()` is `injection().text` and is what `bag hook context`,
+opencode and Cursor still use - they have no channel to a human. Fail-soft is
+unchanged: anything that never reached the database is `None` and silence. A
+project with **no** knowledge base is not that case - the database answered - so
+it gets a banner naming the slug and `bag kb new`, which is the likeliest reason
+a session gets no context and was invisible before. `RulesExceedBudget` still
+raises before anything is known and stays silent here; `bag record status` is
+where that one shows.
+
 The SessionStart hook injects the knowledge base whose slug is exactly the session
 directory's name. Writes, by contrast, resolve `--project` from the git repository root
 (`project.resolve_project`, via `--git-common-dir`) so subdirectories and worktrees file

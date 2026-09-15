@@ -112,3 +112,59 @@ def test_the_handoff_pointer_is_appended_outside_max_chars(
     assert "A rule" not in block
     assert "Handoff available: ci" in block
     assert "bag-prime ci" in block
+
+
+def test_injection_carries_the_facts_the_banner_needs(
+    store: PostgresStore, owner: Principal
+) -> None:
+    """The banner reports what this session got: which knowledge base, how
+    many rules and notes actually rendered, whether the project records,
+    and the live handoff - all from the one resolve `block` already does."""
+    from saddlebag.domain import Kind
+    from saddlebag.services import record
+
+    kb.create(
+        store,
+        owner.id,
+        slug="demo",
+        title="Demo",
+        query=CollectionQuery(project="demo"),
+    )
+    remember(
+        store,
+        owner.id,
+        title="A rule",
+        body="Body",
+        summary="Do it",
+        kind=Kind.RULE,
+        project="demo",
+    )
+    remember(store, owner.id, title="A note", body="Body", project="demo")
+    record.enable(store, owner.id, "demo")
+    handoff.write(store, owner.id, project="demo", topic="ci", body=BODY)
+
+    got = context.injection(store, owner.id, "demo", max_chars=10_000)
+
+    assert got.text == context.block(store, owner.id, "demo", max_chars=10_000)
+    assert got.project == "demo"
+    assert got.found is True
+    assert got.rules == 1
+    assert got.notes == 1
+    assert got.recording is True
+    assert got.handoff is not None
+    assert got.handoff.topic == "ci"
+    assert got.handoff.age == "just now"
+
+
+def test_injection_for_a_project_with_no_knowledge_base_says_so(
+    store: PostgresStore, owner: Principal
+) -> None:
+    """Not found is a fact the banner reports, not an error - it is the
+    likeliest reason a session gets no context, and today it is silent."""
+    got = context.injection(store, owner.id, "nothing-here", max_chars=10_000)
+
+    assert got.text == ""
+    assert got.found is False
+    assert got.rules == 0
+    assert got.recording is False
+    assert got.handoff is None
