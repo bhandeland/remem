@@ -6,7 +6,7 @@ the part of this project a version number is a promise about.
 
 ## [Unreleased]
 
-## [0.9.0] - unreleased
+## [0.9.0] - 2026-09-15
 
 The first published release. saddlebag has been in daily use on the machine that
 built it since 2026-08-26; this is the point at which it is packaged for

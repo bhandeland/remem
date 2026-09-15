@@ -1132,52 +1132,6 @@ wheels = [
 ]
 
 [[package]]
-name = "saddlebag"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "mcp" },
-    { name = "platformdirs" },
-    { name = "psycopg", extra = ["binary"] },
-    { name = "pydantic" },
-    { name = "tomli-w" },
-    { name = "typer" },
-]
-
-[package.optional-dependencies]
-embed = [
-    { name = "fastembed" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "pyrefly" },
-    { name = "pytest" },
-    { name = "pytest-cov" },
-    { name = "ruff" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "fastembed", marker = "extra == 'embed'", specifier = ">=0.7.0" },
-    { name = "mcp", specifier = ">=2.1.1" },
-    { name = "platformdirs", specifier = ">=4.11.4" },
-    { name = "psycopg", extras = ["binary"], specifier = ">=3.3.4" },
-    { name = "pydantic", specifier = ">=2.13.4" },
-    { name = "tomli-w", specifier = ">=1.2.0" },
-    { name = "typer", specifier = ">=0.27.1" },
-]
-provides-extras = ["embed"]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "pyrefly", specifier = ">=1.2.0" },
-    { name = "pytest", specifier = ">=8.3" },
-    { name = "pytest-cov", specifier = ">=6.0" },
-    { name = "ruff", specifier = ">=0.16.6" },
-]
-
-[[package]]
 name = "requests"
 version = "2.34.2"
 source = { registry = "https://pypi.org/simple" }
@@ -1294,6 +1248,52 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/5e/e5/9e274e24eeb027640ffc7442f21239f16d17f47acec15ae34f32e03a5c79/ruff-0.16.6-py3-none-win32.whl", hash = "sha256:0b87d9d16fcb63e8018423ca1d50b7260f15cb2da33e30db4baad4183a948c25", size = 10049212, upload-time = "2026-09-03T16:57:20.55Z" },
     { url = "https://files.pythonhosted.org/packages/22/31/72472449414223ed1a2da236b992adbb1a2ae59e34794574810f60ce068e/ruff-0.16.6-py3-none-win_amd64.whl", hash = "sha256:10d21c51c3495d8eaea7b703a16592117ea6eb1d649e36335aa965ff1173eb39", size = 10556402, upload-time = "2026-09-03T16:57:23.501Z" },
     { url = "https://files.pythonhosted.org/packages/fc/07/d781f8f8e1ac24bef9f3269cf62ffb1407ca24c3a8f12e5e22874f90528c/ruff-0.16.6-py3-none-win_arm64.whl", hash = "sha256:7a976c79b958f94e50a022a19f0f8c87387448020935ec14fc74331bd0a7f2c5", size = 10412850, upload-time = "2026-09-03T16:57:26.416Z" },
+]
+
+[[package]]
+name = "saddlebag"
+version = "0.9.0"
+source = { editable = "." }
+dependencies = [
+    { name = "mcp" },
+    { name = "platformdirs" },
+    { name = "psycopg", extra = ["binary"] },
+    { name = "pydantic" },
+    { name = "tomli-w" },
+    { name = "typer" },
+]
+
+[package.optional-dependencies]
+embed = [
+    { name = "fastembed" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pyrefly" },
+    { name = "pytest" },
+    { name = "pytest-cov" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "fastembed", marker = "extra == 'embed'", specifier = ">=0.7.0" },
+    { name = "mcp", specifier = ">=2.1.1" },
+    { name = "platformdirs", specifier = ">=4.11.4" },
+    { name = "psycopg", extras = ["binary"], specifier = ">=3.3.4" },
+    { name = "pydantic", specifier = ">=2.13.4" },
+    { name = "tomli-w", specifier = ">=1.2.0" },
+    { name = "typer", specifier = ">=0.27.1" },
+]
+provides-extras = ["embed"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pyrefly", specifier = ">=1.2.0" },
+    { name = "pytest", specifier = ">=8.3" },
+    { name = "pytest-cov", specifier = ">=6.0" },
+    { name = "ruff", specifier = ">=0.16.6" },
 ]
 
 [[package]]
