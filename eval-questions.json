@@ -1,51 +1,975 @@
 [
   {
-    "question": "why does the startup banner never show up when a teammate uses the IDE plugin instead of the terminal",
+    "question": "why did narrowing a dependency interface only get caught after removing a linter carve-out for test files",
+    "gold_id": "01a079a2-95d3-73af-b807-d3ea483485e5",
+    "origin": "human",
+    "source_title": "A type-checker exclusion hides signature drift in the code it excludes, not just noise in the excluded files",
+    "style": "paraphrase"
+  },
+  {
+    "question": "how do the two automotive imaging clients on my resume relate to each other and could that look like double-counting",
+    "gold_id": "01a06e97-3a9c-706e-8bb3-05067332fe60",
+    "origin": "agent",
+    "source_title": "RHAS / AccuTrade relationship",
+    "style": "paraphrase"
+  },
+  {
+    "question": "what should I check before shutting down a background server process that an old note flagged as leftover",
+    "gold_id": "01a079a2-eb5c-73e3-8b53-77c2a342e9b2",
+    "origin": "agent",
+    "source_title": "Verify a PID against the current session before killing it",
+    "style": "paraphrase"
+  },
+  {
+    "question": "why isn't my startup banner showing up for people using the editor extension even though the model still gets its context",
     "gold_id": "01a0a748-6344-77eb-88c2-5593c1301b8a",
     "origin": "extracted",
     "source_title": "SessionStart hook systemMessage does not render in the VS Code extension",
     "style": "paraphrase"
   },
   {
-    "question": "how should a new editor integration handle grouping activity into sessions when the field names for identifying a session aren't documented anywhere",
-    "gold_id": "01a06f08-b2ba-7566-9ac5-1e287c1973f7",
+    "question": "how should a command that syncs hand-edited memory files handle one bad file without losing the rest of the batch",
+    "gold_id": "01a06f08-b334-743e-b8eb-4d22abea7120",
     "origin": "ingested",
-    "source_title": "Cursor adapter - design \u00a7 The Python side",
+    "source_title": "Claude Code memory: one source of truth \u00a7 Error handling",
     "style": "paraphrase"
   },
   {
-    "question": "why is home internet throughput coming in way under the plan's rated speed even though the router isn't pegging the CPU",
-    "gold_id": "01a06ec5-a7a0-7567-8ea0-ac6e85a5cb2f",
+    "question": "why do most of my synced projects use a different collection filter than my own project does",
+    "gold_id": "01a06eb8-9cb2-7368-bf7b-e52d2f940b1d",
     "origin": "agent",
-    "source_title": "OPNsense config & tuning",
+    "source_title": "remem memory collection query shapes",
     "style": "paraphrase"
   },
   {
-    "question": "why does binding a listener on a freshly created virtual network's gateway address fail until something actually launches on that network",
+    "question": "why do some saved notes have no session identifier attached to them",
+    "gold_id": "01a06f08-b223-70ef-9e1f-3b382f5b8fdf",
+    "origin": "ingested",
+    "source_title": "remem - design \u00a7 Provenance limitation",
+    "style": "paraphrase"
+  },
+  {
+    "question": "how should I phrase my work history so screeners can't estimate how old I am",
+    "gold_id": "01a0a5c8-269e-7597-b4ce-c4daee9a2fca",
+    "origin": "agent",
+    "source_title": "Avoid age discrimination framing",
+    "style": "paraphrase"
+  },
+  {
+    "question": "Why did a code reviewer approve tasks that turned out broken when actually executed?",
+    "gold_id": "01a07c78-63df-7570-ab82-d3ed2f5e4675",
+    "origin": "human",
+    "source_title": "Live verification finds what task review cannot: run it, do not read it",
+    "style": "paraphrase"
+  },
+  {
+    "question": "Why does binding a listener to a freshly created container network's gateway IP fail with an address error until something else happens?",
     "gold_id": "01a07960-589e-76a5-a8b0-2690f7452a2b",
     "origin": "human",
     "source_title": "Apple container: a network's gateway address does not exist on the host until a container on it STARTS",
     "style": "paraphrase"
   },
   {
-    "question": "pyrefly tests exclusion signature drift",
-    "gold_id": "01a079a2-95d3-73af-b807-d3ea483485e5",
+    "question": "Where are the design choices recorded for making the memory sync process more visible to users?",
+    "gold_id": "01a073de-a947-7777-8e18-55c309cf5775",
+    "origin": "ingested",
+    "source_title": "Making memory sync observable \u00a7 Decisions",
+    "style": "paraphrase"
+  },
+  {
+    "question": "How can a test suite report all green even though the database it depends on was never actually up during the run?",
+    "gold_id": "01a0442b-433c-762b-a33c-518574b48698",
     "origin": "human",
-    "source_title": "A type-checker exclusion hides signature drift in the code it excludes, not just noise in the excluded files",
+    "source_title": "A green pytest run means nothing unless the skip count is zero",
+    "style": "paraphrase"
+  },
+  {
+    "question": "When a shared function gains a new dependency, whose responsibility is it to update the categorization on tests that reach it indirectly?",
+    "gold_id": "01a04f81-8551-7478-a8cf-f67fc269df4f",
+    "origin": "human",
+    "source_title": "A test marker describes what a test does, not whether it still passes",
+    "style": "paraphrase"
+  },
+  {
+    "question": "What fields show up in the payload when a session first begins in this editor's hook system?",
+    "gold_id": "01a06f08-b348-736a-88f8-eb8c980a333a",
+    "origin": "ingested",
+    "source_title": "Cursor hook payload shapes - source-derived, not captured \u00a7 `sessionStart`",
+    "style": "paraphrase"
+  },
+  {
+    "question": "Why would a timestamp formatting test pass locally but hide a bug that only shows up for users in other timezones?",
+    "gold_id": "01a07c7a-12ad-74d6-9fa4-8d77cc6a681a",
+    "origin": "extracted",
+    "source_title": "Test a local-time render under a non-UTC TZ, not just UTC",
+    "style": "paraphrase"
+  },
+  {
+    "question": "Why did a user's injected context silently disappear with no error before a certain fix landed?",
+    "gold_id": "01a0a54c-5765-7506-9999-7540d822efad",
+    "origin": "extracted",
+    "source_title": "kb.RulesExceedBudget was previously a silently swallowed failure",
+    "style": "paraphrase"
+  },
+  {
+    "question": "why does every command in one project directory print an environment mismatch message even though nothing seems broken",
+    "gold_id": "01a0670b-82a8-70da-b22e-8c8b8cca39fe",
+    "origin": "extracted",
+    "source_title": "uv warns on every command when a globally-activated venv doesn't match a project's own .venv",
+    "style": "paraphrase"
+  },
+  {
+    "question": "why do my knowledge-tool session hooks seem to run twice when I use two different editors on the same machine",
+    "gold_id": "01a054e1-f4e7-7285-8219-cb2c7662fb90",
+    "origin": "human",
+    "source_title": "Cursor runs Claude Code's hooks, with Cursor payloads",
+    "style": "paraphrase"
+  },
+  {
+    "question": "what should a settings command guarantee about which file a value gets written to and whether secrets are excluded",
+    "gold_id": "01a06f08-b230-75b1-879a-b68dd809e05e",
+    "origin": "ingested",
+    "source_title": "remem config command - design \u00a7 Requirements",
+    "style": "paraphrase"
+  },
+  {
+    "question": "how should I describe two related client engagements on a resume so they don't look like the same job counted twice",
+    "gold_id": "01a06e97-38e8-7179-8dc0-2d377c41430d",
+    "origin": "agent",
+    "source_title": "RHAS / AccuTrade relationship",
+    "style": "paraphrase"
+  },
+  {
+    "question": "how do I shrink an over-budget context block without losing the ability to look up the entries I removed from it",
+    "gold_id": "01a0a725-2b2a-73f5-8575-326e42bc8ab9",
+    "origin": "extracted",
+    "source_title": "Moving a rule's project with `bag update --project` keeps it searchable but removes it from the old KB's rendered block",
+    "style": "paraphrase"
+  },
+  {
+    "question": "what's the recommended order of testing and static analysis steps before applying infrastructure changes to that automotive pipeline repo",
+    "gold_id": "01a06e97-3c53-75f4-b965-fc6bc82945c3",
+    "origin": "agent",
+    "source_title": "TDD + checkov before apply",
+    "style": "paraphrase"
+  },
+  {
+    "question": "how does the system decide what to include when a generated summary can't fit everything in and how does it signal something got left out",
+    "gold_id": "01a06f08-b21b-74fd-8547-c6e74afc97d1",
+    "origin": "ingested",
+    "source_title": "remem - design \u00a7 `services/kb.py`",
+    "style": "paraphrase"
+  },
+  {
+    "question": "what's an alternative to rerunning just the previously broken tests when the flag for that isn't accepted here",
+    "gold_id": "01a0812d-a8a3-70b4-a87f-179359665529",
+    "origin": "extracted",
+    "source_title": "uv run pytest in remem does not accept --lf",
+    "style": "paraphrase"
+  },
+  {
+    "question": "Which fields in a certain editor integration's event payloads are actually guaranteed by reading the tool's own source versus what was directly observed happening?",
+    "gold_id": "01a06f08-b34e-7012-8dd1-bea9953f94b4",
+    "origin": "ingested",
+    "source_title": "Cursor hook payload shapes - source-derived, not captured \u00a7 Summary table",
+    "style": "paraphrase"
+  },
+  {
+    "question": "What kind of company size and role level is the ideal next move I'm aiming for in my job hunt?",
+    "gold_id": "01a06e97-3a9d-777e-b50d-23cd6b3b8291",
+    "origin": "agent",
+    "source_title": "Role targeting",
+    "style": "paraphrase"
+  },
+  {
+    "question": "Why can't I tell whether the background document-refresh process actually ran last time, since it never leaves any trace of success or failure?",
+    "gold_id": "01a06f72-aae9-73cd-804a-9cdc7b57840a",
+    "origin": "ingested",
+    "source_title": "Making automatic re-ingest observable \u00a7 The problem",
+    "style": "paraphrase"
+  },
+  {
+    "question": "What's my plan for winding down my current job and what kind of next gig am I pursuing, and by when?",
+    "gold_id": "01a0a5c8-26a2-724b-a160-e10a285cbfc8",
+    "origin": "agent",
+    "source_title": "Career transition plan 2026",
+    "style": "paraphrase"
+  },
+  {
+    "question": "Which folder should I actually be using now for my resume and job-search tooling instead of the old one?",
+    "gold_id": "01a06e97-3a98-73cc-85bb-6f5271d133ba",
+    "origin": "agent",
+    "source_title": "Active career-ops directory",
+    "style": "paraphrase"
+  },
+  {
+    "question": "What test cases need to cover the editor-integration adapter's config merging, file rendering, and the mapping from raw events to their categories?",
+    "gold_id": "01a06f08-b2be-77cb-a826-78a1f0635038",
+    "origin": "ingested",
+    "source_title": "Cursor adapter - design \u00a7 Testing",
+    "style": "paraphrase"
+  },
+  {
+    "question": "I saw a completed background job with zero retries and nothing written out - does that mean the pipeline never actually executed?",
+    "gold_id": "01a054e1-bfd1-754e-b236-6a6bade7d22d",
+    "origin": "human",
+    "source_title": "A done extract job with attempts=0 does not mean the extractor never ran",
+    "style": "paraphrase"
+  },
+  {
+    "question": "How was the last remaining type-checker suppression in the codebase eliminated for a default-value placeholder that couldn't be expressed in the union type?",
+    "gold_id": "01a0812d-a8b3-70b8-8fb5-7c43ff092edb",
+    "origin": "extracted",
+    "source_title": "search.py's embedder sentinel: typed replacement removed the tree's last type: ignore",
+    "style": "paraphrase"
+  },
+  {
+    "question": "What happened when we renamed the GitLab repo and PyPI package, and is the old GitHub mirror still around under the previous name?",
+    "gold_id": "01a0a725-2b09-748c-86fe-4e4376f13071",
+    "origin": "extracted",
+    "source_title": "saddlebag 0.9.0 published: GitLab project renamed nighthawk-oss/remem -> nighthawk-oss/saddlebag, PyPI trusted publisher pending",
+    "style": "paraphrase"
+  },
+  {
+    "question": "Why can't I find the docker compose file I'm expecting in this repo?",
+    "gold_id": "01a0a54c-56f7-727c-bfac-0aade6a8c74d",
+    "origin": "extracted",
+    "source_title": "remem's docker compose file is compose.yaml, not docker-compose.yml",
+    "style": "paraphrase"
+  },
+  {
+    "question": "Which parts of the editor-integration verification were skipped because there was no way to log into that app on this machine?",
+    "gold_id": "01a06f08-b366-7107-b83c-aa4b0902ceb1",
+    "origin": "ingested",
+    "source_title": "Cursor adapter - what is proven, and what is not \u00a7 What is NOT proven, and why",
+    "style": "paraphrase"
+  },
+  {
+    "question": "Why does sourcing my shell profile non-interactively throw a 'no matches found' error related to a version bump message?",
+    "gold_id": "01a0670b-8275-75bb-8955-a70939d1771b",
+    "origin": "extracted",
+    "source_title": "fleet init-shell prints upgrade diagnostics to stdout, breaking non-interactive zsh sourcing",
+    "style": "paraphrase"
+  },
+  {
+    "question": "Why did we decide against auto-generating a short blurb from the beginning of a longer write-up when trying to shrink what gets shown?",
+    "gold_id": "01a06f2f-ac9a-761b-8754-e45fc735f70e",
+    "origin": "ingested",
+    "source_title": "Keeping the context block bounded as rules accumulate \u00a7 The short form is the title and the summary, never derived from the body",
+    "style": "paraphrase"
+  },
+  {
+    "question": "A mirrored repo push keeps failing even after I fixed the credentials and retried - what actually gets it working again?",
+    "gold_id": "01a04ff7-511b-7602-a548-dbf302dc40bb",
+    "origin": "human",
+    "source_title": "Recreate a failed GitLab push mirror; force-sync will not fix it",
+    "style": "paraphrase"
+  },
+  {
+    "question": "Why does a model download tool claim a public model doesn't exist when I can browse to it fine in a plain HTTP request, and where would a stray auth variable even be hiding if it's not in any of my shell config files?",
+    "gold_id": "01a04ff7-1c5f-7046-85d4-c486ee46dcc1",
+    "origin": "human",
+    "source_title": "An invalid HF_TOKEN makes public HuggingFace repos report 'Model not found'",
+    "style": "paraphrase"
+  },
+  {
+    "question": "What columns would track whether a background sync job died partway through and what changed on each run?",
+    "gold_id": "01a073de-a946-71e3-85d1-005cae49abd9",
+    "origin": "ingested",
+    "source_title": "Making memory sync observable \u00a7 The table",
+    "style": "paraphrase"
+  },
+  {
+    "question": "Why would a monitoring dashboard show nothing for a busy processing job when almost everything got filtered out before the final write step?",
+    "gold_id": "01a06e97-3e07-74a6-a05c-f2b253e73a2f",
+    "origin": "agent",
+    "source_title": "Prod pipeline state 2026-04-29",
+    "style": "paraphrase"
+  },
+  {
+    "question": "After renaming a command referenced by an agent's startup configuration, why did every event start getting logged twice?",
+    "gold_id": "01a05596-913d-758b-81fe-04dc83a14e16",
+    "origin": "agent",
+    "source_title": "Renaming a hook command remem writes must migrate in place, not just extend the membership check",
+    "style": "paraphrase"
+  },
+  {
+    "question": "Why does an old entry in a merged config file keep firing alongside its replacement after a CLI command gets renamed?",
+    "gold_id": "01a0a629-bdea-750b-890b-9b82975e5956",
+    "origin": "extracted",
+    "source_title": "Claude Code/Cursor hook membership check is exact-string match, causing duplicate firing on rename",
+    "style": "paraphrase"
+  },
+  {
+    "question": "Is there a canary entry I can search for to confirm context actually got loaded into the session?",
+    "gold_id": "01a04f3d-bc06-733f-958d-a810eb255598",
+    "origin": "human",
+    "source_title": "Injection check",
+    "style": "paraphrase"
+  },
+  {
+    "question": "Why does trimming notes from a knowledge collection not free up any room against the character ceiling?",
+    "gold_id": "01a054e1-d00e-70ba-b6d6-a7de70359e52",
+    "origin": "human",
+    "source_title": "Against REMEM_MAX_CHARS, watch rules+header - not the total block size",
+    "style": "paraphrase"
+  },
+  {
+    "question": "What determines which on-disk name a synced memory file is tied to when its frontmatter and its filename disagree?",
+    "gold_id": "01a06f08-b31a-7278-99e6-d2b7aafa0832",
+    "origin": "ingested",
+    "source_title": "Claude Code memory: one source of truth \u00a7 Identity and field mapping",
+    "style": "paraphrase"
+  },
+  {
+    "question": "What's the actual subcommand for printing a previously saved handoff by its topic?",
+    "gold_id": "01a0a54c-5689-75f4-ae0d-4e81a92f5379",
+    "origin": "extracted",
+    "source_title": "`remem handoff read <topic>` does not exist",
+    "style": "paraphrase"
+  },
+  {
+    "question": "Why does a wait-for-startup loop on a container tool always time out instead of detecting that the container already exited?",
+    "gold_id": "01a07bd0-96de-7782-a72b-2ab4ab2b9c15",
+    "origin": "human",
+    "source_title": "Apple container reports a created-but-never-started container as 'stopped', not 'created'",
+    "style": "paraphrase"
+  },
+  {
+    "question": "why does my agent refuse to run a heredoc or a for-loop even though it's not touching git at all",
+    "gold_id": "01a044e9-1a5b-748b-b9ea-24901c29f94b",
+    "origin": "human",
+    "source_title": "A worktree-isolated Claude Code session refuses compound bash commands, not just git",
+    "style": "paraphrase"
+  },
+  {
+    "question": "how do I make a long-running job that writes progress records survive a mid-run crash instead of leaving no trace at all",
+    "gold_id": "01a073de-a94b-7402-82ea-dc8bdb1ae071",
+    "origin": "ingested",
+    "source_title": "Making memory sync observable \u00a7 Sync moves to an autocommit session",
+    "style": "paraphrase"
+  },
+  {
+    "question": "what's the plan for figuring out the field names in a new editor's hook payloads when the app's source isn't readable",
+    "gold_id": "01a06f08-b2ba-7566-9ac5-1e287c1973f7",
+    "origin": "ingested",
+    "source_title": "Cursor adapter - design \u00a7 The Python side",
+    "style": "paraphrase"
+  },
+  {
+    "question": "is there a known spot where a filter gets silently dropped when a caller combines a limit with other query fields",
+    "gold_id": "01a06f08-b39b-7585-88d0-d37ff096e1af",
+    "origin": "ingested",
+    "source_title": "SDD ledger \u2014 plan: docs/superpowers/plans/2026-08-26-capture.md \u00a7 Known limits accepted at pre-flight",
+    "style": "paraphrase"
+  },
+  {
+    "question": "which old runtime version is our production container still pinned to and why does it keep blocking library upgrades",
+    "gold_id": "01a06e97-3e08-701e-8f19-59e20e3759f6",
+    "origin": "agent",
+    "source_title": "Production Python version",
+    "style": "paraphrase"
+  },
+  {
+    "question": "why does a file that was manually deleted keep getting locked out of syncing forever after",
+    "gold_id": "01a06ecc-48b0-73b8-8d32-24d91b26889a",
+    "origin": "extracted",
+    "source_title": "_adopt_names seeding order let an untagged entry permanently steal a tagged entry's mem: name",
+    "style": "paraphrase"
+  },
+  {
+    "question": "what happens to old content when a heading in a source file gets renamed or removed and re-synced",
+    "gold_id": "01a06f08-b2f1-7213-8484-78083271ded9",
+    "origin": "ingested",
+    "source_title": "Ingesting markdown docs into remem \u00a7 The sweep, and the anchor entry it needs",
+    "style": "paraphrase"
+  },
+  {
+    "question": "where do I find the monitoring dashboard urls and cluster context now that everything got consolidated onto one cluster",
+    "gold_id": "01a06e97-3e05-75db-be2f-3607a03721f0",
+    "origin": "agent",
+    "source_title": "Observability architecture",
+    "style": "paraphrase"
+  },
+  {
+    "question": "why did my saved settings disappear after renaming the tool's package on this machine?",
+    "gold_id": "01a0a629-be04-7420-8495-3a46231c3789",
+    "origin": "extracted",
+    "source_title": "platformdirs config/cache paths are keyed by package name",
+    "style": "paraphrase"
+  },
+  {
+    "question": "why do two different actions in the editor show up under the same identifier when trying to tell them apart in the database?",
+    "gold_id": "01a05519-984d-7092-b027-a5860d895911",
+    "origin": "human",
+    "source_title": "Cursor's generation_id identifies a generation, not an event",
+    "style": "paraphrase"
+  },
+  {
+    "question": "why did an automated background job start silently failing over and over after I added a required field check to a shared write function?",
+    "gold_id": "01a06f59-f01e-718b-831e-854ef01ab5ff",
+    "origin": "human",
+    "source_title": "A new write-time validation breaks the internal callers you did not think of",
+    "style": "paraphrase"
+  },
+  {
+    "question": "how do I confirm that a new editor integration is actually capturing both prompts and tool calls correctly?",
+    "gold_id": "01a06f08-b36c-7600-806e-56373d5cb92b",
+    "origin": "ingested",
+    "source_title": "Cursor adapter - what is proven, and what is not \u00a7 Criterion 1 - both event kinds, with the assumed payload keys: PROVEN",
+    "style": "paraphrase"
+  },
+  {
+    "question": "why does specifying which tool I'm targeting work as an option in some commands but fail when I try the same flag on another?",
+    "gold_id": "01a05047-c928-7658-a445-b5069a827796",
+    "origin": "human",
+    "source_title": "remem's CLI is inconsistent about how the agent is named",
+    "style": "paraphrase"
+  },
+  {
+    "question": "what capabilities were intentionally left out of the feature that flags repeated content?",
+    "gold_id": "01a073af-2d93-716d-bcca-110e15481ab6",
+    "origin": "ingested",
+    "source_title": "Finding duplicate entries \u00a7 Out of scope",
+    "style": "paraphrase"
+  },
+  {
+    "question": "why did changing directories with my shell wrapper suddenly try to cd into a message instead of a path?",
+    "gold_id": "01a07391-0c3b-7329-bc8c-2dfb9aa06a4b",
+    "origin": "agent",
+    "source_title": "fleet update notice went to stdout - fixed upstream",
+    "style": "paraphrase"
+  },
+  {
+    "question": "why do records created before a bug fix still come back wrong even though the underlying reading code has already been corrected?",
+    "gold_id": "01a06ed0-961c-76b5-8cd1-04aa0226e3bd",
+    "origin": "human",
+    "source_title": "Fixing a parser does not repair what the old parser already stored",
+    "style": "paraphrase"
+  },
+  {
+    "question": "Why did an API check that looked like it confirmed write access to a repo turn out to be wrong, and how did a supposed no-op verification step end up creating files in real repositories?",
+    "gold_id": "01a04ff7-5097-7328-a66c-bbf5c16c97f7",
+    "origin": "human",
+    "source_title": "Diagnosing GitHub fine-grained PAT permissions: two checks that lie",
+    "style": "paraphrase"
+  },
+  {
+    "question": "How should notes trapped in an old note-taking app's local database on another computer get moved into the new system, given the old app's schema version on that machine isn't known for certain?",
+    "gold_id": "01a08bc9-6afc-77d4-b0fc-4ba3512c57e9",
+    "origin": "ingested",
+    "source_title": "Importing claude-mem into remem \u00a7 The problem",
+    "style": "paraphrase"
+  },
+  {
+    "question": "How can you figure out exactly how an environment variable affects where a CLI tool's config files live when the official docs are vague and you can't just run the tool with that variable set to test it?",
+    "gold_id": "01a044e9-9155-7123-92d3-6d38b8645363",
+    "origin": "human",
+    "source_title": "Read the shipped Claude Code binary to settle undocumented config behaviour",
+    "style": "paraphrase"
+  },
+  {
+    "question": "When renaming a tool across the codebase, what other unrelated project or config file elsewhere on the machine might still reference the old name and get missed by a repo-scoped search?",
+    "gold_id": "01a0a629-be17-7686-8212-d92a177c7c41",
+    "origin": "extracted",
+    "source_title": "The `saddle` Go project also has hardcoded remem references, separate from the remem repo",
+    "style": "paraphrase"
+  },
+  {
+    "question": "What safety constraints on the model doing knowledge extraction carry over when the source data changes from full transcripts to individual logged actions?",
+    "gold_id": "01a06f08-b288-721e-ac3d-6dcd1f07bfe9",
+    "origin": "ingested",
+    "source_title": "Events, extraction and semantic recall - design \u00a7 Extraction itself",
+    "style": "paraphrase"
+  },
+  {
+    "question": "Why would a test suite intermittently hang or deadlock on cleanup between unrelated tests that each seemed to pass on their own?",
+    "gold_id": "01a0702a-8bc4-70d7-b9c0-1f87932c69fb",
+    "origin": "human",
+    "source_title": "A test that reaches a spawn helper must stub it - never point a detached process at the test database",
+    "style": "paraphrase"
+  },
+  {
+    "question": "When migrating old session recap records into a system with a similar-looking but stricter single-active-record concept, why would filing them under that existing category cause most of the history to become invisible?",
+    "gold_id": "01a08bc9-6b02-76ad-8583-4bc956d591d2",
+    "origin": "ingested",
+    "source_title": "Importing claude-mem into remem \u00a7 Session summaries -> kind=doc, origin=imported",
+    "style": "paraphrase"
+  },
+  {
+    "question": "When scanning a whole collection for repeated content, why would checking for likely-but-not-identical matches only after checking for exact matches undercount how much duplication actually exists?",
+    "gold_id": "01a073af-2d87-71ed-90c5-285b09d6602b",
+    "origin": "ingested",
+    "source_title": "Finding duplicate entries \u00a7 Both tiers always run, and never merge into one list",
+    "style": "paraphrase"
+  },
+  {
+    "question": "What fields come through in the editor's end-of-turn hook payload that we didn't explicitly enumerate ourselves?",
+    "gold_id": "01a06f08-b34d-740a-9340-7707e4599dc5",
+    "origin": "ingested",
+    "source_title": "Cursor hook payload shapes - source-derived, not captured \u00a7 `afterAgentResponse`",
+    "style": "paraphrase"
+  },
+  {
+    "question": "Why did we give data brought in from a third-party tool its own label instead of lumping it with our own auto-generated content?",
+    "gold_id": "01a08bc9-6aff-7775-a2ec-df6561387a89",
+    "origin": "ingested",
+    "source_title": "Importing claude-mem into remem \u00a7 The new origin",
+    "style": "paraphrase"
+  },
+  {
+    "question": "How do we tell at a glance whether the last automatic document sync actually completed, hit errors, or never ran at all?",
+    "gold_id": "01a06f72-aaee-7227-9bf0-868ea3070f66",
+    "origin": "ingested",
+    "source_title": "Making automatic re-ingest observable \u00a7 `remem reingest status` becomes a status, not a listing",
+    "style": "paraphrase"
+  },
+  {
+    "question": "remem handoff write topic",
+    "gold_id": "01a06f08-b25e-719c-bbcf-5a3b71e172b4",
+    "origin": "ingested",
+    "source_title": "remem session handoff - design \u00a7 CLI",
     "style": "keyword"
   },
   {
-    "question": "remem config command design",
+    "question": "devops-ops signal type design",
+    "gold_id": "01a06ec5-a952-7314-a7fb-ff33dd12cd44",
+    "origin": "agent",
+    "source_title": "devops-ops project",
+    "style": "keyword"
+  },
+  {
+    "question": "hook install doctor design",
+    "gold_id": "01a06f08-b2fe-726b-b85a-646f8c41791e",
+    "origin": "ingested",
+    "source_title": "Hook install doctor - design",
+    "style": "keyword"
+  },
+  {
+    "question": "container --internal network DNS isolation",
+    "gold_id": "01a07496-4aae-7210-a81a-f51510e67779",
+    "origin": "human",
+    "source_title": "Apple container: --internal networks isolate sessions from each other and have no DNS",
+    "style": "keyword"
+  },
+  {
+    "question": "editable install branch hooks live",
+    "gold_id": "01a07955-e67b-71b3-a1e2-a703b04fc58a",
+    "origin": "agent",
+    "source_title": "Editable install makes branch hooks live",
+    "style": "keyword"
+  },
+  {
+    "question": "guard reversion stale bytecode",
+    "gold_id": "01a07401-86ef-739b-83cb-b0cee8becdb0",
+    "origin": "human",
+    "source_title": "A guard-reversion harness must prove the patch landed where you aimed it",
+    "style": "keyword"
+  },
+  {
+    "question": "remem config set unset",
     "gold_id": "01a06f08-b22d-77bf-bd1d-98e7049fbbaa",
     "origin": "ingested",
     "source_title": "remem config command - design \u00a7 Purpose",
     "style": "keyword"
   },
   {
-    "question": "UUID not JSON serializable status_to_dict",
+    "question": "UUID not JSON serializable",
     "gold_id": "01a0812d-a88f-7524-819c-226208f2d9fd",
     "origin": "extracted",
     "source_title": "UUID fields need str() before json.dumps in status_to_dict helpers",
+    "style": "keyword"
+  },
+  {
+    "question": "SendMessage truncated subagent report",
+    "gold_id": "01a06ea9-4cda-7227-a22c-4509da5fff92",
+    "origin": "extracted",
+    "source_title": "SendMessage can silently truncate long subagent reports",
+    "style": "keyword"
+  },
+  {
+    "question": "eks cluster secrets manager naming",
+    "gold_id": "01a06e97-3c56-753f-aaf6-70cd1a466161",
+    "origin": "agent",
+    "source_title": "Cluster-wide secrets in AWS Secrets Manager",
+    "style": "keyword"
+  },
+  {
+    "question": "Brandon writing voice template",
+    "gold_id": "01a06e97-3fc6-74f7-8856-9089e61d0e98",
+    "origin": "agent",
+    "source_title": "Brandon's writing voice",
+    "style": "keyword"
+  },
+  {
+    "question": "prometheus remote_write VPC peering topology",
+    "gold_id": "01a06e97-3c54-74bf-99da-e82f333b18be",
+    "origin": "agent",
+    "source_title": "Cross-cluster Prometheus topology",
+    "style": "keyword"
+  },
+  {
+    "question": "remem adapter capabilities table",
+    "gold_id": "01a06f08-b293-72d6-a17e-ad6722850101",
+    "origin": "ingested",
+    "source_title": "Events, extraction and semantic recall - design \u00a7 Adapters",
+    "style": "keyword"
+  },
+  {
+    "question": "dedupe design decisions section",
+    "gold_id": "01a073af-2d86-71b7-8466-0dfd1a4da75a",
+    "origin": "ingested",
+    "source_title": "Finding duplicate entries \u00a7 Decisions",
+    "style": "keyword"
+  },
+  {
+    "question": "install verify leaks live database",
+    "gold_id": "01a0a629-bdc0-7238-a06f-bc59f3b2dba0",
+    "origin": "extracted",
+    "source_title": "install() folding verify()'s live round-trip leaked 34 tests onto the dev's real database",
+    "style": "keyword"
+  },
+  {
+    "question": "fastembed cached model test isolation",
+    "gold_id": "01a06f01-4caf-7793-8fa9-39aac73ff681",
+    "origin": "human",
+    "source_title": "fastembed is installed and its model cached in this checkout",
+    "style": "keyword"
+  },
+  {
+    "question": "ClaudeCliDistiller capture prompt",
+    "gold_id": "01a06f08-b1f6-7247-984f-290751192892",
+    "origin": "ingested",
+    "source_title": "remem automatic session capture - design \u00a7 Distillation",
+    "style": "keyword"
+  },
+  {
+    "question": "cold LinkedIn referral outreach",
+    "gold_id": "01a06e97-3a9b-734c-90fd-656defc32b6a",
+    "origin": "agent",
+    "source_title": "Outreach comfort",
+    "style": "keyword"
+  },
+  {
+    "question": "don't run terraform test",
+    "gold_id": "01a06e97-3c4e-7469-a5f2-aa8b4a0db975",
+    "origin": "agent",
+    "source_title": "Don't run terraform tests",
+    "style": "keyword"
+  },
+  {
+    "question": "remem embed extra PATH shadow",
+    "gold_id": "01a06e2f-3ca3-7026-a006-a8c9021e46ca",
+    "origin": "agent",
+    "source_title": "remem PATH shadows the uv tool install",
+    "style": "keyword"
+  },
+  {
+    "question": "Rigel Grafana dashboard edit workflow",
+    "gold_id": "01a06e97-3e01-7532-a75a-1b3b9dde41cf",
+    "origin": "agent",
+    "source_title": "Dashboard edit workflow",
+    "style": "keyword"
+  },
+  {
+    "question": "psycopg no ORM rationale",
+    "gold_id": "01a06f08-b215-73f1-af95-b78f43006621",
+    "origin": "ingested",
+    "source_title": "remem - design \u00a7 Access",
+    "style": "keyword"
+  },
+  {
+    "question": "glab HTTPS credential helper gitlab",
+    "gold_id": "01a06e2f-3ca1-77ca-8311-ddb48ef3c6a6",
+    "origin": "agent",
+    "source_title": "GitLab pushes need HTTPS, not SSH",
+    "style": "keyword"
+  },
+  {
+    "question": "open_session migrate not called",
+    "gold_id": "01a06be9-20d4-75c0-8ba7-fcebb3967d72",
+    "origin": "human",
+    "source_title": "open_session does not run migrations, though CLAUDE.md says it does",
+    "style": "keyword"
+  },
+  {
+    "question": "shebang script argv identity mismatch",
+    "gold_id": "01a07813-66a9-7203-935d-fca161190253",
+    "origin": "human",
+    "source_title": "A shebang script's argv is rewritten by the kernel, defeating argv-based process identity",
+    "style": "keyword"
+  },
+  {
+    "question": "bats merged stdout stderr test",
+    "gold_id": "01a0739b-b64c-77d5-b295-37283ed8f003",
+    "origin": "human",
+    "source_title": "A test that asserts on merged output cannot catch a wrong-stream bug",
+    "style": "keyword"
+  },
+  {
+    "question": "capability probe adapter constructor crash",
+    "gold_id": "01a06202-8829-751d-aeda-9ef0b3d8b9f4",
+    "origin": "extracted",
+    "source_title": "A capability probe guards the call, not the constructor",
+    "style": "keyword"
+  },
+  {
+    "question": "Claude Code memory sync invariants",
+    "gold_id": "01a06f08-b33a-7050-88b2-4b616acc3c6c",
+    "origin": "ingested",
+    "source_title": "Claude Code memory: one source of truth \u00a7 Invariants worth not breaking",
+    "style": "keyword"
+  },
+  {
+    "question": "known_titles reworded duplicate extraction",
+    "gold_id": "01a05dc5-9cbb-7325-8182-adcea60828d5",
+    "origin": "human",
+    "source_title": "known_titles suppresses reworded duplicates only partly - it is advisory, not a filter",
+    "style": "keyword"
+  },
+  {
+    "question": "Brandon target role archetypes",
+    "gold_id": "01a06e97-38e9-76c9-8018-55a85e6f78c4",
+    "origin": "agent",
+    "source_title": "Role targeting",
+    "style": "keyword"
+  },
+  {
+    "question": "memory status --json single object",
+    "gold_id": "01a0812d-a870-758f-a802-d4ee9b46ed72",
+    "origin": "extracted",
+    "source_title": "remem memory status --json emits one object, not a list",
+    "style": "keyword"
+  },
+  {
+    "question": "hook_state adapter capability verify()",
+    "gold_id": "01a06f08-b303-7307-80a7-b75311384c85",
+    "origin": "ingested",
+    "source_title": "Hook install doctor - design \u00a7 The capability",
+    "style": "keyword"
+  },
+  {
+    "question": "search tier fallback order semantic trigram",
+    "gold_id": "01a06f08-b28d-7308-939f-b9d4e3d889dd",
+    "origin": "ingested",
+    "source_title": "Events, extraction and semantic recall - design \u00a7 Search",
+    "style": "keyword"
+  },
+  {
+    "question": "test fixtures built from constants",
+    "gold_id": "01a05047-87ab-72c0-97da-ac831916ae4a",
+    "origin": "human",
+    "source_title": "A test that builds its fixtures from the code's own constants proves nothing",
+    "style": "keyword"
+  },
+  {
+    "question": "CombinedOutput stderr git warning",
+    "gold_id": "01a07921-31cb-7783-b1f0-6cab1777d346",
+    "origin": "human",
+    "source_title": "CombinedOutput is a diagnostic, never an answer: parse stdout alone",
+    "style": "keyword"
+  },
+  {
+    "question": "jsonfile.dumps ensure_ascii em dash",
+    "gold_id": "01a0a725-2ace-7431-92ab-5f8f62d04c07",
+    "origin": "extracted",
+    "source_title": "jsonfile.dumps() must be used for every JSON config saddlebag rewrites, not json.dumps",
+    "style": "keyword"
+  },
+  {
+    "question": "rigel cluster auth glab AWS_PROFILE",
+    "gold_id": "01a06e97-3dff-7558-b355-be77c12b7a1f",
+    "origin": "agent",
+    "source_title": "Auth shell scripts",
+    "style": "keyword"
+  },
+  {
+    "question": "Cursor 3.18.9 HOOK_NAMES freshness test",
+    "gold_id": "01a06f08-b36a-7282-b312-e7e2393e5425",
+    "origin": "ingested",
+    "source_title": "Cursor adapter - what is proven, and what is not \u00a7 2026-08-30: the live session",
+    "style": "keyword"
+  },
+  {
+    "question": "mail.unbuffered.net Postfix Dovecot server",
+    "gold_id": "01a06ec5-a79d-7440-9a38-083eca8b5ed3",
+    "origin": "agent",
+    "source_title": "Mail server goes on a permanent host",
+    "style": "keyword"
+  },
+  {
+    "question": "cmux --command shell injection",
+    "gold_id": "01a07496-9a89-773f-9f9a-c037d6080cb1",
+    "origin": "human",
+    "source_title": "cmux --command is typed into a shell, so argv joined with spaces is a shell injection",
+    "style": "keyword"
+  },
+  {
+    "question": "remem config command errors",
+    "gold_id": "01a06f08-b243-7538-b5a0-00658432fdb1",
+    "origin": "ingested",
+    "source_title": "remem config command - design \u00a7 Errors",
+    "style": "keyword"
+  },
+  {
+    "question": "tdrvehicles2.azureedge.net dns failure",
+    "gold_id": "01a06e97-3e02-73e6-8328-eb5324afac69",
+    "origin": "agent",
+    "source_title": "Dead CDN: tdrvehicles2.azureedge.net",
+    "style": "keyword"
+  },
+  {
+    "question": "RulesExceedBudget silent context injection",
+    "gold_id": "01a06e2f-3ca2-77b4-b462-611927f16f2a",
+    "origin": "agent",
+    "source_title": "Fail-soft hides budget failures",
+    "style": "keyword"
+  },
+  {
+    "question": "prod kube-prometheus-stack helm not terraform",
+    "gold_id": "01a06e97-3e06-7642-ac3e-7092e55f6e11",
+    "origin": "agent",
+    "source_title": "Prod kube-prom-stack management",
+    "style": "keyword"
+  },
+  {
+    "question": "doctor cursor not installed scope",
+    "gold_id": "01a06041-e5f8-70ff-aa44-003537e18433",
+    "origin": "human",
+    "source_title": "A diagnostic must name where it looked, or it will eventually lie confidently",
+    "style": "keyword"
+  },
+  {
+    "question": "os-ddclient dyndns OPNsense Cloudflare",
+    "gold_id": "01a06ec5-a79f-721d-a1ab-2d719af0afbb",
+    "origin": "agent",
+    "source_title": "OPNsense Cloudflare DDNS",
+    "style": "keyword"
+  },
+  {
+    "question": "render_run timestamp non-UTC bug",
+    "gold_id": "01a07c7a-128f-75e6-b0ca-db4381d9064a",
+    "origin": "extracted",
+    "source_title": "render_run's timestamp bug only showed under a non-UTC TZ",
+    "style": "keyword"
+  },
+  {
+    "question": "remem session handoff interfaces",
+    "gold_id": "01a06f08-b25c-76ae-8fc4-5cf594bbbf29",
+    "origin": "ingested",
+    "source_title": "remem session handoff - design \u00a7 Interfaces",
+    "style": "keyword"
+  },
+  {
+    "question": "plan self-review defects",
+    "gold_id": "01a06042-1274-70d4-ac38-33f8c21dfb8c",
+    "origin": "human",
+    "source_title": "Edits made during plan self-review are the least-scrutinised text in the plan",
+    "style": "keyword"
+  },
+  {
+    "question": "events show project command",
+    "gold_id": "01a06f08-b377-76ff-a329-9fe462bc2cff",
+    "origin": "ingested",
+    "source_title": "Cursor adapter - what is proven, and what is not \u00a7 Corrections to this note's own instructions",
+    "style": "keyword"
+  },
+  {
+    "question": "verify round trip proof",
+    "gold_id": "01a06f08-b360-7366-aab2-e13a3b7cd4bc",
+    "origin": "ingested",
+    "source_title": "Cursor adapter - what is proven, and what is not \u00a7 The live database round-trip in `verify()` passes",
+    "style": "keyword"
+  },
+  {
+    "question": "reap loop untested composition bug",
+    "gold_id": "01a07813-8e65-7134-97f0-f2ccb1087390",
+    "origin": "human",
+    "source_title": "Unit-tested parts are not coverage of the composition that joins them",
+    "style": "keyword"
+  },
+  {
+    "question": "AgentAdapter entry points protocol",
+    "gold_id": "01a06f08-b220-724d-a65d-413bd87f9c37",
+    "origin": "ingested",
+    "source_title": "remem - design \u00a7 Agent adapters",
+    "style": "keyword"
+  },
+  {
+    "question": "Brandon comms drafting template",
+    "gold_id": "01a06e97-3fc2-71aa-9f2d-e3397b7544b4",
+    "origin": "agent",
+    "source_title": "Comms drafting template",
+    "style": "keyword"
+  },
+  {
+    "question": "context block budget out of scope",
+    "gold_id": "01a06f2f-aca3-7682-8c8c-329de7b1667e",
+    "origin": "ingested",
+    "source_title": "Keeping the context block bounded as rules accumulate \u00a7 Out of scope",
+    "style": "keyword"
+  },
+  {
+    "question": "entries table schema tsvector",
+    "gold_id": "01a06f08-b213-7709-93de-59f8e77a636d",
+    "origin": "ingested",
+    "source_title": "remem - design \u00a7 Storage schema",
+    "style": "keyword"
+  },
+  {
+    "question": "SendMessage truncates findings report",
+    "gold_id": "01a06202-879e-737b-ba05-d70217f7634c",
+    "origin": "extracted",
+    "source_title": "SendMessage silently truncates long subagent findings reports",
+    "style": "keyword"
+  },
+  {
+    "question": "seed both sides bidirectional sync",
+    "gold_id": "01a06be8-cfad-70ae-82c1-9c2a58149437",
+    "origin": "human",
+    "source_title": "Verifying a bidirectional sync requires seeding both sides",
+    "style": "keyword"
+  },
+  {
+    "question": "rigel-api vs rhas-aws-rigel repo split",
+    "gold_id": "01a06e97-3e09-74ab-be29-c451d20de022",
+    "origin": "agent",
+    "source_title": "Companion repo split",
+    "style": "keyword"
+  },
+  {
+    "question": "ensure_ascii json write_json",
+    "gold_id": "01a0a632-e413-775d-b6b1-7db781bc34d1",
+    "origin": "human",
+    "source_title": "bag install re-encodes non-ASCII in the JSON files it rewrites",
+    "style": "keyword"
+  },
+  {
+    "question": "prune --project no cwd default",
+    "gold_id": "01a05555-93a6-76bc-8d56-d0cf137b512c",
+    "origin": "extracted",
+    "source_title": "prune --project does not default to cwd, unlike every other --project flag",
+    "style": "keyword"
+  },
+  {
+    "question": "OPNsense J4125 throughput tuning",
+    "gold_id": "01a06ec5-a7a0-7567-8ea0-ac6e85a5cb2f",
+    "origin": "agent",
+    "source_title": "OPNsense config & tuning",
+    "style": "keyword"
+  },
+  {
+    "question": "SDD ledger task self-consistency",
+    "gold_id": "01a06f08-b397-723e-b304-d0dbf1267587",
+    "origin": "ingested",
+    "source_title": "SDD ledger \u2014 plan: docs/superpowers/plans/2026-08-26-capture.md \u00a7 Task self-consistency",
+    "style": "keyword"
+  },
+  {
+    "question": "REMEM_MAX_CHARS budget 8000",
+    "gold_id": "01a06f2f-ac9f-7685-bc62-284a1185d336",
+    "origin": "ingested",
+    "source_title": "Keeping the context block bounded as rules accumulate \u00a7 The budget comes back down to 8,000",
     "style": "keyword"
   },
   {
@@ -53,6 +977,76 @@
     "gold_id": "01a06e2f-3c9e-7726-a43c-6090ebc3120b",
     "origin": "agent",
     "source_title": "Cursor runs Claude Code's hooks",
+    "style": "keyword"
+  },
+  {
+    "question": "reviewer empty reply verdict file",
+    "gold_id": "01a04b61-c82e-75d3-9dac-c48899a84a75",
+    "origin": "human",
+    "source_title": "Subagent reviewers return empty replies often - make the verdict file mandatory from the first dispatch",
+    "style": "keyword"
+  },
+  {
+    "question": "remem rename saddlebag",
+    "gold_id": "01a0a54c-55f7-701d-bb54-259ee7286baf",
+    "origin": "extracted",
+    "source_title": "remem is being renamed to saddlebag",
+    "style": "keyword"
+  },
+  {
+    "question": "dedupe near tier threshold",
+    "gold_id": "01a073af-2d8b-74f7-9cc8-1fa1fb071bb0",
+    "origin": "ingested",
+    "source_title": "Finding duplicate entries \u00a7 The near tier has its own threshold, not `semantic_threshold`",
+    "style": "keyword"
+  },
+  {
+    "question": "pyrefly strict preset override",
+    "gold_id": "01a0913c-3c14-73c4-b750-857b308be5b6",
+    "origin": "agent",
+    "source_title": "pyrefly -p strict does not override config",
+    "style": "keyword"
+  },
+  {
+    "question": "remem config command precedence",
+    "gold_id": "01a06f08-b22f-7687-9e31-5669ba460c77",
+    "origin": "ingested",
+    "source_title": "remem config command - design \u00a7 Why this is remem's business at all",
+    "style": "keyword"
+  },
+  {
+    "question": "Store.pin Protocol return type drift",
+    "gold_id": "01a0794c-1b3c-76d7-be03-07fe7de4cf01",
+    "origin": "human",
+    "source_title": "A Protocol whose return type drifts from its implementation reports at every call site, never at the wrong line",
+    "style": "keyword"
+  },
+  {
+    "question": "Bluepeak fiber OPNsense static IP",
+    "gold_id": "01a06ec5-a79b-724c-b8ee-6dc59230bc12",
+    "origin": "agent",
+    "source_title": "Home network: Bluepeak fiber + OPNsense",
+    "style": "keyword"
+  },
+  {
+    "question": "remem automatic session capture interfaces",
+    "gold_id": "01a06f08-b1fc-761b-81e3-ddc39cacef79",
+    "origin": "ingested",
+    "source_title": "remem automatic session capture - design \u00a7 Interfaces",
+    "style": "keyword"
+  },
+  {
+    "question": "mlx-vlm vs mlx-lm ForConditionalGeneration",
+    "gold_id": "01a04ff7-79b7-7084-9033-bf55c9f6c738",
+    "origin": "human",
+    "source_title": "Muse Glimmer and Qwen3.8-27B both need mlx-vlm, not mlx-lm",
+    "style": "keyword"
+  },
+  {
+    "question": "context block budget bounded rules",
+    "gold_id": "01a06f2f-ac95-7153-943b-1c5123dad721",
+    "origin": "ingested",
+    "source_title": "Keeping the context block bounded as rules accumulate",
     "style": "keyword"
   }
 ]
