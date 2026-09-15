@@ -9,3 +9,7 @@ dist/
 .worktrees/
 .ruff_cache/
 .pyrefly_cache/
+
+# Retrieval eval: the question set is committed (it is the instrument, and
+# runs are only comparable against a fixed one), the per-run scores are not.
+eval-results.json

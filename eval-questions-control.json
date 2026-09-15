@@ -1,0 +1,24 @@
+[
+  {
+    "_comment": "Delete this row. The ones below are examples - replace them with ~15 of your own, then delete any you did not fill in. gold_id must be a real entry id: find one with `bag search <term> --json` and copy its \"id\". style is \"keyword\" (2-5 words, the terms you would actually type) or \"paraphrase\" (a sentence describing the problem, not its vocabulary). Write roughly half of each: the per-style tier table is only meaningful when both regimes are represented, and a control set that is all one style cannot check the generated set's other half.",
+    "question": "",
+    "gold_id": "",
+    "origin": "",
+    "source_title": "",
+    "style": "paraphrase"
+  },
+  {
+    "question": "<example, keyword style: two to five words you would really type>",
+    "gold_id": "<paste a real entry id here>",
+    "origin": "human",
+    "source_title": "<optional, for your own reference when reading results>",
+    "style": "keyword"
+  },
+  {
+    "question": "<example, paraphrase style: one sentence about the problem, avoiding the entry's own wording>",
+    "gold_id": "<paste a real entry id here>",
+    "origin": "human",
+    "source_title": "<optional, for your own reference when reading results>",
+    "style": "paraphrase"
+  }
+]

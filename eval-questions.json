@@ -1,0 +1,58 @@
+[
+  {
+    "question": "why does the startup banner never show up when a teammate uses the IDE plugin instead of the terminal",
+    "gold_id": "01a0a748-6344-77eb-88c2-5593c1301b8a",
+    "origin": "extracted",
+    "source_title": "SessionStart hook systemMessage does not render in the VS Code extension",
+    "style": "paraphrase"
+  },
+  {
+    "question": "how should a new editor integration handle grouping activity into sessions when the field names for identifying a session aren't documented anywhere",
+    "gold_id": "01a06f08-b2ba-7566-9ac5-1e287c1973f7",
+    "origin": "ingested",
+    "source_title": "Cursor adapter - design \u00a7 The Python side",
+    "style": "paraphrase"
+  },
+  {
+    "question": "why is home internet throughput coming in way under the plan's rated speed even though the router isn't pegging the CPU",
+    "gold_id": "01a06ec5-a7a0-7567-8ea0-ac6e85a5cb2f",
+    "origin": "agent",
+    "source_title": "OPNsense config & tuning",
+    "style": "paraphrase"
+  },
+  {
+    "question": "why does binding a listener on a freshly created virtual network's gateway address fail until something actually launches on that network",
+    "gold_id": "01a07960-589e-76a5-a8b0-2690f7452a2b",
+    "origin": "human",
+    "source_title": "Apple container: a network's gateway address does not exist on the host until a container on it STARTS",
+    "style": "paraphrase"
+  },
+  {
+    "question": "pyrefly tests exclusion signature drift",
+    "gold_id": "01a079a2-95d3-73af-b807-d3ea483485e5",
+    "origin": "human",
+    "source_title": "A type-checker exclusion hides signature drift in the code it excludes, not just noise in the excluded files",
+    "style": "keyword"
+  },
+  {
+    "question": "remem config command design",
+    "gold_id": "01a06f08-b22d-77bf-bd1d-98e7049fbbaa",
+    "origin": "ingested",
+    "source_title": "remem config command - design \u00a7 Purpose",
+    "style": "keyword"
+  },
+  {
+    "question": "UUID not JSON serializable status_to_dict",
+    "gold_id": "01a0812d-a88f-7524-819c-226208f2d9fd",
+    "origin": "extracted",
+    "source_title": "UUID fields need str() before json.dumps in status_to_dict helpers",
+    "style": "keyword"
+  },
+  {
+    "question": "Cursor loads Claude Code hooks",
+    "gold_id": "01a06e2f-3c9e-7726-a43c-6090ebc3120b",
+    "origin": "agent",
+    "source_title": "Cursor runs Claude Code's hooks",
+    "style": "keyword"
+  }
+]
