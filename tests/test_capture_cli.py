@@ -13,7 +13,7 @@ runner = CliRunner()
 
 
 @pytest.mark.db
-def test_installer_registers_the_session_end_hook(tmp_path: Path) -> None:
+def test_installer_registers_the_session_end_hook(tmp_path: Path, env: str) -> None:
     """SessionEnd now points at the same command PostToolUse does - the
     idle trigger replaced it as the requirement, and it is kept only as a
     hint that shortens the wait."""
@@ -28,7 +28,7 @@ def test_installer_registers_the_session_end_hook(tmp_path: Path) -> None:
 
 
 @pytest.mark.db
-def test_installing_twice_leaves_one_session_end_hook(tmp_path: Path) -> None:
+def test_installing_twice_leaves_one_session_end_hook(tmp_path: Path, env: str) -> None:
     ClaudeCodeAdapter().install(scope="user", home=tmp_path)
     ClaudeCodeAdapter().install(scope="user", home=tmp_path)
     settings = json.loads((tmp_path / ".claude" / "settings.json").read_text())
@@ -36,7 +36,9 @@ def test_installing_twice_leaves_one_session_end_hook(tmp_path: Path) -> None:
 
 
 @pytest.mark.db
-def test_install_report_says_recording_is_off_by_default(tmp_path: Path) -> None:
+def test_install_report_says_recording_is_off_by_default(
+    tmp_path: Path, env: str
+) -> None:
     report = ClaudeCodeAdapter().install(scope="user", home=tmp_path)
     combined = " ".join(report.actions + report.notes).lower()
     assert "record" in combined

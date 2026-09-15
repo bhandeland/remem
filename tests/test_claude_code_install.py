@@ -1,12 +1,55 @@
 import json
+import os
 from pathlib import Path
 from typing import Any
 
+import psycopg
 import pytest
 
 from saddlebag.agents.base import UnsupportedScope
 from saddlebag.agents.claude_code.adapter import ClaudeCodeAdapter
+from saddlebag.backends.postgres.migrate import migrate
 from saddlebag.jsonfile import backup
+
+
+def _store_env() -> dict[str, str]:
+    """The scratch-database settings `_isolated_store` exported.
+
+    For a test that hands install() an explicit env - to relocate
+    CLAUDE_CONFIG_DIR - and so bypasses os.environ, where the fixture put
+    them. Without this those tests round-tripped through the default
+    address after the fixture had isolated everything else.
+    """
+    return {k: os.environ[k] for k in ("BAG_DSN", "BAG_USER_ID", "BAG_CONFIG")}
+
+
+@pytest.fixture(autouse=True)
+def _isolated_store(
+    request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Give every db test in this module a real scratch database.
+
+    Nearly every test here calls install(), and install() folds verify()'s
+    live round-trip into its report. None of them passed an env, so
+    round_trip fell back to os.environ - no DSN on a developer machine - and
+    resolved to the default address: the developer's own store. Thirty tests
+    wrote and deleted a verify event there on every run and passed anyway,
+    because a failed round-trip is a warning in the report and no test here
+    asserts it succeeded.
+
+    Autouse rather than a parameter on each test, because the defect was
+    thirty tests each forgetting the same parameter; gated on the db marker
+    so the pure tests beside them still run without Postgres.
+    """
+    if request.node.get_closest_marker("db") is None:
+        return
+    live_dsn: str = request.getfixturevalue("live_dsn")
+    with psycopg.connect(live_dsn) as c:
+        migrate(c)
+        c.commit()
+    monkeypatch.setenv("BAG_DSN", live_dsn)
+    monkeypatch.setenv("BAG_USER_ID", "brandon")
+    monkeypatch.setenv("BAG_CONFIG", str(tmp_path / "none.toml"))
 
 
 @pytest.mark.db
@@ -273,7 +316,7 @@ def test_install_states_the_hook_slug_convention(tmp_path: Path) -> None:
 def test_install_honours_claude_config_dir(tmp_path: Path) -> None:
     alt = tmp_path / "elsewhere"
     ClaudeCodeAdapter().install(
-        scope="user", home=tmp_path, env={"CLAUDE_CONFIG_DIR": str(alt)}
+        scope="user", home=tmp_path, env={**_store_env(), "CLAUDE_CONFIG_DIR": str(alt)}
     )
     assert json.loads((alt / ".claude.json").read_text())["mcpServers"]["saddlebag"]
     assert (alt / "settings.json").exists()
@@ -284,7 +327,7 @@ def test_install_honours_claude_config_dir(tmp_path: Path) -> None:
 def test_install_writes_nothing_to_home_when_relocated(tmp_path: Path) -> None:
     alt = tmp_path / "elsewhere"
     ClaudeCodeAdapter().install(
-        scope="user", home=tmp_path, env={"CLAUDE_CONFIG_DIR": str(alt)}
+        scope="user", home=tmp_path, env={**_store_env(), "CLAUDE_CONFIG_DIR": str(alt)}
     )
     assert not (tmp_path / ".claude.json").exists()
     assert not (tmp_path / ".claude").exists()
@@ -295,7 +338,7 @@ def test_install_falls_back_when_claude_config_dir_is_empty(tmp_path: Path) -> N
     # An empty value is an unset value, not a request to write to the current
     # working directory, which is where Path("") would land.
     ClaudeCodeAdapter().install(
-        scope="user", home=tmp_path, env={"CLAUDE_CONFIG_DIR": ""}
+        scope="user", home=tmp_path, env={**_store_env(), "CLAUDE_CONFIG_DIR": ""}
     )
     assert (tmp_path / ".claude.json").exists()
     assert (tmp_path / ".claude" / "settings.json").exists()
@@ -305,7 +348,7 @@ def test_install_falls_back_when_claude_config_dir_is_empty(tmp_path: Path) -> N
 def test_install_reports_the_relocated_directory(tmp_path: Path) -> None:
     alt = tmp_path / "elsewhere"
     report = ClaudeCodeAdapter().install(
-        scope="user", home=tmp_path, env={"CLAUDE_CONFIG_DIR": str(alt)}
+        scope="user", home=tmp_path, env={**_store_env(), "CLAUDE_CONFIG_DIR": str(alt)}
     )
     # Without this the user sees a successful install with no hint that it
     # landed somewhere other than ~/.claude.

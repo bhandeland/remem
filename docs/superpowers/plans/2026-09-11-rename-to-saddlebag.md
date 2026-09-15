@@ -70,16 +70,32 @@ Worth keeping because each is a trap the next rename will fall into:
 
 ## A defect the rename surfaced
 
-`test_cursor_install.py::test_install_writes_the_hooks_and_verifies` called
-`install(env=None)`, and `verify.round_trip` falls back to `os.environ`, which
-names no DSN on a developer machine - so its round-trip ran against the default
-address, the developer's own live store, on every test run, and read the real
-config file too. The opencode and claude-code install tests already carried a
-fixture that prevents exactly this, with a comment warning about it; the cursor
-test never had it. It is also the likeliest source of the disabled
-`__remem_verify__` row found in the live store. It showed up only because the
-renamed default role did not exist yet, as an authentication failure. Fixed
-with the same fixture.
+34 tests in three files had been round-tripping through the developer's own
+live store on every run. install() folds verify()'s live round-trip into its
+report, and `verify.round_trip` falls back to `os.environ` when given no env,
+which names no DSN on a developer machine - so it resolved to the default
+address. 30 were in `test_claude_code_install.py`, 3 in `test_capture_cli.py`,
+and 1 in `test_cursor_install.py`. It is the likeliest source of the disabled
+`__remem_verify__` row found in the live store.
+
+Every one of them passed. A failed round-trip is a warning in the install
+report and no test asserted it succeeded, so a green run said nothing about
+where the round-trip went. It surfaced only because the renamed default role
+did not exist yet, and one test that *did* assert on the round-trip failed
+authenticating as it.
+
+The scope was measured rather than inferred: a throwaway pytest plugin wrapped
+`psycopg.connect` and named every test that connected as the default role,
+which in the rename worktree differs from every test DSN's. Its one false
+positive is `test_cli.py`'s unreachable-Postgres test, which uses that role
+deliberately against port 1.
+
+The opencode and claude-code events install tests already carried a fixture
+preventing this, with a comment warning about exactly this failure; the other
+three files never had it. `test_claude_code_install.py` gets an autouse
+fixture gated on the `db` marker, since the defect was thirty tests each
+forgetting the same parameter, and four tests that relocate `CLAUDE_CONFIG_DIR`
+through an explicit env merge its settings in.
 
 ## Existing installs
 
