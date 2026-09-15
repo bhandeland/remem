@@ -50,7 +50,7 @@ def backup_once(path: Path, backed_up: set[Path]) -> Path | None:
 def read_json(path: Path, backed_up: set[Path]) -> tuple[dict[str, Any], list[str]]:
     if not path.exists():
         return {}, []
-    raw = path.read_text()
+    raw = path.read_text(encoding="utf-8")
     try:
         return json.loads(raw), []
     except json.JSONDecodeError:
@@ -86,15 +86,31 @@ def read_document(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
     try:
-        loaded = json.loads(path.read_text())
+        loaded = json.loads(path.read_text(encoding="utf-8"))
     except OSError, json.JSONDecodeError:
         return {}
     return loaded if isinstance(loaded, dict) else {}
+
+
+def dumps(data: dict[str, Any]) -> str:
+    """The text of a JSON config file saddlebag writes but a person owns.
+
+    ensure_ascii=False because json.dumps otherwise escapes every non-ASCII
+    character: one install rewrote the em dashes a person had typed into
+    settings.json's autoMode as \\u2014. Equal JSON, but a diff nobody asked
+    for in a file people read and edit by hand. Callers must write the
+    result as UTF-8, or the locale decides what those characters become.
+
+    Shared by write_json and the Cursor installer, which writes its own
+    backup and so cannot route through write_json - two spellings of this
+    call is how one of them would keep escaping.
+    """
+    return json.dumps(data, indent=2, ensure_ascii=False) + "\n"
 
 
 def write_json(path: Path, data: dict[str, Any], backed_up: set[Path]) -> Path | None:
     """Write data, backing the existing file up first. Returns the backup."""
     made = backup_once(path, backed_up)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, indent=2) + "\n")
+    path.write_text(dumps(data), encoding="utf-8")
     return made

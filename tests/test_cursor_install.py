@@ -179,6 +179,30 @@ def test_install_writes_the_hooks_and_verifies(
     assert any("Recording is OFF" in n for n in report.notes)
 
 
+@pytest.mark.db
+def test_install_keeps_another_tools_non_ascii_text_as_written(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, env: dict[str, str]
+) -> None:
+    """hooks.json is user-owned and shared, so text another tool or a person
+    put there must survive the merge byte-for-byte in meaning AND spelling -
+    not come back as \\u2014 escapes."""
+    from saddlebag.agents.cursor.adapter import CursorAdapter
+
+    path = tmp_path / ".cursor" / "hooks.json"
+    path.parent.mkdir()
+    path.write_text(
+        '{"version": 1, "hooks": {"stop": [{"command": "notify — done"}]}}\n',
+        encoding="utf-8",
+    )
+
+    monkeypatch.chdir(tmp_path)
+    CursorAdapter().install(scope="user", home=tmp_path, env=env)
+
+    text = path.read_text(encoding="utf-8")
+    assert "notify — done" in text
+    assert "\\u2014" not in text
+
+
 def test_merge_collapses_a_command_the_file_already_names_twice(tmp_path: Path) -> None:
     """The repair half, mirroring the Claude Code adapter's.
 

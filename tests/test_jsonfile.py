@@ -39,6 +39,23 @@ def test_write_json_preserves_unrelated_keys_via_the_caller(tmp_path: Path) -> N
     assert json.loads(path.read_text()) == {"theme": "dark", "hooks": {}}
 
 
+def test_write_json_keeps_non_ascii_text_as_written(tmp_path: Path) -> None:
+    """settings.json is hand-maintained. json.dumps escapes non-ASCII by
+    default, so one install rewrote every em dash a person had typed into
+    autoMode as a \\u2014 escape - equal JSON, but a diff nobody asked for
+    in a file they read and edit by hand."""
+    path = tmp_path / "settings.json"
+    path.write_text('{"note": "a — b"}\n', encoding="utf-8")
+    backed_up: set[Path] = set()
+
+    data, _ = jsonfile.read_json(path, backed_up)
+    jsonfile.write_json(path, data, backed_up)
+
+    text = path.read_text(encoding="utf-8")
+    assert "a — b" in text
+    assert "\\u2014" not in text
+
+
 def test_backup_once_does_not_back_up_the_same_file_twice(tmp_path: Path) -> None:
     path = tmp_path / "settings.json"
     path.write_text("{}")

@@ -11,7 +11,6 @@ that ever writes it.
 
 from __future__ import annotations
 
-import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
@@ -220,7 +219,7 @@ class CursorAdapter:
         path = hooks_path(scope, home=home, cwd=Path.cwd())
         path.parent.mkdir(parents=True, exist_ok=True)
         document, backup = merge(path, ENTRIES)
-        path.write_text(json.dumps(document, indent=2) + "\n")
+        path.write_text(jsonfile.dumps(document), encoding="utf-8")
 
         report = InstallReport(agent=self.name)
         report.actions.append(f"Merged {len(ENTRIES)} hook entries into {path}")
