@@ -529,3 +529,93 @@ def test_install_leaves_another_tools_hook_on_the_same_event_alone(
     commands = [h["command"] for g in groups for h in g["hooks"]]
     assert "some-other-tool --flush" in commands
     assert commands.count("bag hook record-event") == 1
+
+
+@pytest.mark.db
+def test_install_upgrades_every_hook_a_remem_install_registered(tmp_path: Path) -> None:
+    """The rename to saddlebag, in the shape of the settings.json it ran on.
+
+    remem registered `remem hook ...` on all four events. The membership
+    test is by exact string, so without those spellings in LEGACY_COMMANDS
+    an install appends `bag hook ...` beside each one, and every `remem`
+    entry goes on calling a command that no longer exists - silently,
+    because every hook is fail-soft.
+    """
+    settings = tmp_path / ".claude" / "settings.json"
+    settings.parent.mkdir(parents=True)
+
+    def group(cmd: str, timeout: int) -> dict[str, Any]:
+        return {
+            "matcher": "",
+            "hooks": [{"type": "command", "command": cmd, "timeout": timeout}],
+        }
+
+    settings.write_text(
+        json.dumps(
+            {
+                "hooks": {
+                    "SessionStart": [group("remem hook session-start", 10)],
+                    "SessionEnd": [group("remem hook record-event", 10)],
+                    "PostToolUse": [group("remem hook record-event", 5)],
+                    "UserPromptSubmit": [group("remem hook session-size", 5)],
+                }
+            }
+        )
+    )
+
+    ClaudeCodeAdapter().install(scope="user", home=tmp_path)
+
+    hooks = json.loads(settings.read_text())["hooks"]
+    commands = {
+        event: [h["command"] for g in groups for h in g["hooks"]]
+        for event, groups in hooks.items()
+    }
+    assert commands == {
+        "SessionStart": ["bag hook session-start"],
+        "SessionEnd": ["bag hook record-event"],
+        "PostToolUse": ["bag hook record-event"],
+        "UserPromptSubmit": ["bag hook session-size"],
+    }
+
+
+@pytest.mark.db
+def test_install_retires_the_mcp_server_a_remem_install_registered(
+    tmp_path: Path,
+) -> None:
+    """install() only ever set its own key, so after the rename a
+    `mcpServers["remem"]` would linger as a server Claude Code fails to
+    start in every session."""
+    config = tmp_path / ".claude.json"
+    config.write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "remem": {"command": "remem", "args": ["serve"]},
+                    "other": {"command": "other"},
+                }
+            }
+        )
+    )
+
+    ClaudeCodeAdapter().install(scope="user", home=tmp_path)
+
+    assert sorted(json.loads(config.read_text())["mcpServers"]) == [
+        "other",
+        "saddlebag",
+    ]
+
+
+@pytest.mark.db
+def test_install_leaves_a_foreign_server_named_remem_alone(tmp_path: Path) -> None:
+    """`.claude.json` is shared. A server someone else registered under the
+    old name is not install's to delete - only the one remem itself wrote,
+    which is why the retirement matches on the command as well as the key."""
+    config = tmp_path / ".claude.json"
+    foreign = {"command": "npx", "args": ["some-other-remem"]}
+    config.write_text(json.dumps({"mcpServers": {"remem": foreign}}))
+
+    ClaudeCodeAdapter().install(scope="user", home=tmp_path)
+
+    servers = json.loads(config.read_text())["mcpServers"]
+    assert servers["remem"] == foreign
+    assert "saddlebag" in servers

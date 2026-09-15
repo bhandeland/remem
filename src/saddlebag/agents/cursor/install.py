@@ -68,9 +68,11 @@ HOOK_ENTRIES: tuple[CursorHook, ...] = (
 ENTRIES = {h.event: h.command for h in HOOK_ENTRIES}
 
 
-#: Commands a previous saddlebag wrote for a hook, which install migrates in
-#: place. Empty because no cursor command has been renamed yet - it is here
-#: so that the first rename is a one-line edit rather than a bug.
+#: Commands a previous install wrote for a hook, which install migrates in
+#: place. First needed by the rename from remem to saddlebag: every command
+#: remem wrote was `remem ...`, and each left beside its `bag` replacement
+#: would call a command that no longer exists - silently, since hooks are
+#: fail-soft. The table having been kept, empty, made that a one-line edit.
 #:
 #: The Claude Code adapter learned this the expensive way: `bag hook
 #: session-end` was superseded by `bag hook record-event`, the membership
@@ -78,7 +80,12 @@ ENTRIES = {h.event: h.command for h in HOOK_ENTRIES}
 #: appended the new command beside the old one and both fired. `events` has
 #: no unique constraint, so every session close wrote a duplicate row for
 #: the extractor to read twice.
-LEGACY_COMMANDS: dict[str, tuple[str, ...]] = {}
+LEGACY_COMMANDS: dict[str, tuple[str, ...]] = {
+    "sessionStart": ("remem hook context --agent cursor",),
+    "postToolUse": ("remem record event --agent cursor",),
+    "beforeSubmitPrompt": ("remem record event --agent cursor",),
+    "afterAgentResponse": ("remem record event --agent cursor",),
+}
 
 
 def hooks_path(scope: str, home: Path, cwd: Path) -> Path:

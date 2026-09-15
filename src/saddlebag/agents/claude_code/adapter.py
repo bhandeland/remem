@@ -41,9 +41,30 @@ SESSION_SIZE_COMMAND = "bag hook session-size"
 #: fire - `events` has no unique constraint, so every session close would
 #: write a duplicate row for the extractor to read twice. Rewriting is also
 #: what stops the alias from having to live forever.
+#:
+#: The rename from remem to saddlebag is the same problem on all four events:
+#: every command remem registered was `remem hook ...`, and each left beside
+#: its `bag` replacement calls a command that no longer exists - silently,
+#: because every hook is fail-soft. `bag hook session-end` stays as well: it
+#: is still a live alias (cli.py), so a settings.json can still name it.
 LEGACY_COMMANDS: dict[str, tuple[str, ...]] = {
-    "SessionEnd": ("bag hook session-end",),
+    "SessionStart": ("remem hook session-start",),
+    "SessionEnd": (
+        "bag hook session-end",
+        "remem hook session-end",
+        "remem hook record-event",
+    ),
+    "PostToolUse": ("remem hook record-event",),
+    "UserPromptSubmit": ("remem hook session-size",),
 }
+
+#: MCP servers a previous install registered, name to the command it gave
+#: them. `_install_mcp` only ever set its own key, so after the rename from
+#: remem a `mcpServers["remem"]` would linger as a server Claude Code fails
+#: to start in every session. Matched on the command as well as the name:
+#: `.claude.json` is shared, and a server someone else registered under that
+#: name is not install's to delete.
+LEGACY_MCP_SERVERS: dict[str, str] = {"remem": "remem"}
 
 # VERIFY_PROJECT used to be defined here; it now lives in saddlebag.agents.verify,
 # shared with every adapter's round-trip. Re-exported, not used here:
@@ -247,6 +268,14 @@ class ClaudeCodeAdapter:
         config, warnings = jsonfile.read_json(path, backed_up)
         report.warnings.extend(warnings)
         servers = config.setdefault("mcpServers", {})
+        for name, command in LEGACY_MCP_SERVERS.items():
+            old = servers.get(name)
+            if isinstance(old, dict) and old.get("command") == command:
+                del servers[name]
+                report.actions.append(
+                    f"Removed the {name} MCP server a previous install "
+                    f"registered in {path}"
+                )
         servers["saddlebag"] = {"command": "bag", "args": ["serve"]}
         jsonfile.write_json(path, config, backed_up)
         report.actions.append(f"Registered the saddlebag MCP server in {path}")

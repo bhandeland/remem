@@ -133,3 +133,13 @@ def test_a_missing_settings_file_still_names_the_path_examined(tmp_path: Path) -
     state = ClaudeCodeAdapter().hook_state("user", tmp_path, {})
     assert state.path == tmp_path / ".claude" / "settings.json"
     assert state.exists is False
+
+
+def test_a_remem_era_command_is_found_not_reported_missing(tmp_path: Path) -> None:
+    """After the rename, an install that has not been re-run still names
+    `remem hook ...`. Reporting that as missing would send someone chasing a
+    broken pipeline that is really a rename waiting for `bag install` - the
+    same reason `bag hook session-end` is found rather than missing."""
+    write_settings(tmp_path, {"SessionStart": [entry("remem hook session-start")]})
+    state = ClaudeCodeAdapter().hook_state("user", tmp_path, {})
+    assert state.found["SessionStart"] == ("remem hook session-start",)

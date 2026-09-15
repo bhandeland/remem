@@ -212,9 +212,10 @@ def test_merge_migrates_a_superseded_command_instead_of_appending_beside_it(
     Renaming a command saddlebag writes would otherwise leave the old entry in
     place next to the new one - both firing - because the membership test
     is by exact string. This is exactly what happened to the Claude Code
-    adapter's SessionEnd hook; the table is empty here only because no
-    cursor command has been renamed yet, so the mechanism is exercised
-    with a supplied one.
+    adapter's SessionEnd hook. The mechanism is exercised with a supplied
+    table so it stays pinned whatever the real one records; the real one -
+    the rename from remem - is
+    test_merge_upgrades_every_command_a_remem_install_wrote.
     """
     path = tmp_path / "hooks.json"
     path.write_text(
@@ -341,3 +342,39 @@ def test_merge_preserves_other_keys_on_an_entry_it_rewrites(tmp_path: Path) -> N
     assert merged["hooks"]["postToolUse"] == [
         {"command": "bag record event --agent cursor", "timeout": 7}
     ]
+
+
+def test_merge_upgrades_every_command_a_remem_install_wrote(tmp_path: Path) -> None:
+    """The first real rename, through the default table rather than an
+    injected one: remem's `.cursor/hooks.json` names `remem ...` on all four
+    hooks, and each is rewritten in place rather than left calling a command
+    that no longer exists."""
+    path = tmp_path / "hooks.json"
+    path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "hooks": {
+                    "sessionStart": [{"command": "remem hook context --agent cursor"}],
+                    "postToolUse": [{"command": "remem record event --agent cursor"}],
+                    "beforeSubmitPrompt": [
+                        {"command": "remem record event --agent cursor"}
+                    ],
+                    "afterAgentResponse": [
+                        {"command": "remem record event --agent cursor"}
+                    ],
+                },
+            }
+        )
+    )
+
+    merged, _ = install.merge(path, install.ENTRIES)
+
+    assert {
+        hook: [h["command"] for h in hs] for hook, hs in merged["hooks"].items()
+    } == {
+        "sessionStart": ["bag hook context --agent cursor"],
+        "postToolUse": ["bag record event --agent cursor"],
+        "beforeSubmitPrompt": ["bag record event --agent cursor"],
+        "afterAgentResponse": ["bag record event --agent cursor"],
+    }
