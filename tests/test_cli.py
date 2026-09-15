@@ -517,3 +517,30 @@ def test_update_summary_empty_on_a_rule_names_the_flag(env: str) -> None:
     r = runner.invoke(app, ["update", entry_id, "--summary", ""])
     assert r.exit_code == 1
     assert "--summary" in r.stderr
+
+
+def test_kb_budget_reports_a_number_for_a_healthy_knowledge_base(env: str) -> None:
+    """The gap this command fills.
+
+    `bag record status` says nothing whatsoever about a knowledge base
+    under the warning fraction, which is right for prose and useless to a
+    status line that must draw something every time it renders.
+    """
+    runner.invoke(app, ["kb", "new", "tiny", "--title", "Tiny", "--project", "tiny"])
+
+    r = runner.invoke(app, ["kb", "budget", "tiny", "--json"])
+
+    assert r.exit_code == 0, r.stdout
+    payload = json.loads(r.stdout)
+    assert payload["slug"] == "tiny"
+    assert payload["state"] == "ok"
+    assert payload["used"] >= 0
+    assert payload["budget"] > 0
+
+
+def test_kb_budget_refuses_a_slug_that_does_not_exist(env: str) -> None:
+    """Rather than reporting a reassuring zero for a missing knowledge base."""
+    r = runner.invoke(app, ["kb", "budget", "nonexistent"])
+
+    assert r.exit_code == 1
+    assert "nonexistent" in r.stderr

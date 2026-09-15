@@ -724,6 +724,42 @@ def kb_show(
             raise typer.Exit(1)
 
 
+@kb_app.command("budget")
+def kb_budget(
+    slug: Annotated[Optional[str], typer.Argument()] = None,
+    as_json: Annotated[bool, typer.Option("--json")] = False,
+):
+    """What a knowledge base's rules cost against the context budget.
+
+    The numeric counterpart to the advisory in `bag record status`, which
+    is prose for a person and says nothing at all about a healthy
+    knowledge base - correctly, since there is nothing to tell. Anything
+    that *displays* the number continuously needs it in every state,
+    including the healthy one it occupies almost all the time, so it reads
+    this instead of parsing sentences that are usually absent.
+
+    The slug defaults to the project the working directory resolves to -
+    the same resolution `ClaudeCodeAdapter.identity` hands the SessionStart
+    hook - so the number reported here governs the block this session
+    actually received, rather than some other knowledge base's.
+    """
+    with _session() as s:
+        name = slug or resolve_project()
+        if not name:
+            typer.echo("No project here, and no slug given", err=True)
+            raise typer.Exit(1)
+        try:
+            got = kb.budget(s.store, s.owner.id, name, s.config.max_chars)
+        except kb.CollectionNotFound:
+            typer.echo(f"No knowledge base '{name}'", err=True)
+            raise typer.Exit(1)
+
+    if as_json:
+        typer.echo(json.dumps(kb.budget_to_dict(got), indent=2))
+        return
+    typer.echo(f"{got.slug} {got.used}/{got.budget} ({got.fraction:.0%}) {got.state}")
+
+
 @db_app.command("up")
 def db_up():
     """Create the database, apply migrations, and seed the principal."""

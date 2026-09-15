@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import StrEnum
+from typing import Any
 from uuid import UUID
 
 from saddlebag.domain import (
@@ -41,11 +43,16 @@ BUDGET_POINTER = "see: bag kb show {slug} --full"
 __all__ = [
     "BUDGET_POINTER",
     "BUDGET_WARN_FRACTION",
+    "Budget",
+    "BudgetState",
     "CollectionNotFound",
     "EntryNotFound",
     "RulesExceedBudget",
     "advisories",
+    "budget",
     "budget_advisories",
+    "budget_to_dict",
+    "classify",
     "create",
     "get",
     "pin",
@@ -255,6 +262,118 @@ def rules_chars(collection: Collection, entries: list[Entry]) -> int:
     return sum(len(p) for p in _header_and_rules(collection, entries))
 
 
+class BudgetState(StrEnum):
+    """Which of the three things a knowledge base's rules are doing.
+
+    A `StrEnum` so it crosses `--json` as the word a reader would say,
+    rather than as a number a consumer has to keep a table for.
+    """
+
+    OK = "ok"
+    WARN = "warn"
+    OVER = "over"
+
+
+@dataclass(frozen=True)
+class Budget:
+    """What one knowledge base's rules cost, and what that means.
+
+    `used` is `rules_chars` - the header plus every rule - and never the
+    rendered block's length, for the reason spelled out there: the block
+    is capped at the budget by construction and so cannot measure over it,
+    while this quantity is the only one that predicts the failure.
+    """
+
+    slug: str
+    used: int
+    budget: int
+    state: BudgetState
+
+    @property
+    def fraction(self) -> float:
+        """How much of the budget the rules occupy, for a caller drawing a
+        bar or a percentage.
+
+        Guarded, because `max_chars` comes from user config and a caller
+        asking for this is typically a fail-soft widget: a status line
+        must never be the thing that raises.
+        """
+        return self.used / self.budget if self.budget else 0.0
+
+
+def classify(
+    used: int, max_chars: int, *, warn_fraction: float = BUDGET_WARN_FRACTION
+) -> BudgetState:
+    """The one place the budget thresholds are compared.
+
+    Shared by `budget_advisories` and `budget` so the prose a person reads
+    in `bag record status` and the number a status line draws can never
+    disagree about whether a knowledge base is healthy. Two copies of this
+    comparison drifting apart is the same failure `rules_chars` and the
+    raise site already share `_header_and_rules` to prevent.
+
+    `>` for the hard tier and `>=` for the warning, matching `render`,
+    which raises only once the rules are strictly over: a knowledge base
+    that fills its budget exactly is still being injected, and saying
+    otherwise would report a dead block to a session that has one.
+    """
+    if used > max_chars:
+        return BudgetState.OVER
+    if used >= max_chars * warn_fraction:
+        return BudgetState.WARN
+    return BudgetState.OK
+
+
+def budget(
+    store: Store,
+    owner_id: UUID,
+    slug: str,
+    max_chars: int,
+    *,
+    warn_fraction: float = BUDGET_WARN_FRACTION,
+) -> Budget:
+    """What one knowledge base spends of the budget, as a number.
+
+    The counterpart to `budget_advisories`, which answers the same
+    question as prose for a person and is deliberately silent about a
+    healthy knowledge base - there is nothing to tell. A caller that
+    *displays* the number continuously needs it in every state, including
+    the healthy one it is in almost all the time, so it gets a typed
+    surface rather than parsing sentences that are absent four times out
+    of five.
+
+    Raises `CollectionNotFound` rather than reporting zero: a slug that
+    does not exist and a knowledge base with no rules are different
+    answers, and conflating them renders a reassuring 0% for a project
+    whose context block is missing entirely.
+    """
+    collection = get(store, owner_id, slug)
+    entries = resolve(store, owner_id, slug)
+    used = rules_chars(collection, entries)
+    return Budget(
+        slug=collection.slug,
+        used=used,
+        budget=max_chars,
+        state=classify(used, max_chars, warn_fraction=warn_fraction),
+    )
+
+
+def budget_to_dict(got: Budget) -> dict[str, Any]:
+    """`Budget` as plain JSON, for `bag kb budget --json`.
+
+    `fraction` is included although it is derivable from the two numbers
+    beside it: the consumer this exists for is a shell script in a status
+    line, where recomputing it means arithmetic in the shell for no gain.
+    """
+    return {
+        "slug": got.slug,
+        "used": got.used,
+        "budget": got.budget,
+        "fraction": got.fraction,
+        "state": str(got.state),
+    }
+
+
 def budget_advisories(
     store: Store,
     owner_id: UUID,
@@ -287,14 +406,20 @@ def budget_advisories(
         entries = resolve(store, owner_id, collection.slug)
         used = rules_chars(collection, entries)
         pointer = BUDGET_POINTER.format(slug=collection.slug)
-        if used > max_chars:
+        # Through `classify`, never an inline comparison. This function and
+        # `budget` must agree about every knowledge base: if they drift, the
+        # sentence in `bag record status` and the number a status line draws
+        # contradict each other, and a user believes whichever they read
+        # last. The thresholds live in one place so that cannot happen.
+        state = classify(used, max_chars, warn_fraction=warn_fraction)
+        if state is BudgetState.OVER:
             lines.append(
                 f"knowledge base '{collection.slug}': its rules and header "
                 f"need {used} chars against a {max_chars} budget, so its "
                 f"context block is not being injected in any session - "
                 f"prune rules from it or raise BAG_MAX_CHARS - {pointer}"
             )
-        elif used >= max_chars * warn_fraction:
+        elif state is BudgetState.WARN:
             lines.append(
                 f"knowledge base '{collection.slug}': its rules and header "
                 f"use {used} of a {max_chars} budget, and once they pass it "
