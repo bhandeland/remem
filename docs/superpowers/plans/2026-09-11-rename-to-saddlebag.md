@@ -187,6 +187,40 @@ superuser, full-text search through the preserved function returning results,
 - No permission rule or `REMEM_*` variable exists in either user settings file,
   the shell environment, or any dotfile.
 
+## Outside this repository
+
+Swept before cutover, because a rename's worst failures are in things that
+call it by name and that its own tests cannot see.
+
+- **saddle depends on it at runtime.** `~/.config/saddle/profiles/go.yaml`
+  carries `skills: [remem]` - bind-mounting `~/.claude/skills/remem` into
+  containers - and an MCP entry that spawns `remem serve --http`. With the
+  binary gone and that skill directory removed, every saddle session would fail
+  to start its host service and mount a path that does not exist. The cutover
+  rewrites the profile to `bag` for the skill and the spawn and `saddlebag` for
+  the MCP name. saddle's own README example and design docs still say remem;
+  that is a follow-up in the saddle repository, not something this one edits.
+- **`~/.claude/settings.json` is a symlink** into the dotfiles repo at
+  `~/workspace/homedir`. A backup that renamed rather than copied would have
+  moved the link aside and left `bag install` writing a regular file in its
+  place - silently detaching live config from the repo that tracks it. It does
+  not: `jsonfile.backup` uses `shutil.copy2` and `write_json` uses `write_text`,
+  and both follow the link. Proved in a scratch `HOME`, not inferred - the rehearsal
+  against real files had used copies, which could not have caught it. The
+  dotfiles repo will show the four command changes, which are for committing
+  there.
+- **Nothing else calls it.** No crontab entry, launchd agent, shell alias or
+  function, and no project- or user-scoped config for any other agent, beyond
+  this checkout's own `.cursor/hooks.json`.
+- **Four Claude Code sessions were open** when this was written, each with its
+  own `remem serve`. Every one loses its MCP tools and hooks when the role is
+  renamed, until restarted.
+
+The install itself was rehearsed against copies of the real `settings.json`,
+`.claude.json`, skills and `.cursor/hooks.json`, with its round-trip on the
+migrated copy: every `remem` command was repaired in place, the stale MCP server
+removed, and both files otherwise identical to what they were.
+
 ## Cutover
 
 `cutover.sh`, one phase at a time, output read before the next:
@@ -200,12 +234,14 @@ superuser, full-text search through the preserved function returning results,
    that starts spawns a job against the database that can write
    `project='remem'` rows after the migration commits. Then stop, copy the
    volume, start the new container, migrate, rename the role.
-4. `files` - watermarks, memory directory, cache, old skills, old cursor rule.
+4. `files` - watermarks, memory directory, config, cache, old skills, old
+   cursor rule, and saddle's profile.
 5. `merge` - land the branch, remove the worktree.
 6. `install` - the new tool, then `bag install claude-code` and `bag install
    cursor --scope project`, which the legacy tables turn into in-place repairs.
 7. `verify` - `bag db status`, `doctor`, `verify`, `record status`, `memory
-   status`, and a grep of every live config file for leftovers.
+   status`, that `settings.json` is still a symlink, the dotfiles diff, the
+   saddle profile, and a grep of every live config file for leftovers.
 8. `move` - rename the checkout and reinstall from the new path. **Last**,
    because this pulls the working directory out from under a running Claude
    Code session. Restart from `~/llmworkspace/saddlebag` and confirm the
