@@ -63,7 +63,7 @@ pip-audit:
     - .default-rules
   script:
     - pip install pip-audit
-    - uv export --no-hashes --format requirements-txt > requirements.txt
+    - uv export --no-hashes --no-emit-project --format requirements-txt > requirements.txt
     - pip-audit -r requirements.txt --strict
   allow_failure: true  # Advisory until dependencies are fully audited
 
@@ -118,7 +118,7 @@ pytest:
     # Those are tuned for the local agent loop, where -x --tb=line is the
     # point; here the whole failure list is what the run is for, and -x
     # would report one test and hide the rest.
-    - uv run pytest tests/ -v --maxfail=0 --tb=short --cov=src/bag --cov-report=term-missing --cov-report=xml:coverage.xml --junitxml=report.xml
+    - uv run pytest tests/ -v --maxfail=0 --tb=short --cov=src/saddlebag --cov-report=term-missing --cov-report=xml:coverage.xml --junitxml=report.xml
   coverage: '/TOTAL.*\s+(\d+%)/'
   artifacts:
     reports:
@@ -133,7 +133,7 @@ pytest:
 # =============================================================================
 
 # Trusted Publishing (OIDC), not a stored API token. PyPI holds a pending
-# publisher for nighthawk-oss/remem pinned to this file and to the environment
+# publisher for nighthawk-oss/saddlebag pinned to this file and to the environment
 # name below - all three claims must match or the mint request is refused, so
 # renaming the environment here silently breaks publishing.
 #

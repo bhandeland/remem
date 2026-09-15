@@ -1,6 +1,6 @@
 # saddlebag
 
-> **This repo is mirrored from [GitLab](https://gitlab.com/nighthawk-oss/remem).** Issues, merge requests, and contributions should go there.
+> **This repo is mirrored from [GitLab](https://gitlab.com/nighthawk-oss/saddlebag).** Issues, merge requests, and contributions should go there.
 
 A knowledge and memory store for AI coding agents. Agents and humans record
 what they learn about a project - facts, reference docs, and prescriptive

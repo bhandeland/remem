@@ -36,9 +36,9 @@ dependencies = [
 embed = ["fastembed>=0.7.0"]
 
 [project.urls]
-Homepage = "https://gitlab.com/nighthawk-oss/remem"
-Repository = "https://gitlab.com/nighthawk-oss/remem"
-Issues = "https://gitlab.com/nighthawk-oss/remem/-/issues"
+Homepage = "https://gitlab.com/nighthawk-oss/saddlebag"
+Repository = "https://gitlab.com/nighthawk-oss/saddlebag"
+Issues = "https://gitlab.com/nighthawk-oss/saddlebag/-/issues"
 
 [project.scripts]
 bag = "saddlebag.cli:app"
