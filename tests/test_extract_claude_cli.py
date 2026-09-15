@@ -7,9 +7,9 @@ from typing import Any
 
 import pytest
 
-from remem.domain import Event, EventKind, new_id
-from remem.extract.base import ExtractionFailed
-from remem.extract.claude_cli import (
+from saddlebag.domain import Event, EventKind, new_id
+from saddlebag.extract.base import ExtractionFailed
+from saddlebag.extract.claude_cli import (
     MAX_PROMPT_BYTES,
     PROMPT,
     TRUNCATION_NOTE,
@@ -31,7 +31,7 @@ def an_event(
     return Event(
         id=new_id(),
         owner_id=new_id(),
-        project="remem",
+        project="saddlebag",
         harness="claude-code",
         session_id="s1",
         kind=kind,
@@ -70,7 +70,7 @@ def test_env_sets_the_recursion_guard() -> None:
     """claude -p is itself a Claude Code session; without this its own hooks
     record the extraction's events, which the next extraction reads, and the
     whole thing compounds forever."""
-    assert build_env({"PATH": "/usr/bin"})["REMEM_EXTRACT_CHILD"] == "1"
+    assert build_env({"PATH": "/usr/bin"})["BAG_EXTRACT_CHILD"] == "1"
 
 
 def test_env_preserves_the_caller_environment() -> None:
@@ -97,7 +97,7 @@ def test_extract_parses_the_subprocess_output(monkeypatch: pytest.MonkeyPatch) -
         )
 
     monkeypatch.setattr(subprocess, "run", fake_run)
-    entries = ClaudeCliExtractor().extract([an_event()], "remem")
+    entries = ClaudeCliExtractor().extract([an_event()], "saddlebag")
     assert [e.title for e in entries] == ["T"]
 
 
@@ -107,7 +107,7 @@ def test_extract_raises_when_claude_is_missing(monkeypatch: pytest.MonkeyPatch) 
 
     monkeypatch.setattr(subprocess, "run", fake_run)
     with pytest.raises(ExtractionFailed) as exc:
-        ClaudeCliExtractor().extract([an_event()], "remem")
+        ClaudeCliExtractor().extract([an_event()], "saddlebag")
     assert "not on PATH" in str(exc.value)
 
 
@@ -117,7 +117,7 @@ def test_extract_raises_on_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(subprocess, "run", fake_run)
     with pytest.raises(ExtractionFailed) as exc:
-        ClaudeCliExtractor().extract([an_event()], "remem")
+        ClaudeCliExtractor().extract([an_event()], "saddlebag")
     assert "timed out" in str(exc.value)
 
 
@@ -127,7 +127,7 @@ def test_extract_raises_on_nonzero_exit(monkeypatch: pytest.MonkeyPatch) -> None
 
     monkeypatch.setattr(subprocess, "run", fake_run)
     with pytest.raises(ExtractionFailed) as exc:
-        ClaudeCliExtractor().extract([an_event()], "remem")
+        ClaudeCliExtractor().extract([an_event()], "saddlebag")
     assert "boom" in str(exc.value)
 
 
@@ -144,7 +144,7 @@ def test_the_events_are_passed_on_stdin_not_as_an_argument(
         return subprocess.CompletedProcess(cmd, 0, stdout="[]", stderr="")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
-    ClaudeCliExtractor().extract([an_event({"command": "THE-EVENT"})], "remem")
+    ClaudeCliExtractor().extract([an_event({"command": "THE-EVENT"})], "saddlebag")
     assert "THE-EVENT" in seen["input"]
     assert not any("THE-EVENT" in part for part in seen["cmd"])
 
@@ -197,14 +197,14 @@ def test_a_large_batch_of_events_is_bounded_to_its_tail(
         return subprocess.CompletedProcess(cmd, 0, stdout="[]", stderr="")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
-    ClaudeCliExtractor().extract(events_of_size(MAX_PROMPT_BYTES * 3), "remem")
+    ClaudeCliExtractor().extract(events_of_size(MAX_PROMPT_BYTES * 3), "saddlebag")
     # Tight, deliberately. The comment above MAX_PROMPT_BYTES calls oversized
     # input "the dangerous one: it does not announce itself" - this is the
     # test that announces it, so it must not have the slack to sleep through
     # a doubling. What stdin can legitimately hold is the rendered tail
     # (bounded at MAX_PROMPT_BYTES), the truncation note in front of it, and
     # the small header extract() adds. The prompt itself travels in argv.
-    header = "Project: remem\n\nEvents:\n"
+    header = "Project: saddlebag\n\nEvents:\n"
     ceiling = MAX_PROMPT_BYTES + len(TRUNCATION_NOTE) + len(header)
     assert len(seen["input"]) <= ceiling
 
@@ -268,7 +268,7 @@ def test_a_nonzero_exit_with_empty_stderr_still_says_something_useful(
 
     monkeypatch.setattr(subprocess, "run", fake_run)
     with pytest.raises(ExtractionFailed) as exc:
-        ClaudeCliExtractor().extract([an_event()], "remem")
+        ClaudeCliExtractor().extract([an_event()], "saddlebag")
     message = str(exc.value)
     assert "exited 1" in message
     assert "no stderr" in message.lower()
@@ -283,7 +283,7 @@ def test_a_nonzero_exit_with_stderr_still_includes_it(
 
     monkeypatch.setattr(subprocess, "run", fake_run)
     with pytest.raises(ExtractionFailed) as exc:
-        ClaudeCliExtractor().extract([an_event()], "remem")
+        ClaudeCliExtractor().extract([an_event()], "saddlebag")
     assert "boom happened" in str(exc.value)
 
 
@@ -295,7 +295,7 @@ def test_a_timeout_reports_the_input_size(monkeypatch: pytest.MonkeyPatch) -> No
 
     monkeypatch.setattr(subprocess, "run", fake_run)
     with pytest.raises(ExtractionFailed) as exc:
-        ClaudeCliExtractor().extract(events_of_size(5000), "remem")
+        ClaudeCliExtractor().extract(events_of_size(5000), "saddlebag")
     assert "bytes" in str(exc.value).lower()
 
 
@@ -321,14 +321,14 @@ def test_the_extractor_passes_its_configured_model(
         return subprocess.CompletedProcess(cmd, 0, stdout="[]", stderr="")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
-    ClaudeCliExtractor(model="haiku").extract([an_event()], "remem")
+    ClaudeCliExtractor(model="haiku").extract([an_event()], "saddlebag")
     assert seen["cmd"][seen["cmd"].index("--model") + 1] == "haiku"
 
 
 def test_the_extractor_defaults_to_the_configured_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from remem.config import DEFAULT_EXTRACT_MODEL
+    from saddlebag.config import DEFAULT_EXTRACT_MODEL
 
     seen: dict[str, Any] = {}
 
@@ -337,7 +337,7 @@ def test_the_extractor_defaults_to_the_configured_default(
         return subprocess.CompletedProcess(cmd, 0, stdout="[]", stderr="")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
-    ClaudeCliExtractor().extract([an_event()], "remem")
+    ClaudeCliExtractor().extract([an_event()], "saddlebag")
     assert seen["cmd"][seen["cmd"].index("--model") + 1] == DEFAULT_EXTRACT_MODEL
 
 

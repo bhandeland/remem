@@ -7,12 +7,12 @@ from typing import Any
 import psycopg
 import pytest
 
-from remem import memory_file
-from remem.backends.postgres.migrate import migrate
-from remem.backends.postgres.store import PostgresStore
-from remem.domain import CollectionQuery, Entry, Kind, Origin, Principal, new_id
-from remem.services import kb, memory
-from remem.services.write import remember, supersede
+from saddlebag import memory_file
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.store import PostgresStore
+from saddlebag.domain import CollectionQuery, Entry, Kind, Origin, Principal, new_id
+from saddlebag.services import kb, memory
+from saddlebag.services.write import remember, supersede
 from tests.conftest import found
 
 pytestmark = pytest.mark.db
@@ -142,10 +142,10 @@ def test_case_4_an_edited_entry_regenerates_the_file(
     _write_file(tmp_path, "a-fact", "a hook", "the body\n")
     memory.sync(store, owner.id, project="proj", directory=tmp_path)
     entry = kb.resolve(store, owner.id, "proj-memory")[0]
-    supersede(store, owner.id, entry.id, title=entry.title, body="from remem\n")
+    supersede(store, owner.id, entry.id, title=entry.title, body="from saddlebag\n")
     report = memory.sync(store, owner.id, project="proj", directory=tmp_path)
     assert report.regenerated == 1
-    assert "from remem" in (tmp_path / "a-fact.md").read_text()
+    assert "from saddlebag" in (tmp_path / "a-fact.md").read_text()
 
 
 def test_syncing_an_edited_summary_less_rule_does_not_raise(
@@ -160,7 +160,7 @@ def test_syncing_an_edited_summary_less_rule_does_not_raise(
     corrupting every other name's watermark in the same run (final review
     finding 3). It is reported like a malformed file instead, and no
     watermark is written for this name, so the edit is retried - not
-    dropped - on the next sync, once `remem update --summary` gives the
+    dropped - on the next sync, once `bag update --summary` gives the
     entry something to carry."""
     slug = _designated(store, owner)
     entry = store.put_entry(
@@ -237,12 +237,12 @@ def test_syncing_a_rule_with_its_description_line_deleted_carries_the_old_summar
     assert rule.summary == "do the thing"
 
 
-def test_regenerating_preserves_metadata_remem_does_not_own(
+def test_regenerating_preserves_metadata_saddlebag_does_not_own(
     store: PostgresStore, owner: Principal, tmp_path: Path
 ) -> None:
     # Claude Code's own bookkeeping lives in these files and an Entry has
     # nowhere to put it, so a regenerate that rendered the entry alone would
-    # destroy provenance on every file remem did not write.
+    # destroy provenance on every file saddlebag did not write.
     _designated(store, owner)
     _write_file(
         tmp_path,
@@ -253,14 +253,14 @@ def test_regenerating_preserves_metadata_remem_does_not_own(
     )
     memory.sync(store, owner.id, project="proj", directory=tmp_path)
     entry = kb.resolve(store, owner.id, "proj-memory")[0]
-    supersede(store, owner.id, entry.id, title=entry.title, body="from remem\n")
+    supersede(store, owner.id, entry.id, title=entry.title, body="from saddlebag\n")
 
     report = memory.sync(store, owner.id, project="proj", directory=tmp_path)
 
     assert report.regenerated == 1
     text = (tmp_path / "a-fact.md").read_text()
     assert "originSessionId: abc123" in text
-    assert "from remem" in text
+    assert "from saddlebag" in text
 
 
 def test_case_5_both_sides_moved_is_a_conflict_and_writes_nothing(
@@ -270,27 +270,27 @@ def test_case_5_both_sides_moved_is_a_conflict_and_writes_nothing(
     _write_file(tmp_path, "a-fact", "a hook", "the body\n")
     memory.sync(store, owner.id, project="proj", directory=tmp_path)
     entry = kb.resolve(store, owner.id, "proj-memory")[0]
-    supersede(store, owner.id, entry.id, title=entry.title, body="from remem\n")
+    supersede(store, owner.id, entry.id, title=entry.title, body="from saddlebag\n")
     _write_file(tmp_path, "a-fact", "a hook", "from claude\n")
 
     report = memory.sync(store, owner.id, project="proj", directory=tmp_path)
 
     assert report.conflicts == ["a-fact"]
     assert "from claude" in (tmp_path / "a-fact.md").read_text()
-    assert "from remem" in (tmp_path / "a-fact.remem-conflict.md").read_text()
+    assert "from saddlebag" in (tmp_path / "a-fact.saddlebag-conflict.md").read_text()
 
 
 def test_a_conflict_sidecar_is_never_adopted_as_a_memory(
     store: PostgresStore, owner: Principal, tmp_path: Path
 ) -> None:
-    # The sidecar is remem's report of a conflict, not a memory. Adopting it
+    # The sidecar is saddlebag's report of a conflict, not a memory. Adopting it
     # would create a second entry from the same knowledge on the next sync,
     # and then regenerate a file for it forever.
     _designated(store, owner)
     _write_file(tmp_path, "a-fact", "a hook", "the body\n")
     memory.sync(store, owner.id, project="proj", directory=tmp_path)
     entry = kb.resolve(store, owner.id, "proj-memory")[0]
-    supersede(store, owner.id, entry.id, title=entry.title, body="from remem\n")
+    supersede(store, owner.id, entry.id, title=entry.title, body="from saddlebag\n")
     _write_file(tmp_path, "a-fact", "a hook", "from claude\n")
     memory.sync(store, owner.id, project="proj", directory=tmp_path)
 
@@ -434,7 +434,7 @@ def test_a_malformed_file_is_reported_and_costs_nothing_else(
 def test_an_unparseable_file_keeps_its_memory_md_line(
     store: PostgresStore, owner: Principal, tmp_path: Path
 ) -> None:
-    # The index is rebuilt from live entries, and a file remem could not parse
+    # The index is rebuilt from live entries, and a file saddlebag could not parse
     # has none - so without carrying the old line through, "reported and
     # otherwise left completely alone" would still cost the file its index
     # line, and Claude Code would stop loading it.
@@ -454,7 +454,7 @@ def test_regenerating_keeps_the_frontmatter_name_the_user_wrote(
     store: PostgresStore, owner: Principal, tmp_path: Path
 ) -> None:
     # Identity is the filename stem; the frontmatter `name:` is the user's
-    # and remem does not own it, so a regenerate must not rewrite it.
+    # and saddlebag does not own it, so a regenerate must not rewrite it.
     _designated(store, owner)
     tmp_path.mkdir(parents=True, exist_ok=True)
     (tmp_path / "a-fact.md").write_text(
@@ -471,14 +471,14 @@ def test_regenerating_keeps_the_frontmatter_name_the_user_wrote(
     )
     memory.sync(store, owner.id, project="proj", directory=tmp_path)
     entry = kb.resolve(store, owner.id, "proj-memory")[0]
-    supersede(store, owner.id, entry.id, title=entry.title, body="from remem\n")
+    supersede(store, owner.id, entry.id, title=entry.title, body="from saddlebag\n")
 
     report = memory.sync(store, owner.id, project="proj", directory=tmp_path)
 
     assert report.regenerated == 1
     text = (tmp_path / "a-fact.md").read_text()
     assert "name: a-different-slug" in text
-    assert "from remem" in text
+    assert "from saddlebag" in text
     # The index still links the file that exists, not the frontmatter slug.
     assert "(a-fact.md)" in (tmp_path / "MEMORY.md").read_text()
 
@@ -513,7 +513,7 @@ def test_a_dry_run_conflict_writes_no_sidecar_and_says_so(
     _write_file(tmp_path, "a-fact", "a hook", "the body\n")
     memory.sync(store, owner.id, project="proj", directory=tmp_path)
     entry = kb.resolve(store, owner.id, "proj-memory")[0]
-    supersede(store, owner.id, entry.id, title=entry.title, body="from remem\n")
+    supersede(store, owner.id, entry.id, title=entry.title, body="from saddlebag\n")
     _write_file(tmp_path, "a-fact", "a hook", "from claude\n")
 
     report = memory.sync(
@@ -532,7 +532,7 @@ def test_a_dry_run_conflict_writes_no_sidecar_and_says_so(
 def test_a_collection_at_the_resolve_limit_refuses_to_sync(
     store: PostgresStore, owner: Principal, tmp_path: Path
 ) -> None:
-    # Past kb.RESOLVE_LIMIT an entry remem cannot see is indistinguishable
+    # Past kb.RESOLVE_LIMIT an entry saddlebag cannot see is indistinguishable
     # from one that left the collection, and its file would be deleted.
     _designated(store, owner)
     for n in range(kb.RESOLVE_LIMIT):
@@ -868,7 +868,7 @@ def test_a_rename_with_an_edit_in_the_same_interval_is_not_followed(
 ) -> None:
     # The honest floor, asserted so it is a decision rather than a surprise:
     # the proof of a rename is that the new file is byte-identical to what
-    # remem last wrote under the old name. Edit it too and that proof is gone,
+    # saddlebag last wrote under the old name. Edit it too and that proof is gone,
     # so this still duplicates.
     _designated(store, owner)
     _write_file(tmp_path, "old-name", "a hook", "the body\n")

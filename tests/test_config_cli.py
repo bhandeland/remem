@@ -8,11 +8,11 @@ from typing import Mapping
 import pytest
 from typer.testing import CliRunner
 
-import remem.agents.registry as registry
-from remem.agents.base import EnvVar, Kind
-from remem.agents.claude_code.env_vars import CLAUDE_CODE_ENV_VARS
-from remem.cli import app
-from remem.services.settings import REMEM_VARS
+import saddlebag.agents.registry as registry
+from saddlebag.agents.base import EnvVar, Kind
+from saddlebag.agents.claude_code.env_vars import CLAUDE_CODE_ENV_VARS
+from saddlebag.cli import app
+from saddlebag.services.settings import BAG_VARS
 
 runner = CliRunner()
 
@@ -23,19 +23,19 @@ def _clean_environment(monkeypatch: pytest.MonkeyPatch) -> None:
 
     CliRunner's `env=` *merges* into os.environ rather than replacing it, and
     a CLI frontend legitimately reads os.environ - so without this a
-    developer who exports REMEM_MAX_CHARS in their shell changes what these
+    developer who exports BAG_MAX_CHARS in their shell changes what these
     tests see (that key's source becomes "environment"). The repo's rule is
     that the environment is injected, never inherited, and for a CLI test
     that means clearing the inherited half first.
     """
-    for key in list(REMEM_VARS) + list(CLAUDE_CODE_ENV_VARS):
+    for key in list(BAG_VARS) + list(CLAUDE_CODE_ENV_VARS):
         monkeypatch.delenv(key, raising=False)
 
 
 def _env(tmp_path: Path, **extra: str) -> dict[str, str]:
     """Point both targets at a temp dir and keep the real home untouched."""
     return {
-        "REMEM_CONFIG": str(tmp_path / "config.toml"),
+        "BAG_CONFIG": str(tmp_path / "config.toml"),
         "CLAUDE_CONFIG_DIR": str(tmp_path / "claude"),
         **extra,
     }
@@ -54,9 +54,9 @@ def test_set_writes_a_claude_code_key(tmp_path: Path) -> None:
     assert "600000" in result.stdout
 
 
-def test_set_writes_a_remem_key(tmp_path: Path) -> None:
+def test_set_writes_a_saddlebag_key(tmp_path: Path) -> None:
     result = runner.invoke(
-        app, ["config", "set", "REMEM_MAX_CHARS", "8000"], env=_env(tmp_path)
+        app, ["config", "set", "BAG_MAX_CHARS", "8000"], env=_env(tmp_path)
     )
     assert result.exit_code == 0
     data = tomllib.loads((tmp_path / "config.toml").read_text())
@@ -90,21 +90,19 @@ def test_set_leaves_the_file_untouched_when_the_value_is_refused(
     assert path.read_bytes() == before
 
 
-def test_set_warns_when_an_export_shadows_a_remem_key(tmp_path: Path) -> None:
+def test_set_warns_when_an_export_shadows_a_saddlebag_key(tmp_path: Path) -> None:
     result = runner.invoke(
         app,
-        ["config", "set", "REMEM_MAX_CHARS", "8000"],
-        env=_env(tmp_path, REMEM_MAX_CHARS="999"),
+        ["config", "set", "BAG_MAX_CHARS", "8000"],
+        env=_env(tmp_path, BAG_MAX_CHARS="999"),
     )
     assert result.exit_code == 0
     assert "will not take effect" in result.output
 
 
 def test_get_prints_the_effective_value(tmp_path: Path) -> None:
-    runner.invoke(app, ["config", "set", "REMEM_MAX_CHARS", "8000"], env=_env(tmp_path))
-    result = runner.invoke(
-        app, ["config", "get", "REMEM_MAX_CHARS"], env=_env(tmp_path)
-    )
+    runner.invoke(app, ["config", "set", "BAG_MAX_CHARS", "8000"], env=_env(tmp_path))
+    result = runner.invoke(app, ["config", "get", "BAG_MAX_CHARS"], env=_env(tmp_path))
     assert result.exit_code == 0
     assert "8000" in result.stdout
 
@@ -124,10 +122,10 @@ def test_unset_removes_the_key(tmp_path: Path) -> None:
 
 
 def test_list_shows_keys_values_and_sources(tmp_path: Path) -> None:
-    runner.invoke(app, ["config", "set", "REMEM_MAX_CHARS", "8000"], env=_env(tmp_path))
+    runner.invoke(app, ["config", "set", "BAG_MAX_CHARS", "8000"], env=_env(tmp_path))
     result = runner.invoke(app, ["config", "list"], env=_env(tmp_path))
     assert result.exit_code == 0
-    assert "REMEM_MAX_CHARS" in result.stdout
+    assert "BAG_MAX_CHARS" in result.stdout
     assert "8000" in result.stdout
     assert "file" in result.stdout
     assert "BASH_DEFAULT_TIMEOUT_MS" in result.stdout
@@ -154,7 +152,7 @@ def test_config_works_with_postgres_unreachable(tmp_path: Path) -> None:
     result = runner.invoke(
         app,
         ["config", "list"],
-        env=_env(tmp_path, REMEM_DSN="postgresql://nobody@127.0.0.1:1/none"),
+        env=_env(tmp_path, BAG_DSN="postgresql://nobody@127.0.0.1:1/none"),
     )
     assert result.exit_code == 0
 
@@ -196,7 +194,7 @@ def test_set_refuses_a_non_numeric_fuzzy_threshold(tmp_path: Path) -> None:
     # nothing changed.
     result = runner.invoke(
         app,
-        ["config", "set", "REMEM_FUZZY_THRESHOLD", "not-a-number"],
+        ["config", "set", "BAG_FUZZY_THRESHOLD", "not-a-number"],
         env=_env(tmp_path),
     )
     assert result.exit_code == 1
@@ -208,7 +206,7 @@ def test_set_writes_a_fuzzy_threshold_as_a_toml_float(tmp_path: Path) -> None:
     # in exactly the way a bare string value was.
     result = runner.invoke(
         app,
-        ["config", "set", "REMEM_FUZZY_THRESHOLD", "0.45"],
+        ["config", "set", "BAG_FUZZY_THRESHOLD", "0.45"],
         env=_env(tmp_path),
     )
     assert result.exit_code == 0
@@ -216,16 +214,16 @@ def test_set_writes_a_fuzzy_threshold_as_a_toml_float(tmp_path: Path) -> None:
     assert data["fuzzy_threshold"] == 0.45
 
 
-def test_set_refuses_an_empty_value_on_a_remem_integer(tmp_path: Path) -> None:
+def test_set_refuses_an_empty_value_on_a_saddlebag_integer(tmp_path: Path) -> None:
     result = runner.invoke(
-        app, ["config", "set", "REMEM_MAX_CHARS", ""], env=_env(tmp_path)
+        app, ["config", "set", "BAG_MAX_CHARS", ""], env=_env(tmp_path)
     )
     assert result.exit_code == 1
     assert "unset" in result.output
     assert not (tmp_path / "config.toml").exists()
 
 
-def test_set_reports_where_the_remem_backup_went(tmp_path: Path) -> None:
+def test_set_reports_where_the_saddlebag_backup_went(tmp_path: Path) -> None:
     # Rewriting config.toml loses comments and formatting. The backup lands
     # beside the file under a timestamped name the user has no reason to
     # guess, so a safety net nobody is told about is most of the way to no
@@ -233,7 +231,7 @@ def test_set_reports_where_the_remem_backup_went(tmp_path: Path) -> None:
     path = tmp_path / "config.toml"
     path.write_text("# hand written\nmax_chars = 4000\n")
     result = runner.invoke(
-        app, ["config", "set", "REMEM_MAX_CHARS", "8000"], env=_env(tmp_path)
+        app, ["config", "set", "BAG_MAX_CHARS", "8000"], env=_env(tmp_path)
     )
     assert result.exit_code == 0
     backups = [p for p in tmp_path.iterdir() if ".bak" in p.name]
@@ -257,9 +255,9 @@ def test_set_reports_where_the_agent_backup_went(tmp_path: Path) -> None:
 
 
 def test_unset_reports_where_the_backup_went(tmp_path: Path) -> None:
-    runner.invoke(app, ["config", "set", "REMEM_MAX_CHARS", "8000"], env=_env(tmp_path))
+    runner.invoke(app, ["config", "set", "BAG_MAX_CHARS", "8000"], env=_env(tmp_path))
     result = runner.invoke(
-        app, ["config", "unset", "REMEM_MAX_CHARS"], env=_env(tmp_path)
+        app, ["config", "unset", "BAG_MAX_CHARS"], env=_env(tmp_path)
     )
     assert result.exit_code == 0
     assert "Backed up to" in result.stdout
@@ -268,7 +266,7 @@ def test_unset_reports_where_the_backup_went(tmp_path: Path) -> None:
 def test_set_says_nothing_about_a_backup_when_there_was_no_file(tmp_path: Path) -> None:
     # Nothing to lose on a first write, so nothing to report.
     result = runner.invoke(
-        app, ["config", "set", "REMEM_MAX_CHARS", "8000"], env=_env(tmp_path)
+        app, ["config", "set", "BAG_MAX_CHARS", "8000"], env=_env(tmp_path)
     )
     assert result.exit_code == 0
     assert "Backed up" not in result.stdout

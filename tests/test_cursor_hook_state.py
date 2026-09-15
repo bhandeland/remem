@@ -8,10 +8,10 @@ from typing import Any
 
 import pytest
 
-from remem.agents.cursor.adapter import CursorAdapter
+from saddlebag.agents.cursor.adapter import CursorAdapter
 
-RECORD = "remem record event --agent cursor"
-CONTEXT = "remem hook context --agent cursor"
+RECORD = "bag record event --agent cursor"
+CONTEXT = "bag hook context --agent cursor"
 
 
 def write_hooks(home: Path, hooks: dict[str, Any]) -> Path:

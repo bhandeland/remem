@@ -1,4 +1,4 @@
-"""Which files `remem config` acts on, for a given agent.
+"""Which files `bag config` acts on, for a given agent.
 
 That choice is policy - it decides where a write lands - so it lives in the
 service. These tests use hand-written adapters rather than the registry
@@ -13,8 +13,8 @@ from typing import Mapping
 
 import pytest
 
-from remem.agents.base import EnvVar, Kind
-from remem.services.settings import list_settings, resolve_targets
+from saddlebag.agents.base import EnvVar, Kind
+from saddlebag.services.settings import list_settings, resolve_targets
 
 TABLE: Mapping[str, EnvVar] = {
     "FAKE_TIMEOUT_MS": EnvVar("FAKE_TIMEOUT_MS", Kind.INT, "A fake.", minimum=1)
@@ -41,7 +41,7 @@ class TableOnlyAdapter:
 
 
 class BareAdapter:
-    """An adapter written before `remem config` existed."""
+    """An adapter written before `bag config` existed."""
 
     name = "bare"
 
@@ -103,10 +103,10 @@ def test_a_table_without_a_settings_path_is_not_offered(tmp_path: Path) -> None:
 
 def test_a_capability_that_raises_degrades_instead_of_crashing(tmp_path: Path) -> None:
     # The registry contract for this repo is that a broken third-party adapter
-    # warns rather than breaking remem - see agents/registry.discover, which
+    # warns rather than breaking saddlebag - see agents/registry.discover, which
     # catches a failed entry point load for the same reason. A probe that
     # raises has to land in the same place a missing probe does, or
-    # `remem config list --agent broken` exits with a traceback.
+    # `bag config list --agent broken` exits with a traceback.
     with pytest.warns(UserWarning, match="broken"):
         targets = resolve_targets(BrokenAdapter(), tmp_path, {})
     assert targets.table == {}
@@ -123,31 +123,35 @@ def test_a_raising_env_settings_also_degrades(tmp_path: Path) -> None:
 
 def test_a_broken_adapter_degrades_loudly_rather_than_silently(tmp_path: Path) -> None:
     # Silent degradation would leave the user's keys quietly missing from
-    # `remem config list` with nothing to explain it. The adapter is named so
+    # `bag config list` with nothing to explain it. The adapter is named so
     # the warning points at what to fix.
     with pytest.warns(UserWarning, match="failed to report its settings"):
         resolve_targets(BrokenAdapter(), tmp_path, {})
 
 
-def test_a_broken_adapter_still_leaves_remem_settings_usable(tmp_path: Path) -> None:
-    # Degrading must not cost the user the half that works: remem's own keys
+def test_a_broken_adapter_still_leaves_saddlebag_settings_usable(
+    tmp_path: Path,
+) -> None:
+    # Degrading must not cost the user the half that works: saddlebag's own keys
     # do not come from the adapter at all.
     with pytest.warns(UserWarning):
         targets = resolve_targets(BrokenAdapter(), tmp_path, {})
-    rows = list_settings(targets.remem_path, targets.agent_path, targets.table, {})
-    assert any(row.key == "REMEM_MAX_CHARS" for row in rows)
+    rows = list_settings(targets.saddlebag_path, targets.agent_path, targets.table, {})
+    assert any(row.key == "BAG_MAX_CHARS" for row in rows)
 
 
-def test_remem_config_honours_an_injected_remem_config_var(tmp_path: Path) -> None:
+def test_saddlebag_config_honours_an_injected_saddlebag_config_var(
+    tmp_path: Path,
+) -> None:
     elsewhere = tmp_path / "somewhere" / "config.toml"
-    targets = resolve_targets(BareAdapter(), tmp_path, {"REMEM_CONFIG": str(elsewhere)})
-    assert targets.remem_path == elsewhere
+    targets = resolve_targets(BareAdapter(), tmp_path, {"BAG_CONFIG": str(elsewhere)})
+    assert targets.saddlebag_path == elsewhere
 
 
-def test_listing_an_agent_with_no_settings_file_still_lists_remem(
+def test_listing_an_agent_with_no_settings_file_still_lists_saddlebag(
     tmp_path: Path,
 ) -> None:
     targets = resolve_targets(BareAdapter(), tmp_path, {})
-    rows = list_settings(targets.remem_path, targets.agent_path, targets.table, {})
+    rows = list_settings(targets.saddlebag_path, targets.agent_path, targets.table, {})
     assert [r.key for r in rows]
-    assert all(r.key.startswith("REMEM_") for r in rows)
+    assert all(r.key.startswith("BAG_") for r in rows)

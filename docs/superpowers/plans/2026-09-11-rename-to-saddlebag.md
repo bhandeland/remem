@@ -4,154 +4,209 @@ remem becomes **saddlebag**, the thing you carry what you need in, named to
 pair with `saddle`, the container setup. The CLI command becomes `bag`.
 
 Done before 0.9.0 deliberately: the `remem.agents` entry point is named as a
-stable surface in the README's new compatibility section, so moving it after a
+stable surface in the README's compatibility section, so moving it after a
 release costs a major version and moving it now costs nothing. Nothing
 third-party implements it yet.
 
-## Decisions
+This plan was revised on 2026-09-15 after a scan of the live store, a clean
+end-to-end rehearsal against a restored copy, and the code rename in a
+worktree. The first draft missed several things; they are recorded where they
+landed rather than in a changelog of the plan.
 
-| | |
+## The naming rule
+
+One rule decides every occurrence, so no case is argued individually:
+
+- **Typed by a person -> `bag`.** The console script, every `bag <subcommand>`
+  invocation (in hooks, `_spawn` argv, plugin templates and prose), skill names
+  (`bag`, `bag-prime`, `bag-handoff`, `bag-record`), and the env prefix `BAG_*`.
+- **Everything else -> `saddlebag`.** Package and module, PyPI name, the
+  `saddlebag.agents` entry point group, the MCP server name (tools become
+  `mcp__saddlebag__*`), config and cache directories, database and role, the
+  generated `saddlebag.js` and `saddlebag.mdc`, the `.saddlebag-sync.json`
+  watermark and `.saddlebag-conflict.md` sidecar, and prose about the product.
+
+## Never renamed
+
+- `docs/superpowers/` - it records what was decided under the name it had.
+- `src/saddlebag/backends/postgres/migrations/` - applied migrations are never
+  edited. `migrate.py` identifies a migration by filename stem with no
+  checksum, so moving the package directory is safe; the files are
+  byte-identical.
+- `remem_array_to_string_immutable` - a SQL function from migration 001, baked
+  into the `entries.search` generated column. It keeps its name in every
+  database forever.
+- `tests/fixtures/` - verbatim real memory files, including two named
+  `remem-*`.
+- `remember`, `remember_tool`, `remembering` - they contain `remem`, and a blind
+  substitution produces `saddlebagber`.
+- The GitLab project path `nighthawk-oss/remem` in URLs. Renaming the GitLab
+  project is an outward-facing decision for step 7, and GitLab redirects old
+  paths after a rename - not new paths before one.
+- `mem:` and `cmem:` tag namespaces. Neither contains the old name.
+
+## Things the rename script got wrong, and why
+
+Worth keeping because each is a trap the next rename will fall into:
+
+- **`import` is a subcommand.** `bag import claude-mem` is real, so the
+  invocation rule matched Python's own `from remem import X` and wrote
+  `from bag import X` - 39 type errors.
+- **A template is not a literal.** `plugin.js` runs `` $`remem ${args}` ``;
+  `${args}` is not a subcommand the invocation rule could see, so it became
+  `saddlebag` - a plugin calling a binary that does not exist. A substitution
+  applied identically to code and tests keeps the suite green while the real
+  invocation is wrong, so every executable context was audited by hand.
+- **Prose about the binary.** "puts `remem` on PATH", "registered as bare
+  `remem`" mean the executable and became `bag`; "keeps saddlebag installable"
+  means the package and stayed.
+- **A positional string is not always argv.** The argv rule matched any
+  `"remem"` followed by another string argument, so
+  `events_for_session(owner, "remem", "claude-code", "s1")` became a query for
+  project `"bag"` against rows written as `saddlebag` - 16 failures. Only a
+  `"bag"` that opens a list is argv.
+- **Renaming lengthens lines.** One string went past 88, and ruff does not
+  break strings.
+
+## A defect the rename surfaced
+
+`test_cursor_install.py::test_install_writes_the_hooks_and_verifies` called
+`install(env=None)`, and `verify.round_trip` falls back to `os.environ`, which
+names no DSN on a developer machine - so its round-trip ran against the default
+address, the developer's own live store, on every test run, and read the real
+config file too. The opencode and claude-code install tests already carried a
+fixture that prevents exactly this, with a comment warning about it; the cursor
+test never had it. It is also the likeliest source of the disabled
+`__remem_verify__` row found in the live store. It showed up only because the
+renamed default role did not exist yet, as an authentication failure. Fixed
+with the same fixture.
+
+## Existing installs
+
+Both adapters already carry a `LEGACY_COMMANDS` table, built for exactly this:
+`install()` rewrites a command it once wrote in place rather than appending
+beside it, and `hook_state()` reports it STALE rather than missing until it
+does. Cursor's table was empty with a comment saying no command had been
+renamed yet. The current `remem ...` spellings go into both tables, so `bag
+install` repairs four Claude Code hook entries and four Cursor ones with no
+hand-editing of JSON.
+
+The MCP registration has no such mechanism - `install()` sets its key and
+never removes one - so a stale `mcpServers["remem"]` would linger as a server
+that fails on every startup. `install()` removes it, scoped to an entry whose
+command is the `remem` remem itself wrote.
+
+Skills are copied, never removed, so the four old `remem*` skill directories
+and the old `.cursor/rules/remem.mdc` are deleted by hand during cutover,
+after backup.
+
+## The data migration
+
+Scoped by scanning every text, jsonb and text[] column of a restored copy for
+`remem`, `remem-memory`, `__remem_verify__` and the checkout path - not by a
+list of tables, which missed three of these.
+
+**Moved** (identity and display):
+
+| column | what |
 |---|---|
-| PyPI package | `saddlebag` (free; npm is held by an abandoned 2020 stub, not pursued) |
-| console script | `bag` |
-| entry point group | `saddlebag.agents` |
-| env prefix | `BAG_*` |
-| database and role | renamed in place with `ALTER`, no dump |
-| this checkout | renamed, and its project rows re-homed |
-| `docs/superpowers/` | **left alone** - it records what was decided under the name it had |
+| `project` in `entries`, `events`, `extract_jobs`, `ingest_runs`, `ingest_settings`, `memory_runs`, `memory_settings`, `record_settings`, `collections`, `capture_jobs_legacy` | the project key |
+| `record_settings.project = '__remem_verify__'` | verify's disabled scratch marker |
+| `collections.slug` | `remem` and `remem-memory`. The SessionStart hook injects the knowledge base **whose slug is exactly the session directory's name**, so a slug that does not follow the directory injects nothing and says nothing |
+| `collections.query` jsonb `project` | a smart query naming the old project matches nothing, forever |
+| `collections.title`, `.description` | the `# remem` heading the context block opens with, and a description naming the old memory directory slug |
+| `memory_settings.collection_slug` | a slug reference, not a project key |
+| `memory_settings.working_dir` | the absolute checkout path |
 
-`mem:` and `cmem:` tag namespaces do not contain the old name and do not
-change. No schema migration is needed for them, or for anything else: the data
-work is an UPDATE, not a DDL change.
+**Left alone** (content and history): 253 entry titles, 660 bodies and 4
+summaries that mention remem, 10 entries tagged `remem`, and every event
+payload's recorded cwd. Rewriting knowledge text or recorded history in bulk is
+exactly what must not happen silently. Rule titles in the injected block will
+still say "remem" in places; that is a follow-up for a person, not this script.
 
-## The two things that break silently
+Counts are **measured at run time and asserted**, never taken from this
+document: `events` grew by 24 during the session that wrote it, because that
+session was recording itself. `migrate-data.sql` refuses to merge into a name
+already in use, asserts every table's count moved intact, and asserts nothing
+structural remains at an old name.
 
-**1. The hooks.** Four entries in `~/.claude/settings.json` invoke bare
-`remem`, plus Cursor's `hooks.json` and opencode's generated `remem.js`. The
-moment the console script becomes `bag` they point at a command that is not
-there, and because every hook is fail-soft by hard contract they fail with a
-zero exit and no output - context injection, event recording, and the spawned
-extraction/ingest/memory refreshes all stop, silently. `install` rewrites them,
-but nothing reminds you to run it.
+The role rename needs a **temporary second superuser**: `remem` is the
+container's only one and a session cannot rename its own role. The password is
+SCRAM, which survives a rename (MD5 would not), and is reset anyway because the
+DSN names the new role.
 
-**2. The editable install.** `uv tool install --editable` resolves to
-`/Users/brandon/llmworkspace/remem`, so the rename goes live in every session
-on this machine the moment the branch is checked out *here* - not when it is
-merged. This is why step 1 is a separate worktree.
+Rehearsed end to end, from a fresh restore, with the exact two files that run
+live: every count moved, both collections retitled, `saddlebag` the only
+superuser, full-text search through the preserved function returning results,
+1,018 vectors intact, and the old credentials refused.
 
-## Steps
+## Outside the database
 
-### 1. Work in a separate worktree
+- **Compose volume.** Compose names volumes `<project>_<key>` and defaults the
+  project to the directory, which is how five stray volumes accumulated from old
+  worktrees, and how renaming the checkout would have pointed compose at a fresh
+  empty volume that looks exactly like data loss. `compose.yaml` now pins
+  `name: saddlebag`.
+- **The old volume is copied, not migrated.** The container is stopped, the
+  volume copied to `saddlebag_saddlebag-pgdata`, and the migration runs on the
+  copy - so `remem_remem-pgdata` stays byte-for-byte pristine and rollback is
+  starting the old container, not a restore.
+- **Watermarks.** All eight designated projects' memory directories hold a
+  `.remem-sync.json`. Its contents name memories and hashes, not the tool, so a
+  plain rename is safe. Without it every file looks unseen and the sync's two
+  safety gates stop working as designed.
+- **The memory directory** for this checkout is keyed on its absolute path, so
+  it is copied to the new slug. The original stays - the running session reads
+  it.
+- **Config.** `~/Library/Application Support/remem/config.toml` holds
+  `max_chars = 8000`, and it is **copied** to `.../saddlebag/`. This was nearly
+  missed twice: first by checking `~/.config/remem`, which is not where
+  `platformdirs` puts config on macOS, and then by searching only environment
+  variables. Without it the renamed code falls back to the default 6000, the
+  knowledge base (7921 chars) is over budget, and context injection dies in
+  every session with a zero exit and no output. It was caught by running the
+  renamed CLI against the migrated rehearsal copy, whose budget advisory said
+  so. Copied rather than moved so a rollback to the old tool keeps its config.
+- **Cache.** `~/Library/Caches/remem` moves; losing it would only re-warn.
+- No permission rule or `REMEM_*` variable exists in either user settings file,
+  the shell environment, or any dotfile.
 
-`git worktree add ../saddlebag-rename -b rename-to-saddlebag`. The live install
-keeps pointing at this checkout and keeps working throughout. Nothing below
-touches the running setup until step 6.
+## Cutover
 
-### 2. The code rename
+`cutover.sh`, one phase at a time, output read before the next:
 
-- `src/remem/` -> `src/saddlebag/`, imports throughout.
-- `pyproject.toml`: `name`, `[project.scripts] bag = "saddlebag.cli:app"`,
-  `[project.entry-points."saddlebag.agents"]`, the three adapter paths, and the
-  pyrefly/ruff config paths.
-- 18 `REMEM_*` vars -> `BAG_*`. `REMEM_EXTRACT_CHILD` -> `BAG_EXTRACT_CHILD`
-  **on all three hook sides in this same commit** - a half-rename leaves the
-  extractor's own child recording events that the next extraction reads,
-  without bound. `REMEM_CAPTURE_MODEL`/`REMEM_CAPTURE_CHILD` are already
-  deprecation shims; they keep warning, naming the new spelling.
-- Generated, machine-owned files: opencode's `remem.js` -> `bag.js`, Cursor's
-  `remem.mdc` -> `bag.mdc`, and the `.git/info/exclude` line that names the
-  `.mdc`. Both are overwritten unconditionally by `install()`, so no merge
-  logic is involved - but a stale `remem.js`/`remem.mdc` left on disk would be
-  loaded by its harness forever, so `install()` removes the old name.
-- `compose.yaml`, `Makefile`, `.gitlab-ci.yml`, `README.md`, `CLAUDE.md`,
-  `CHANGELOG.md`. Not `docs/superpowers/`.
-- `DEFAULT_DSN` -> `postgresql://saddlebag:saddlebag@localhost:5433/saddlebag`.
+1. `preflight` - read-only. Refuses unless `$NEW` is free, the worktree is
+   clean, the target volume does not exist, nothing is connected to the
+   database, and no detached `remem events|reingest|memory` job is running.
+2. `backup` - a dump, and copies of `settings.json`, `.claude.json`, the old
+   skills, `.cursor/`, the cache and all eight watermarks, outside the repo.
+3. `db` - **uninstalls the old tool first.** While it is installed, any session
+   that starts spawns a job against the database that can write
+   `project='remem'` rows after the migration commits. Then stop, copy the
+   volume, start the new container, migrate, rename the role.
+4. `files` - watermarks, memory directory, cache, old skills, old cursor rule.
+5. `merge` - land the branch, remove the worktree.
+6. `install` - the new tool, then `bag install claude-code` and `bag install
+   cursor --scope project`, which the legacy tables turn into in-place repairs.
+7. `verify` - `bag db status`, `doctor`, `verify`, `record status`, `memory
+   status`, and a grep of every live config file for leftovers.
+8. `move` - rename the checkout and reinstall from the new path. **Last**,
+   because this pulls the working directory out from under a running Claude
+   Code session. Restart from `~/llmworkspace/saddlebag` and confirm the
+   SessionStart block opens `# saddlebag`.
 
-Verification: `make check` green in the worktree against a **scratch**
-database, 0 pyrefly errors, 0 skips.
+Everything before `move` rolls back by stopping the new container, starting the
+old one against its untouched volume, reinstalling the old tool, and restoring
+files from the backup.
 
-### 3. Rehearse the data migration against a copy
+## Then: tag and publish
 
-Never against the live database first. `createdb` a copy from a dump, point a
-throwaway config at it, run the script in step 4, and confirm the counts below
-land. This is the project's own rule for destructive automation, and the delete
-gate it exists to protect is the memory sync's.
+Bump to `0.9.0`, tag, and let the publish job run. Two things outside this
+repository have to happen first, and both are yours to do:
 
-### 4. The data migration
-
-One transaction. Current live counts, which the script asserts before and
-after:
-
-| table | rows at `project='remem'` |
-|---|---|
-| `entries` | 952 |
-| `events` | 4876 |
-| `ingest_runs` | 117 |
-| `memory_runs` | 72 |
-| `extract_jobs` | 28 |
-| `collections` | 2 |
-| `ingest_settings` | 2 |
-| `memory_settings` | 1 |
-| `record_settings` | 1 |
-| `capture_jobs_legacy` | 0 |
-
-Plus, and these are the ones a plain `update ... set project=` misses:
-
-- `collections.slug`: `remem` -> `saddlebag`, `remem-memory` ->
-  `saddlebag-memory`. **The SessionStart hook injects the knowledge base whose
-  slug is exactly the session directory's name**, so if the slug does not
-  follow the directory, injection returns nothing and says nothing.
-- `collections.query` is `jsonb` holding `{"project": "remem", ...}`. A smart
-  collection whose query still names the old project matches nothing, forever.
-
-Not changed: `src:` and `sec:` tags containing "remem" are ingested-document
-identity for files under `docs/`, which this rename leaves alone. Renaming them
-would orphan every chunk against its anchor for no gain.
-
-Then rename the database and role, which needs no dump:
-
-```sql
-ALTER DATABASE remem RENAME TO saddlebag;
-ALTER ROLE remem RENAME TO saddlebag;
-```
-
-`compose.yaml`'s `POSTGRES_USER`/`POSTGRES_DB` change to match.
-
-### 5. Rename the checkout
-
-`~/llmworkspace/remem` -> `~/llmworkspace/saddlebag`, which is what makes
-`resolve_project` return `saddlebag` - it is the repo root's directory name and
-nothing else.
-
-Order matters: step 4 before step 5. Between them the directory still resolves
-to `remem` while the rows say `saddlebag`, which reads as an empty project
-rather than as corruption, and is recoverable in either direction.
-
-### 6. Re-install and re-register
-
-`uv tool uninstall remem`, `uv tool install --editable .` from the renamed
-directory, then `bag install` for each harness, which rewrites the four
-`settings.json` entries, Cursor's `hooks.json`, and the generated plugin files.
-
-Verification, and none of it is optional given both failures above are silent:
-
-- `bag doctor` - reports every adapter and scope, non-zero only on a missing
-  required hook.
-- `bag verify` - proves the record/extract path round-trips. doctor and verify
-  are a pair; neither subsumes the other.
-- `bag record status` - the 8 designated projects still advise, and the
-  knowledge base budget line still names `saddlebag` at ~7917/8000.
-- A new session actually receives its context block.
-
-### 7. Merge, tag, publish
-
-Merge to `main`, bump `version` to `0.9.0`, tag, and let the publish job run -
-which is item 2 of the release checklist and the first time that pipeline has
-ever executed.
-
-## Rollback
-
-Steps 1-2 are a branch; discard it. Step 4 is one transaction against a
-database whose pre-state is a dump taken in step 3. Step 5 is `mv` back. Step 6
-is re-running the old `install`. Nothing here is one-way until step 7 publishes
-to PyPI, which is the only genuinely irreversible action in the plan.
+- **PyPI.** The trusted publisher is configured for project `remem`. A pending
+  publisher for `saddlebag` has to be registered on pypi.org before the job can
+  mint a token.
+- **GitLab.** Whether the project path moves from `nighthawk-oss/remem`. The
+  trusted publisher pins the repository path, so decide this before
+  registering it.

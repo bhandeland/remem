@@ -1,4 +1,4 @@
-"""The session-start hook's detached `remem reingest run`.
+"""The session-start hook's detached `bag reingest run`.
 
 The sibling of `spawn_process`, and it makes the same three promises: never
 block the session, never print into it, never recurse into the extractor's
@@ -12,8 +12,8 @@ from typing import Any, NoReturn
 
 import pytest
 
-from remem import hookio
-from remem.extract.base import CHILD_ENV_VAR
+from saddlebag import hookio
+from saddlebag.extract.base import CHILD_ENV_VAR
 
 
 def test_spawn_ingest_launches_the_refresh(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -25,7 +25,7 @@ def test_spawn_ingest_launches_the_refresh(monkeypatch: pytest.MonkeyPatch) -> N
 
     monkeypatch.setattr(subprocess, "Popen", fake_popen)
     assert hookio.spawn_ingest({"PATH": "/usr/bin"}) is True
-    assert seen["cmd"][:3] == ["remem", "reingest", "run"]
+    assert seen["cmd"][:3] == ["bag", "reingest", "run"]
 
 
 def test_spawn_ingest_does_not_block_on_the_child(
@@ -47,7 +47,7 @@ def test_spawn_ingest_does_not_block_on_the_child(
 def test_spawn_ingest_is_skipped_inside_an_extraction_child(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The extractor's `claude -p` runs remem's hooks. It must not re-ingest.
+    """The extractor's `claude -p` runs saddlebag's hooks. It must not re-ingest.
 
     Same guard, same reason, as `spawn_process`: an extraction child that
     spawns work which the next extraction reads has no bound.
@@ -62,11 +62,11 @@ def test_spawn_ingest_is_skipped_inside_an_extraction_child(
     assert called == []
 
 
-def test_spawn_ingest_returns_false_when_remem_is_missing(
+def test_spawn_ingest_returns_false_when_saddlebag_is_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def boom(*a: object, **k: object) -> NoReturn:
-        raise FileNotFoundError("remem")
+        raise FileNotFoundError("bag")
 
     monkeypatch.setattr(subprocess, "Popen", boom)
     assert hookio.spawn_ingest({}) is False
@@ -74,11 +74,11 @@ def test_spawn_ingest_returns_false_when_remem_is_missing(
 
 # --- both trigger points, because there are two and only two -----------
 # Claude Code reaches this from SessionStart; opencode and Cursor reach it
-# from `remem hook context`. Spawning from one and not the other is exactly
+# from `bag hook context`. Spawning from one and not the other is exactly
 # the bug that left Cursor-only installs recording forever and extracting
 # never.
 def test_session_start_spawns_the_refresh(monkeypatch: pytest.MonkeyPatch) -> None:
-    from remem.agents.claude_code import hook
+    from saddlebag.agents.claude_code import hook
 
     spawned: list[Mapping[str, str]] = []
 
@@ -89,9 +89,13 @@ def test_session_start_spawns_the_refresh(monkeypatch: pytest.MonkeyPatch) -> No
     def already_spawned(env: Mapping[str, str]) -> bool:
         return True
 
-    monkeypatch.setattr("remem.agents.claude_code.hook.spawn_ingest", record_spawn)
-    monkeypatch.setattr("remem.agents.claude_code.hook.spawn_process", already_spawned)
-    monkeypatch.setattr("remem.agents.claude_code.hook.spawn_memory", already_spawned)
+    monkeypatch.setattr("saddlebag.agents.claude_code.hook.spawn_ingest", record_spawn)
+    monkeypatch.setattr(
+        "saddlebag.agents.claude_code.hook.spawn_process", already_spawned
+    )
+    monkeypatch.setattr(
+        "saddlebag.agents.claude_code.hook.spawn_memory", already_spawned
+    )
     monkeypatch.setattr("sys.stdin", __import__("io").StringIO("{}"))
 
     assert hook.main() == 0
@@ -102,7 +106,7 @@ def test_session_start_still_prints_nothing_when_the_refresh_cannot_spawn(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Fail-soft is not weakened by adding a second spawn."""
-    from remem.agents.claude_code import hook
+    from saddlebag.agents.claude_code import hook
 
     def boom(*a: object, **k: object) -> NoReturn:
         raise OSError("no processes")

@@ -15,11 +15,11 @@ from typing import Any, TypeVar
 import psycopg
 import pytest
 
-from remem.backends.postgres.sqltext import as_sql
-from remem.embed import DEFAULT_EMBED_MODEL
+from saddlebag.backends.postgres.sqltext import as_sql
+from saddlebag.embed import DEFAULT_EMBED_MODEL
 
 ADMIN_DSN = os.environ.get(
-    "REMEM_TEST_DSN", "postgresql://remem:remem@localhost:5433/remem"
+    "BAG_TEST_DSN", "postgresql://saddlebag:saddlebag@localhost:5433/saddlebag"
 )
 
 SKIP_REASON = (
@@ -81,7 +81,7 @@ def db_dsn() -> Iterator[str]:
     if not _server_is_up():
         pytest.skip(SKIP_REASON)
 
-    name = f"remem_test_{uuid.uuid4().hex[:12]}"
+    name = f"saddlebag_test_{uuid.uuid4().hex[:12]}"
     with psycopg.connect(ADMIN_DSN, autocommit=True) as admin:
         admin.execute(as_sql(f'create database "{name}"'))
     try:
@@ -116,7 +116,7 @@ def live_dsn() -> Iterator[str]:
     if not _server_is_up():
         pytest.skip(SKIP_REASON)
 
-    name = f"remem_live_{uuid.uuid4().hex[:12]}"
+    name = f"saddlebag_live_{uuid.uuid4().hex[:12]}"
     with psycopg.connect(ADMIN_DSN, autocommit=True) as admin:
         admin.execute(as_sql(f'create database "{name}"'))
     try:
@@ -184,4 +184,6 @@ def _no_shared_embedder(monkeypatch: pytest.MonkeyPatch) -> None:
     want a semantic tier pass their own stub explicitly, which never touches
     this cache.
     """
-    monkeypatch.setattr("remem.services.search._EMBEDDERS", {DEFAULT_EMBED_MODEL: None})
+    monkeypatch.setattr(
+        "saddlebag.services.search._EMBEDDERS", {DEFAULT_EMBED_MODEL: None}
+    )

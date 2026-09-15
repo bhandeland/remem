@@ -4,13 +4,13 @@ from uuid import UUID
 import psycopg
 import pytest
 
-from remem.backends.postgres.migrate import migrate
-from remem.backends.postgres.store import PostgresStore
-from remem.domain import Entry, Hit, Kind, Match, Principal, Query, new_id
-from remem.embed import Embedder, EmbedderUnavailable
-from remem.services import search
-from remem.services.search import find
-from remem.services.write import remember
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.store import PostgresStore
+from saddlebag.domain import Entry, Hit, Kind, Match, Principal, Query, new_id
+from saddlebag.embed import Embedder, EmbedderUnavailable
+from saddlebag.services import search
+from saddlebag.services.search import find
+from saddlebag.services.write import remember
 
 pytestmark = pytest.mark.db
 
@@ -223,8 +223,8 @@ def test_an_exact_match_never_constructs_an_embedder(
     def explode(model_name: str) -> Embedder:
         raise AssertionError(f"built an embedder for {model_name!r}")
 
-    monkeypatch.setattr("remem.services.search.load_embedder", explode)
-    monkeypatch.setattr("remem.services.search._EMBEDDERS", {})
+    monkeypatch.setattr("saddlebag.services.search.load_embedder", explode)
+    monkeypatch.setattr("saddlebag.services.search._EMBEDDERS", {})
     store = StubStore(exact=[_hit()])
 
     hits = find(store, new_id(), Query(text="q"))
@@ -241,8 +241,8 @@ def test_the_semantic_tier_builds_the_shared_embedder_once(
         calls.append(model_name)
         return StubEmbedder()
 
-    monkeypatch.setattr("remem.services.search.load_embedder", build)
-    monkeypatch.setattr("remem.services.search._EMBEDDERS", {})
+    monkeypatch.setattr("saddlebag.services.search.load_embedder", build)
+    monkeypatch.setattr("saddlebag.services.search._EMBEDDERS", {})
     store = StubStore(semantic=[_hit(Match.SEMANTIC)])
 
     for _ in range(3):
@@ -261,12 +261,12 @@ def test_a_raising_embedder_constructor_costs_the_tier_and_not_the_search(
     something else, which escaped the tier and crashed the search - the
     exact opposite of what _semantic's docstring promises.
     """
-    monkeypatch.setattr("remem.services.search._EMBEDDERS", {})
+    monkeypatch.setattr("saddlebag.services.search._EMBEDDERS", {})
 
     def explode(name: str) -> Embedder:
         raise RuntimeError("onnxruntime session failed")
 
-    monkeypatch.setattr("remem.services.search.load_embedder", explode)
+    monkeypatch.setattr("saddlebag.services.search.load_embedder", explode)
 
     remember(store, owner.id, title="config command", body="body")
     hits = find(store, owner.id, Query(text="zzzz nothing", limit=5))
@@ -285,8 +285,8 @@ def test_an_unavailable_embedder_is_a_none_and_is_not_retried(
         calls.append(model_name)
         raise EmbedderUnavailable("no extra")
 
-    monkeypatch.setattr("remem.services.search.load_embedder", unavailable)
-    monkeypatch.setattr("remem.services.search._EMBEDDERS", {})
+    monkeypatch.setattr("saddlebag.services.search.load_embedder", unavailable)
+    monkeypatch.setattr("saddlebag.services.search._EMBEDDERS", {})
     store = StubStore(fuzzy=[_hit(Match.FUZZY)])
 
     for _ in range(3):

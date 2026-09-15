@@ -1,6 +1,6 @@
 """The automatic re-ingest's command surface.
 
-`remem ingest <paths>` stays exactly as it was - it is documented, and it
+`bag ingest <paths>` stays exactly as it was - it is documented, and it
 is what a person types. These three commands are about the designated,
 automatic half: what a session start runs with nobody watching.
 """
@@ -13,8 +13,8 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from remem.backends.postgres.migrate import migrate
-from remem.cli import app
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.cli import app
 
 pytestmark = pytest.mark.db
 
@@ -28,9 +28,9 @@ def env(live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> str:
     with psycopg.connect(live_dsn) as c:
         migrate(c)
         c.commit()
-    monkeypatch.setenv("REMEM_DSN", live_dsn)
-    monkeypatch.setenv("REMEM_USER_ID", "brandon")
-    monkeypatch.setenv("REMEM_CONFIG", str(tmp_path / "none.toml"))
+    monkeypatch.setenv("BAG_DSN", live_dsn)
+    monkeypatch.setenv("BAG_USER_ID", "brandon")
+    monkeypatch.setenv("BAG_CONFIG", str(tmp_path / "none.toml"))
     return live_dsn
 
 
@@ -55,7 +55,7 @@ def _no_real_embedder(monkeypatch: pytest.MonkeyPatch) -> None:
     def fake_load_embedder(model: str) -> FakeEmbedder:
         return FakeEmbedder()
 
-    monkeypatch.setattr("remem.cli.load_embedder", fake_load_embedder)
+    monkeypatch.setattr("saddlebag.cli.load_embedder", fake_load_embedder)
 
 
 @pytest.fixture
@@ -139,7 +139,7 @@ def test_run_exits_zero_with_the_database_down(
 ) -> None:
     """The strongest form of the fail-soft contract: this is spawned by a
     session start, and a knowledge tool must never be why one goes wrong."""
-    monkeypatch.setenv("REMEM_DSN", "postgresql://nobody@127.0.0.1:1/nothing")
+    monkeypatch.setenv("BAG_DSN", "postgresql://nobody@127.0.0.1:1/nothing")
 
     result = runner.invoke(app, ["reingest", "run"])
 

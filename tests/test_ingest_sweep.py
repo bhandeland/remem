@@ -6,10 +6,10 @@ from typing import Any
 import psycopg
 import pytest
 
-from remem.backends.postgres.migrate import migrate
-from remem.backends.postgres.store import PostgresStore
-from remem.domain import Origin, Principal, Query
-from remem.services import ingest
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.store import PostgresStore
+from saddlebag.domain import Origin, Principal, Query
+from saddlebag.services import ingest
 
 pytestmark = pytest.mark.db
 
@@ -49,10 +49,10 @@ def _titles(store: PostgresStore, owner: Principal, path: Path):
 def test_a_renamed_heading_leaves_no_live_orphan(
     store: PostgresStore, owner: Principal, doc: Path
 ) -> None:
-    ingest.ingest_file(store, owner.id, doc, project="remem")
+    ingest.ingest_file(store, owner.id, doc, project="saddlebag")
     doc.write_text(DOC.replace("## Alpha", "## Alpha, revisited"))
 
-    report = ingest.ingest_file(store, owner.id, doc, project="remem")
+    report = ingest.ingest_file(store, owner.id, doc, project="saddlebag")
 
     assert report.created == 1
     assert report.swept == 1
@@ -66,7 +66,7 @@ def test_a_renamed_heading_leaves_no_live_orphan(
 def test_a_swept_orphan_is_superseded_by_the_anchor(
     store: PostgresStore, owner: Principal, doc: Path
 ) -> None:
-    ingest.ingest_file(store, owner.id, doc, project="remem")
+    ingest.ingest_file(store, owner.id, doc, project="saddlebag")
     anchor = next(
         h.entry
         for h in store.search(
@@ -77,7 +77,7 @@ def test_a_swept_orphan_is_superseded_by_the_anchor(
     )
     doc.write_text(DOC.replace("## Alpha\n\nbody a\n\n", ""))
 
-    ingest.ingest_file(store, owner.id, doc, project="remem")
+    ingest.ingest_file(store, owner.id, doc, project="saddlebag")
 
     orphans = store.search(
         Query(
@@ -97,11 +97,11 @@ def test_the_sweep_does_not_reach_other_files(
 ) -> None:
     other = tmp_path / "other.md"
     other.write_text("# Other\n\nlead\n\n## Gamma\n\nbody g\n")
-    ingest.ingest_file(store, owner.id, doc, project="remem")
-    ingest.ingest_file(store, owner.id, other, project="remem")
+    ingest.ingest_file(store, owner.id, doc, project="saddlebag")
+    ingest.ingest_file(store, owner.id, other, project="saddlebag")
 
     doc.write_text("# Design\n\nlead matter\n")
-    ingest.ingest_file(store, owner.id, doc, project="remem")
+    ingest.ingest_file(store, owner.id, doc, project="saddlebag")
 
     assert _titles(store, owner, other) == {"Other", "Other § Gamma"}
 
@@ -109,10 +109,10 @@ def test_the_sweep_does_not_reach_other_files(
 def test_dry_run_sweeps_nothing(
     store: PostgresStore, owner: Principal, doc: Path
 ) -> None:
-    ingest.ingest_file(store, owner.id, doc, project="remem")
+    ingest.ingest_file(store, owner.id, doc, project="saddlebag")
     doc.write_text(DOC.replace("## Alpha\n\nbody a\n\n", ""))
 
-    report = ingest.ingest_file(store, owner.id, doc, project="remem", dry_run=True)
+    report = ingest.ingest_file(store, owner.id, doc, project="saddlebag", dry_run=True)
 
     assert report.swept == 1
     assert "Design § Alpha" in _titles(store, owner, doc)
@@ -126,7 +126,7 @@ def test_ingest_paths_globs_a_directory(
     (tmp_path / "sub" / "b.md").write_text("# B\n\nlead\n\n## Two\n\nbody\n")
     (tmp_path / "ignore.txt").write_text("not markdown")
 
-    report = ingest.ingest_paths(store, owner.id, [tmp_path], project="remem")
+    report = ingest.ingest_paths(store, owner.id, [tmp_path], project="saddlebag")
 
     assert report.created == 4
     assert report.failures == []
@@ -138,7 +138,7 @@ def test_one_unreadable_file_does_not_cost_the_others(
     (tmp_path / "good.md").write_text("# Good\n\nlead\n\n## One\n\nbody\n")
     (tmp_path / "bad.md").write_bytes(b"\xff\xfe\x00 not utf-8 \xff")
 
-    report = ingest.ingest_paths(store, owner.id, [tmp_path], project="remem")
+    report = ingest.ingest_paths(store, owner.id, [tmp_path], project="saddlebag")
 
     assert report.created == 2
     assert len(report.failures) == 1

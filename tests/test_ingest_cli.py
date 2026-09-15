@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from remem.backends.postgres.migrate import migrate
-from remem.cli import app
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.cli import app
 
 pytestmark = pytest.mark.db
 
@@ -23,9 +23,9 @@ def env(live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> str:
     with psycopg.connect(live_dsn) as c:
         migrate(c)
         c.commit()
-    monkeypatch.setenv("REMEM_DSN", live_dsn)
-    monkeypatch.setenv("REMEM_USER_ID", "brandon")
-    monkeypatch.setenv("REMEM_CONFIG", str(tmp_path / "none.toml"))
+    monkeypatch.setenv("BAG_DSN", live_dsn)
+    monkeypatch.setenv("BAG_USER_ID", "brandon")
+    monkeypatch.setenv("BAG_CONFIG", str(tmp_path / "none.toml"))
     return live_dsn
 
 
@@ -34,8 +34,8 @@ def docs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     # The chunk title comes from the h1, not the filename stem, so this file
     # produces "Alpha doc" and "Alpha doc § One".
     #
-    # chdir: the test process runs from the remem checkout, and inside a
-    # repository `remem ingest` refuses a path outside it. tmp_path is not
+    # chdir: the test process runs from the saddlebag checkout, and inside a
+    # repository `bag ingest` refuses a path outside it. tmp_path is not
     # under any repository, so from here identity is the path as typed.
     (tmp_path / "alpha-doc.md").write_text(
         "# Alpha doc\n\nlead\n\n## One\n\nbody one\n"
@@ -45,36 +45,36 @@ def docs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def test_ingest_reports_counts(env: str, docs: Path) -> None:
-    result = runner.invoke(app, ["ingest", str(docs), "--project", "remem"])
+    result = runner.invoke(app, ["ingest", str(docs), "--project", "saddlebag"])
 
     assert result.exit_code == 0
     assert "2 new" in result.stdout
 
 
 def test_dry_run_says_so_and_writes_nothing(env: str, docs: Path) -> None:
-    runner.invoke(app, ["ingest", str(docs), "--project", "remem", "--dry-run"])
+    runner.invoke(app, ["ingest", str(docs), "--project", "saddlebag", "--dry-run"])
 
-    result = runner.invoke(app, ["search", "body one", "--project", "remem"])
+    result = runner.invoke(app, ["search", "body one", "--project", "saddlebag"])
     assert "No matches." in result.stdout
 
 
 def test_dry_run_does_not_tell_you_to_embed(env: str, docs: Path) -> None:
     result = runner.invoke(
-        app, ["ingest", str(docs), "--project", "remem", "--dry-run"]
+        app, ["ingest", str(docs), "--project", "saddlebag", "--dry-run"]
     )
 
     assert "Would write" in result.stdout
-    assert "remem embed" not in result.stdout
+    assert "bag embed" not in result.stdout
 
 
 def test_archived_chunks_are_hidden_until_asked_for(env: str, docs: Path) -> None:
-    runner.invoke(app, ["ingest", str(docs), "--project", "remem", "--archive"])
+    runner.invoke(app, ["ingest", str(docs), "--project", "saddlebag", "--archive"])
 
-    hidden = runner.invoke(app, ["search", "body one", "--project", "remem"])
+    hidden = runner.invoke(app, ["search", "body one", "--project", "saddlebag"])
     assert "No matches." in hidden.stdout
 
     shown = runner.invoke(
-        app, ["search", "body one", "--project", "remem", "--archived"]
+        app, ["search", "body one", "--project", "saddlebag", "--archived"]
     )
     assert "Alpha doc § One" in shown.stdout
 
@@ -82,7 +82,7 @@ def test_archived_chunks_are_hidden_until_asked_for(env: str, docs: Path) -> Non
 def test_a_failure_is_named_and_exits_non_zero(env: str, docs: Path) -> None:
     (docs / "bad.md").write_bytes(b"\xff\xfe\x00 not utf-8 \xff")
 
-    result = runner.invoke(app, ["ingest", str(docs), "--project", "remem"])
+    result = runner.invoke(app, ["ingest", str(docs), "--project", "saddlebag"])
 
     assert result.exit_code == 1
     # Failures go to stderr; stdout carries the counts and nothing else.

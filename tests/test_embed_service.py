@@ -12,12 +12,12 @@ from uuid import UUID
 import psycopg
 import pytest
 
-from remem.backends.postgres.migrate import migrate
-from remem.backends.postgres.store import PostgresStore
-from remem.domain import Entry, Kind, new_id
-from remem.embed import EmbedderUnavailable
-from remem.services import embed
-from remem.services.embed import backfill
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.store import PostgresStore
+from saddlebag.domain import Entry, Kind, new_id
+from saddlebag.embed import EmbedderUnavailable
+from saddlebag.services import embed
+from saddlebag.services.embed import backfill
 from tests.conftest import found, scalar
 
 pytestmark = pytest.mark.db
@@ -144,13 +144,13 @@ def test_max_entries_bounds_the_run(store: PostgresStore) -> None:
 def test_a_second_embed_run_does_nothing_while_the_lock_is_held(
     live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """`remem embed` already claims idempotently, but two overlapping runs
+    """`bag embed` already claims idempotently, but two overlapping runs
     embed the same backlog twice and pay for it twice. Silence and exit 0,
     for the same reason `events process` does."""
     import psycopg
     from typer.testing import CliRunner
 
-    from remem.cli import app
+    from saddlebag.cli import app
 
     with psycopg.connect(live_dsn) as c:
         migrate(c)
@@ -159,15 +159,15 @@ def test_a_second_embed_run_does_nothing_while_the_lock_is_held(
         _entries(store, owner.id, 2)
         c.commit()
 
-    monkeypatch.setenv("REMEM_DSN", live_dsn)
-    monkeypatch.setenv("REMEM_USER_ID", "brandon")
-    monkeypatch.setenv("REMEM_CONFIG", str(tmp_path / "none.toml"))
+    monkeypatch.setenv("BAG_DSN", live_dsn)
+    monkeypatch.setenv("BAG_USER_ID", "brandon")
+    monkeypatch.setenv("BAG_CONFIG", str(tmp_path / "none.toml"))
     embedder = FakeEmbedder()
 
     def fake_load_embedder(model: str) -> FakeEmbedder:
         return embedder
 
-    monkeypatch.setattr("remem.cli.load_embedder", fake_load_embedder)
+    monkeypatch.setattr("saddlebag.cli.load_embedder", fake_load_embedder)
 
     holder = psycopg.connect(live_dsn)
     try:
@@ -191,7 +191,7 @@ def test_a_second_embed_run_does_nothing_while_the_lock_is_held(
 
 
 # --- constructing the embedder is itself expensive ---------------------
-# `backfill` takes an Embedder already built, which is right for `remem
+# `backfill` takes an Embedder already built, which is right for `saddlebag
 # embed` - a user asked for it. The spawned refresh runs on every session
 # start, where building a LocalEmbedder means importing fastembed, building
 # an ONNX session and possibly a ~130MB download, for a backlog that is
@@ -235,7 +235,7 @@ def test_backfill_if_pending_reports_an_unavailable_embedder_as_a_failure(
 ) -> None:
     """Fail-soft is the caller's job, not this function's.
 
-    The spawned refresh swallows it; `remem embed` stays loud. Neither can
+    The spawned refresh swallows it; `bag embed` stays loud. Neither can
     decide that if this silently returned None for both "nothing to do" and
     "no embedder", since those want opposite responses.
     """

@@ -10,22 +10,22 @@ uv sync
 uv run pytest                  # full suite
 uv run pytest tests/test_extraction_service.py::test_name   # one test
 uv run pytest -m 'not db'      # skip everything that needs Postgres
-uv tool install --editable .   # puts `remem` on PATH (see below)
-remem db up                    # create the database and run migrations
-remem db status                # applied vs pending migrations
+uv tool install --editable .   # puts `bag` on PATH (see below)
+bag db up                    # create the database and run migrations
+bag db status                # applied vs pending migrations
 ```
 
 DB-backed tests `pytest.skip` with an explanatory message when Postgres is unreachable - a
 green run does not mean the DB tests ran. Check the skip count.
 
 `uv tool install --editable .` is effectively mandatory for any work touching the Claude
-Code integration: the MCP server and both hooks are registered as bare `remem`, and a
-`remem` that only exists in the project venv produces a config that silently does nothing
+Code integration: the MCP server and both hooks are registered as bare `bag`, and a
+`bag` that only exists in the project venv produces a config that silently does nothing
 (hooks are fail-soft, the MCP server never starts).
 
-## `remem serve --http`
+## `bag serve --http`
 
-`remem serve` is stdio by default: the agent starts the process, so the
+`bag serve` is stdio by default: the agent starts the process, so the
 process's working directory is the agent's and `_default_project()` resolves
 correctly from it.
 
@@ -75,16 +75,16 @@ domain:     domain.py (pure dataclasses/enums, no I/O)
   implementation. Ownership is enforced *inside* the store (`NotOwner`), not by callers.
 - **`session.open_session()` is the only way to reach the database.** It connects,
   ensures the principal, and hands back a `Session`. It does **not** run migrations -
-  `remem db up` is the only thing that applies them, and `remem db status` names what is
+  `bag db up` is the only thing that applies them, and `bag db status` names what is
   pending. A schema behind the code therefore presents as a raw `UndefinedTable` from an
   ordinary command rather than as anything self-healing, so check `db status` before
   concluding a new feature is broken. Nothing outside
   `session.py`/`backends/` should import psycopg. `autocommit=True` is for long-running
-  work that records its own progress (`remem events process`) - in a single transaction a failed
+  work that records its own progress (`bag events process`) - in a single transaction a failed
   statement poisons the connection and the final COMMIT becomes a ROLLBACK.
 - **`agents/base.py` + `agents/registry.py` are the pluggability seam** - adapters register
-  under the `remem.agents` entry point group and load lazily; a broken third-party adapter
-  warns rather than breaking remem. Two adapters ship today: `claude-code` (an MCP
+  under the `saddlebag.agents` entry point group and load lazily; a broken third-party adapter
+  warns rather than breaking saddlebag. Two adapters ship today: `claude-code` (an MCP
   registration plus four hook entries in settings the adapter owns and merges) and
   `opencode` (one generated file, `plugin.js`, dropped into a directory opencode scans).
   The contrast is deliberate - the second adapter proves the seam by looking nothing like
@@ -109,8 +109,8 @@ agent handed an unmarked approximate match cites it as certain. There is no comp
 shim for the `Hit.fuzzy` boolean this replaced, and a test asserts its absence.
 
 The embedder is an **optional dependency** (the `[embed]` extra) and vectors are written
-only by `remem embed`. Missing either one costs the middle tier and nothing else: search
-degrades to the two tiers it always had, silently and exiting 0. `remem embed` is the
+only by `bag embed`. Missing either one costs the middle tier and nothing else: search
+degrades to the two tiers it always had, silently and exiting 0. `bag embed` is the
 opposite - fail-loud - because an unavailable embedder is its entire job failing.
 `services/search.shared_embedder()` owns both halves of that policy, memoises the
 embedder per model name, and is called **from inside the semantic tier**: constructing a
@@ -120,7 +120,7 @@ never an embedder.
 
 ### Deduplication
 
-`remem dedupe report` names entries that say the same thing twice. Two
+`bag dedupe report` names entries that say the same thing twice. Two
 tiers, and unlike search they **both always run and are never blended**: a
 report asks what duplication exists, so suppressing one tier because the
 other found something would hide most of the answer. A pair already reported
@@ -145,7 +145,7 @@ would mean tuning recall silently retunes what counts as a duplicate. It
 never constructs an embedder - a report must not download ~130MB or fail on a
 missing optional extra - so coverage is partial by default and
 *embedded / total* is **always** printed. Zero embedded renders as "not
-checked", never as an empty section, the same rule `remem doctor` follows;
+checked", never as an empty section, the same rule `bag doctor` follows;
 `--json` says so as `near_checked`. `report` exits 0 even when it finds
 duplicates: an exit code that is non-zero on every run is one people learn to
 ignore. `--limit` bounds the near tier only. Suppression and truncation are
@@ -154,7 +154,7 @@ told a reader whose list had merely been deduplicated that their output was
 cut short, which is the first thing running this command against a real
 store caught.
 
-Nothing is ever merged automatically. `remem dedupe resolve <drop> --keep
+Nothing is ever merged automatically. `bag dedupe resolve <drop> --keep
 <keep>` is the one write, fail-loud, and it exists because `supersede` cannot
 express this: `supersede` requires a title and mints a **new** entry for
 knowledge that stopped being true, while here both entries exist and one
@@ -165,7 +165,7 @@ an already-superseded `drop`, and a `keep` that is itself superseded.
 Cross-owner is refused inside the store as `NotOwner`.
 
 Resolving an entry that carries a `mem:<name>` tag drops it from its
-collection, so the next `remem memory sync` will want to delete that file.
+collection, so the next `bag memory sync` will want to delete that file.
 That is correct, and the sync's checksum gate still protects a copy edited by
 hand.
 
@@ -183,17 +183,17 @@ transaction, where `now()` gives every row an identical `created_at` and makes
 ### Events and extraction
 
 Raw per-tool-call events, recorded from a harness and extracted into entries later.
-Supersedes capture - `remem capture enable|disable|status|drain` still work as hidden
+Supersedes capture - `bag capture enable|disable|status|drain` still work as hidden
 aliases that warn once and delegate, for muscle memory and shell history, but the
-real commands are `remem record` and `remem events`.
+real commands are `bag record` and `bag events`.
 
 Recording is opt-in per project - that gate is the entire safety story, and it is
 checked in `services/record.py`. Events are stored **in full** and kept
-**indefinitely**; nothing prunes them on a schedule. `remem events prune --before`
+**indefinitely**; nothing prunes them on a schedule. `bag events prune --before`
 is the only thing that ever deletes one, and only on request.
 
-Flow: a harness hook (or plugin) does exactly one INSERT via `remem record event`
-(everything fragile is deferred), and `remem events process` - run from cron, or
+Flow: a harness hook (or plugin) does exactly one INSERT via `bag record event`
+(everything fragile is deferred), and `bag events process` - run from cron, or
 spawned by `hookio.spawn_process` at any harness's session start - extracts
 entries from sessions that have gone quiet, via
 `claude -p` in `extract/claude_cli.py`, writing entries with `origin='extracted'`
@@ -201,11 +201,11 @@ and `entry_events` provenance rows.
 
 Extraction is triggered by **idleness**, not a session-end hook: a session is
 extractable once it has unextracted events and none newer than
-`REMEM_IDLE_MINUTES` (default 20). Two of the three harnesses remem targets have
+`BAG_IDLE_MINUTES` (default 20). Two of the three harnesses saddlebag targets have
 no end-of-session hook, so a clock is the only trigger all of them share; a hook
 that never fires would strand a session forever, while a clock always ticks. The
 attempt-cap "gave up" rule lives in exactly one place, `extraction.awaiting_sessions`
-- both `remem events process` and `remem record status` route through it, so they
+- both `bag events process` and `bag record status` route through it, so they
 cannot disagree about which sessions are stuck.
 
 Invariants worth not breaking:
@@ -216,7 +216,7 @@ Invariants worth not breaking:
   "already extracted" answerable **per event** rather than per session.
 - Extracted entries are **excluded from knowledge base context blocks** (`kb.resolve`
   filters `Origin.EXTRACTED`) so machine text never crowds out hand-written rules.
-  They do appear in `search`/`recall`. Promote one with `remem kb pin`.
+  They do appear in `search`/`recall`. Promote one with `bag kb pin`.
   `search.DEFAULT_ORIGINS` must gain any future origin or that origin silently
   vanishes from search.
 - `extract/base.py` treats all model output as untrusted: shape-checked, capped
@@ -231,15 +231,15 @@ Invariants worth not breaking:
   renders Cursor and opencode events too, and their constants are different
   keys. A cut `tool_response` still says what the tool did; a dropped event
   says nothing.
-- The extraction model is **pinned** (`REMEM_EXTRACT_MODEL`, default `sonnet`), not
+- The extraction model is **pinned** (`BAG_EXTRACT_MODEL`, default `sonnet`), not
   inherited from the session, so cost/behaviour do not drift. Haiku was measured and
-  rejected on judgment, not JSON validity. `REMEM_CAPTURE_MODEL` is read for one
+  rejected on judgment, not JSON validity. `BAG_CAPTURE_MODEL` is read for one
   release and warns to stderr naming the replacement - never both silently.
-- `CHILD_ENV_VAR` (`REMEM_EXTRACT_CHILD`) is set on the spawned `claude -p` so its own
+- `CHILD_ENV_VAR` (`BAG_EXTRACT_CHILD`) is set on the spawned `claude -p` so its own
   hooks refuse to recurse. Three hooks check it. **Rename it on every side in the
   same commit or not at all** - renaming one side leaves the extractor's own child
   recording events, which the next extraction reads, without bound.
-- Jobs stop retrying after `MAX_ATTEMPTS`; `remem events process --job ID` retries by
+- Jobs stop retrying after `MAX_ATTEMPTS`; `bag events process --job ID` retries by
   id. Failures record the reason *and* the model's raw output, both separately
   truncated.
 - `install()` performs a live database round-trip (it proves the record/extract
@@ -247,7 +247,7 @@ Invariants worth not breaking:
 
 ### Checking the install
 
-`remem doctor` answers the one question a fail-soft pipeline cannot ask
+`bag doctor` answers the one question a fail-soft pipeline cannot ask
 itself: **does the installed config actually register the hooks this adapter
 installs?** It reads files and opens no database - a diagnostic that needs
 the system healthy is no use when it is not.
@@ -255,8 +255,8 @@ the system healthy is no use when it is not.
 Each adapter answers with facts (`hook_state()`, a probed optional
 capability returning `HookState`); `services/doctor.py` makes every
 judgement, so all adapters agree on what "missing" means and one
-computation feeds `remem doctor`, its `--json`, and one advisory line in
-`remem record status`.
+computation feeds `bag doctor`, its `--json`, and one advisory line in
+`bag record status`.
 
 Three rules worth not breaking:
 
@@ -273,44 +273,44 @@ Three rules worth not breaking:
   check. Exiting non-zero for "I could not tell" trains people to ignore
   the exit code.
 - **No confident answer about a scope that was not examined.** With no
-  `--scope`, `check()` sweeps `SCOPES` (remem's own constant - the
+  `--scope`, `check()` sweeps `SCOPES` (saddlebag's own constant - the
   vocabulary is closed and every adapter hardcodes it; `UnsupportedScope`
   is the skip signal) and reports one row per *(adapter, scope) that is
   installed*, so a half-install in one scope cannot hide behind a healthy
   other. "Not installed" is said once per adapter and **names every path it
   looked at**. With `--scope X` the question is exactly X, and
   `UnsupportedScope` stays `UNCHECKED`-with-a-warning rather than becoming
-  a skip - sweeping there would make `remem doctor claude-code --scope
+  a skip - sweeping there would make `bag doctor claude-code --scope
   project` print nothing and exit 0. This is not hypothetical tidiness:
-  defaulting to user scope made `remem doctor` report cursor "not
+  defaulting to user scope made `bag doctor` report cursor "not
   installed" on the machine where cursor was installed at project scope and
   recording events. Every pointer carries its scope too - the advisory line
   and the `Fix:` line both - because a pointer that leads to a
   contradictory screen teaches the user the line lies.
 
 `doctor` and `verify` are a pair and neither subsumes the other: doctor asks
-whether the harness will ever call remem, `verify` asks whether remem works
+whether the harness will ever call saddlebag, `verify` asks whether saddlebag works
 when called.
 
 ### What the context block carries
 
 Rules render as **title plus summary**, never their bodies. Rule bodies here
 are essays - the incident that produced the rule, the reasoning, the lesson -
-and shipping all of them is what made the block outgrow `REMEM_MAX_CHARS`
+and shipping all of them is what made the block outgrow `BAG_MAX_CHARS`
 twice in three days (18,249 chars on 2026-09-02, 25,008 by 2026-09-04). The
 body stays one `recall` away and the rendered `_id:` line is how to reach it.
 
 A rule with no summary renders **title only**. That is the floor, not a
 fallback to the body: rules written before the requirement must keep
 rendering, and rendering their bodies is the failure being fixed. Backfill one
-with `remem update --summary`, which edits in place - `supersede` would mint a
+with `bag update --summary`, which edits in place - `supersede` would mint a
 replacement and churn the memory file whose frontmatter `description` this
 same field feeds.
 
 Deriving the short form from the body was measured and rejected: a rule's
 first paragraph is the incident, not the instruction.
 
-Backfilling a summary with `remem update --summary` does not regenerate the
+Backfilling a summary with `bag update --summary` does not regenerate the
 entry's Claude Code memory file, because the sync watermark hashes the body
 alone - the new description appears on disk the next time that entry's body
 changes.
@@ -326,10 +326,10 @@ can never render in one, and requiring a summary on it would break extraction
 for no gain. One deliberate exception survives that reasoning: `kb.resolve`
 applies `INJECTED_ORIGINS` only to the **query** half, and `store.pinned_entries`
 has no origin filter by design (pinning is the documented way to promote a
-machine-written entry), so `remem kb pin` on an `EXTRACTED` rule does put a
+machine-written entry), so `bag kb pin` on an `EXTRACTED` rule does put a
 summary-less rule into a block, rendering as a bare title. Parked rather than
 fixed: it is the same floor the renderer already guarantees, it takes a human
-pin, and `remem update --summary` fixes it for any origin.
+pin, and `bag update --summary` fixes it for any origin.
 
 The never-truncate invariant is unchanged: `RulesExceedBudget` still raises
 rather than shipping a partial rule set, because an agent given part of the
@@ -346,7 +346,7 @@ tag - no separate table. Invariants:
 - Excluded from context blocks (`kb.resolve` filters origins) and from search
   unless `include_handoffs=True`. `search.DEFAULT_ORIGINS` must gain any future
   origin or that origin silently vanishes from search.
-- `remem handoff write` is fail-loud, unlike every hook in this repo: the user
+- `bag handoff write` is fail-loud, unlike every hook in this repo: the user
   is about to `/clear`.
 - `session_size.py` is Postgres-free and agent-neutral; it runs on every user
   prompt via the `UserPromptSubmit` hook. Warn state lives in the platform
@@ -354,7 +354,7 @@ tag - no separate table. Invariants:
 
 ### Ingested documents
 
-`remem ingest <path>` loads markdown in as one entry per `h1`-`h3` heading,
+`bag ingest <path>` loads markdown in as one entry per `h1`-`h3` heading,
 plus an anchor entry per file. Identity is two tags, `src:<path>` and
 `sec:<slug>`, so re-ingest is idempotent: unchanged sections are skipped
 without a write, edited ones supersede their previous version, and sections
@@ -397,14 +397,14 @@ marker and run on CI. Whether a chunk changed is answered by comparing
 bodies, not by a stored hash.
 
 Re-ingest also runs **automatically**, because manual meant it drifted:
-two days of doc writing once left 32 chunks unindexed. `remem reingest
+two days of doc writing once left 32 chunks unindexed. `bag reingest
 designate <paths> [--archive]` records which paths a project re-ingests
-(migration 016), and `hookio.spawn_ingest` starts a detached `remem
+(migration 016), and `hookio.spawn_ingest` starts a detached `saddlebag
 reingest run` from the same two places `spawn_process` starts extraction -
-Claude Code's `SessionStart` and `remem hook context` - which is the one
+Claude Code's `SessionStart` and `bag hook context` - which is the one
 trigger all three harnesses share. Fixed once, not per install path.
 
-- These are **not** subcommands of `ingest`. `remem ingest <path>` is a
+- These are **not** subcommands of `ingest`. `bag ingest <path>` is a
   bare command taking positional paths, so a sub-app of that name cannot
   coexist with it, and breaking the documented manual command to make room
   for the automatic one is the wrong trade. `ingest` and `embed` keep their
@@ -422,7 +422,7 @@ trigger all three harnesses share. Fixed once, not per install path.
   because that is the one moment there is a human to tell.
 - `reingest run` is fail-soft in the strongest form this repo has: it exits
   0 on every path, prints nothing to stdout, and explains itself only to
-  stderr behind `REMEM_HOOK_DEBUG`. It is the one place in `cli.py` that
+  stderr behind `BAG_HOOK_DEBUG`. It is the one place in `cli.py` that
   catches `BaseException` - `_session` turns an unreachable database into
   `typer.Exit(1)`, a `SystemExit` that would otherwise sail past
   `except Exception` and out of a hook-spawned command as a non-zero exit.
@@ -438,28 +438,28 @@ trigger all three harnesses share. Fixed once, not per install path.
   decides whether an absent embedder is fatal.
 - An unavailable embedder loses the semantic tier and nothing else, so
   `refresh` records it in `embed_error` and keeps the entries it wrote.
-  `remem embed` still exits 1 there, on purpose.
+  `bag embed` still exits 1 there, on purpose.
 
 Every ingest leaves a row in `ingest_runs` (migration 017), written by the
-service for both the spawned refresh (`trigger='auto'`) and `remem ingest`
+service for both the spawned refresh (`trigger='auto'`) and `bag ingest`
 (`trigger='manual'`): counts, per-path failures, twins, the embed error.
 The refresh starts its row **before reading any file** and `reingest run`
 opens its session with `autocommit=True` so that a process which dies
 mid-run leaves a started, unfinished row - "crashed", not "never ran". A
 Python exception is recorded as a failure with path `*` and re-raised.
-`remem reingest status` renders the latest row in four distinct spellings
+`bag reingest status` renders the latest row in four distinct spellings
 (never, clean, with failures, did not finish) and checks designated paths on
 disk **only for the project the current directory resolves to** - the
 designation stores no working directory, so any other project reads "paths
 not checked" rather than letting silence pass for "all present". A project
-with no designation at all still shows its latest run - a plain `remem
+with no designation at all still shows its latest run - a plain `saddlebag
 ingest` writes a row too - as the not-designated sentence plus the run line
 and no disk-check line, since nothing was designated to check.
-`remem record status` carries one advisory line per unhealthy **designated**
+`bag record status` carries one advisory line per unhealthy **designated**
 project - an undesignated project's manual run shows in `reingest status` but
 never raises one.
 
-Inside a repository, `remem ingest` identifies a chunk by its path relative
+Inside a repository, `bag ingest` identifies a chunk by its path relative
 to the working tree's top level (`project.toplevel`, not `repo_root`, which
 would resolve a worktree to the main checkout), so a subdirectory run or an
 absolute path produces the same `src:` tag the refresh does. A path outside
@@ -472,9 +472,9 @@ moved file and a document ingested twice look identical from here.
 
 ### Importing claude-mem
 
-`remem import claude-mem <path>` reads claude-mem's sqlite file directly and
+`bag import claude-mem <path>` reads claude-mem's sqlite file directly and
 writes its rows in as `Entry`s with `origin='imported'`. This is deliberately
-the opposite of `ingest`'s network-shaped worries: remem runs on the same
+the opposite of `ingest`'s network-shaped worries: saddlebag runs on the same
 machine that holds the file, so there is no transport to secure and
 therefore no `--host`, no remote mode, and nothing to authenticate. A path
 is the whole interface.
@@ -494,7 +494,7 @@ is the whole interface.
   about whether the knowledge it captured is still true. Deleting on their
   behalf would be guessing; leaving the entry alone is not.
 - Session summaries become `kind=doc`, not `origin=handoff`, even though a
-  handoff is the closer-sounding concept. `remem handoff write` supersedes
+  handoff is the closer-sounding concept. `bag handoff write` supersedes
   the prior *live* handoff for the same `(project, topic)` on every write,
   because a handoff is deliberately singular - only the newest is ever live,
   the rest are history reachable only by asking for it. Importing fifteen
@@ -543,13 +543,13 @@ is the whole interface.
 - No embedder is constructed here, for the same reason `ingest` and
   `dedupe report` decline to build one: this command's job is to get rows
   into Postgres, not to decide an ONNX session and a possible ~130MB
-  download belong to every import. `remem embed` fills in vectors
+  download belong to every import. `bag embed` fills in vectors
   afterwards, and the CLI says so when it created or updated anything.
 - **`--project` only applies when an entry is first created.** A second run
   over rows that already exist does not move them, even with a different
   `--project`: the changed-body path goes through `write.supersede`, which
   carries the *existing* entry's `project` (and `kind`, and `tags`) forward
-  unchanged - the same primitive `remem update --summary` and the memory
+  unchanged - the same primitive `bag update --summary` and the memory
   sync's rename re-tag rely on to keep everything a caller does not restate
   intact. An unchanged body writes nothing at all, for the same reason. The
   report reflects this: `by_project` counts where each entry is filed
@@ -575,11 +575,11 @@ is the whole interface.
 
 ### Claude Code memory
 
-`remem memory sync` owns `~/.claude/projects/<cwd-slug>/memory/` - Claude
+`bag memory sync` owns `~/.claude/projects/<cwd-slug>/memory/` - Claude
 Code's file-based memory - as a generated view of a designated collection.
-Unlike opencode's `remem.js` and cursor's `remem.mdc`, this generated file
+Unlike opencode's `saddlebag.js` and cursor's `saddlebag.mdc`, this generated file
 set has a second writer that cannot be told to stop, so the sync **adopts
-before it regenerates**: anything on disk remem has not seen becomes an
+before it regenerates**: anything on disk saddlebag has not seen becomes an
 entry first.
 
 - Opt-in per project, holding a value rather than a boolean: which
@@ -589,7 +589,7 @@ entry first.
   (migration 015), because the two halves are keyed on different things:
   the designation on the project, the memory directory on the absolute
   cwd. Neither derives the other - a worktree and its main checkout share
-  a project and have two memory directories - so `remem memory sync --all`
+  a project and have two memory directories - so `bag memory sync --all`
   is only expressible because the answer is stored. `designate` therefore
   refuses a `--project` naming anything but the current directory's
   project: recording a working directory that has nothing to do with the
@@ -598,19 +598,19 @@ entry first.
   them by name rather than guessing; re-designating is the fix, and the
   skip exits non-zero because a directory that was not synced is a
   definite statement, not an "I could not tell".
-- `.remem-sync.json` is what makes "which side moved" answerable. This is
+- `.saddlebag-sync.json` is what makes "which side moved" answerable. This is
   deliberately the opposite of `ingest`, which compares bodies and stores no
   hash - ingest has one writer, so "differs" and "the file changed" are the
   same statement. Here both sides write.
 - Two gates and they are the whole safety story: a file whose checksum does
   not match its watermark is never deleted, and a file changed on both sides
-  is never overwritten. Conflicts write remem's version alongside as
-  `<name>.remem-conflict.md` and exit non-zero.
+  is never overwritten. Conflicts write saddlebag's version alongside as
+  `<name>.saddlebag-conflict.md` and exit non-zero.
 - Identity is the **filename stem**, recorded as a `mem:<name>` tag. An
   entry written by hand has no such tag, so the export mints one from the
   title and writes it back before the cases run - without that pre-pass the
   export is only ever what the sync adopted off disk, which is silently the
-  "directory owns it, remem ingests" design the spec rejected. The
+  "directory owns it, saddlebag ingests" design the spec rejected. The
   frontmatter `name:` is the user's field, carried through a regenerate
   rather than rewritten.
 - A file **renamed** on disk is followed rather than duplicated, by a second
@@ -620,7 +620,7 @@ entry first.
   body and wrote the deleted file back out. Both gates behave correctly
   throughout, which is why the duplication went unnoticed: the failure is
   duplication, not data loss. The proof of a rename is **byte equality with
-  the watermark**, which records what remem itself last wrote under the old
+  the watermark**, which records what saddlebag itself last wrote under the old
   name, so it is provable rather than guessed; nothing looser is permitted,
   because matching on titles or near-identical bodies would re-tag entries on
   a coincidence. Ambiguity in **either** direction (two identical files for
@@ -633,7 +633,7 @@ entry first.
   re-tag uses `update`, not `supersede` - the knowledge did not change, only
   the name it is filed under.
 - A collection that resolves at `kb.RESOLVE_LIMIT` refuses to sync. Past the
-  cap an entry remem cannot see is indistinguishable from one that left the
+  cap an entry saddlebag cannot see is indistinguishable from one that left the
   collection, and the delete gate would pass.
 - `memory_file.py` is pure, so its tests carry no `db` marker and run on CI.
   The round trip is load-bearing rather than cosmetic, but whole-file byte
@@ -644,21 +644,21 @@ entry first.
   saw is ever dropped.
 - The generated `MEMORY.md` uses an em dash between link and hook, against
   this repo's convention, because that line's format belongs to Claude Code.
-- Not in `remem doctor`: the designation lives in the database and doctor
-  opens no connection. The overlap count lives in `remem memory status`,
-  along with a count of `.remem-conflict.md` sidecars still on disk from a
+- Not in `bag doctor`: the designation lives in the database and doctor
+  opens no connection. The overlap count lives in `bag memory status`,
+  along with a count of `.saddlebag-conflict.md` sidecars still on disk from a
   past sync - nothing ever deletes one automatically, since doing so risks
   destroying the copy the user needs, so `status` is what keeps an
   unresolved conflict from going unnoticed between syncs.
 
 - Every sync leaves a row in `memory_runs` (migration 018), written by the
-  service so that `remem memory sync`, `--all`, and any future hook-spawned
+  service so that `bag memory sync`, `--all`, and any future hook-spawned
   run record identically - the last of those being the caller with no
   terminal, and the reason the table was built before it exists. One row per
   **project**: `--all` writes one each, and a single row could not say which
   one failed. A `--dry-run` writes none, because a row for it would make
   "last run" describe a state that never existed.
-- `remem memory sync` therefore opens with `autocommit=True`, like `remem
+- `bag memory sync` therefore opens with `autocommit=True`, like `saddlebag
   reingest run`: the started row must be committed before any file is read,
   or a crash rolls it back and "crashed" is indistinguishable from "never
   ran". This also stops sync's two halves disagreeing - files are written to
@@ -671,22 +671,22 @@ entry first.
 - Sync also runs **automatically**, for the same reason re-ingest does:
   the directory has a second writer that cannot be told to stop, so a
   designated project drifts between manual syncs. `hookio.spawn_memory`
-  starts a detached `remem memory refresh` from the same two places
+  starts a detached `bag memory refresh` from the same two places
   `spawn_process` and `spawn_ingest` start theirs - Claude Code's
-  `SessionStart` and `remem hook context` - which is the one trigger all
+  `SessionStart` and `bag hook context` - which is the one trigger all
   three harnesses share. It covers the **current project only**, like
-  `remem reingest run`: syncing all eight designated projects from any
+  `bag reingest run`: syncing all eight designated projects from any
   session start would write into seven directories the user is not
   looking at.
-- `remem memory refresh` is the spawned half and `remem memory sync` stays
+- `bag memory refresh` is the spawned half and `bag memory sync` stays
   the typed one, keeping its loud contract: a person asked for that, and it
   exits non-zero on a conflict. `refresh` exits 0 on every path, prints
   nothing to stdout, explains itself only to stderr behind
-  `REMEM_HOOK_DEBUG`, and is the only caller that records
+  `BAG_HOOK_DEBUG`, and is the only caller that records
   `trigger='auto'`. An undesignated project - the common case - does
   nothing and records nothing. A conflict under `refresh` writes its
-  sidecar and says nothing at the time; `remem memory status` and the
-  `memory.advisories()` line in `remem record status` are what surface it,
+  sidecar and says nothing at the time; `bag memory status` and the
+  `memory.advisories()` line in `bag record status` are what surface it,
   which is what that layer was built for. Both safety gates are unchanged
   and hold identically unattended.
 - The `except BaseException` in `refresh` and in `reingest run` is **not**
@@ -696,7 +696,7 @@ entry first.
   BaseException adds is a genuine `SystemExit` from any library that calls
   `sys.exit()`, and `KeyboardInterrupt`. A test asserts that, because the
   unreachable-database case passes under either handler and proves nothing.
-- `remem memory status` renders the latest run in four distinct spellings
+- `bag memory status` renders the latest run in four distinct spellings
   (never, clean, with conflicts or failures, did not finish). Those describe
   what last *happened*; `stale`, `overlap` and `conflicts` describe the
   directory *now*, and a reader must not have to infer one from the other.
@@ -708,8 +708,8 @@ entry first.
   the failure count in `advisories()` and deliberately not on the sidecar
   count - a sidecar outlives every run, so naming the last one beside it
   would attribute it to a sync that may not have written it.
-- `remem memory status --json` emits **one object, not a list**, which is
-  the deliberate departure from `remem reingest status --json`: that one
+- `bag memory status --json` emits **one object, not a list**, which is
+  the deliberate departure from `bag reingest status --json`: that one
   sweeps every designated project and so returns an array, while this
   command resolves exactly one project by construction. The keys are the
   same in every state - an undesignated project is a null `collection` and
@@ -721,7 +721,7 @@ entry first.
   reading beside `reingest status` would only rewrite it for no reader.
 
 - `memory.advisories()` raises one line per unhealthy designated project in
-  `remem record status`: an unresolved conflict sidecar, a run that did not
+  `bag record status`: an unresolved conflict sidecar, a run that did not
   finish, failures in the last run, or a designation that has never synced.
   Unlike `reingest status`, it checks **every** designated project's
   directory, because `memory_settings` records the working directory
@@ -734,13 +734,13 @@ entry first.
 
 ### Settings
 
-`remem config` reads and writes two files from one command, routed by key
-name: `REMEM_*` keys land in remem's `config.toml`, a curated set of Claude
+`bag config` reads and writes two files from one command, routed by key
+name: `BAG_*` keys land in saddlebag's `config.toml`, a curated set of Claude
 Code environment variables lands in the `env` block of `settings.json`.
 
 - The table of Claude Code variables lives on the **adapter**
   (`agents/claude_code/env_vars.py`), not in `services/`. It is a fact about
-  Claude Code, not about remem, and keeping it there is what lets a future
+  Claude Code, not about saddlebag, and keeping it there is what lets a future
   adapter ship its own.
 - `env_settings()` and `settings_path()` are **optional adapter capabilities**,
   probed with `getattr` in `settings.resolve_targets` and documented on the
@@ -748,16 +748,16 @@ Code environment variables lands in the `env` block of `settings.json`.
   one of them reports "no settable env vars" rather than falling back to
   another agent's file. The frontend resolves `--agent` and nothing else.
   A capability that *raises* lands where a missing one lands - warn, degrade to
-  the remem half, and keep going. Same contract as `agents/registry.discover`:
-  a broken third-party adapter must never be why `remem config` will not run.
+  the saddlebag half, and keep going. Same contract as `agents/registry.discover`:
+  a broken third-party adapter must never be why `bag config` will not run.
 - **No credential and no endpoint variable is ever settable.** Their absence
   from the table is the enforcement; `tests/test_env_vars.py` asserts it.
-  Neither is `CLAUDE_CONFIG_DIR` or `REMEM_CONFIG` - each names the file that
+  Neither is `CLAUDE_CONFIG_DIR` or `BAG_CONFIG` - each names the file that
   would store it.
 - The two targets resolve in **opposite directions**: the environment beats
-  remem's `config.toml`, while `settings.json` beats a shell export. `set`
+  saddlebag's `config.toml`, while `settings.json` beats a shell export. `set`
   says so when the key it just wrote is also exported, because writing a
-  shadowed remem key is otherwise a silent no-op.
+  shadowed saddlebag key is otherwise a silent no-op.
 - **Every write backs the file up first and says where the backup went.** A
   rewrite of `config.toml` loses comments and formatting, so the writers
   return the backup path and the CLI echoes it - a `.bak<timestamp>` nobody
@@ -769,7 +769,7 @@ Code environment variables lands in the `env` block of `settings.json`.
 
 `hook.session_start` / `session_end` exit 0 unconditionally, print nothing on error, and
 never raise. A knowledge tool must never be why a session will not start. Because silence
-is ambiguous, `REMEM_HOOK_DEBUG=1` writes the reason to **stderr** - stdout is the context
+is ambiguous, `BAG_HOOK_DEBUG=1` writes the reason to **stderr** - stdout is the context
 block and nothing else.
 
 The SessionStart hook injects the knowledge base whose slug is exactly the session
@@ -779,15 +779,15 @@ under the repository they belong to.
 
 ### The opencode adapter
 
-`plugin.js` (`src/remem/agents/opencode/plugin.js`) is hand-written and shipped as
-package data; the INSTALLED copy - `remem.js`, in the directory `plugin_dir` names for
+`plugin.js` (`src/saddlebag/agents/opencode/plugin.js`) is hand-written and shipped as
+package data; the INSTALLED copy - `saddlebag.js`, in the directory `plugin_dir` names for
 the chosen scope - is what is generated and machine-owned. `install()` overwrites that
 installed copy unconditionally, no merge, no version marker, no prompt. It imports
 nothing, because `$` arrives on `PluginInput`: there is no npm dependency to install,
 pin, or keep in step with opencode's own releases. A user who wants local edits to
-`remem.js` is asking for the wrong file - remem owns it.
+`saddlebag.js` is asking for the wrong file - saddlebag owns it.
 
-opencode has no session-start hook, so `remem hook context --agent <name>` exists as the
+opencode has no session-start hook, so `bag hook context --agent <name>` exists as the
 harness-neutral half of what `hook.session_start` does for Claude Code: given whatever
 payload a harness has on hand, the adapter's `identity()` turns it into a project and the
 command prints the knowledge base block for that session, fail-soft like every other
@@ -801,7 +801,7 @@ tests, not one: `test_the_plugin_subscribes_only_to_hooks_opencode_emits` always
 CI and everywhere else, and catches `plugin.js` subscribing to a hook name opencode does
 not emit - the exact failure mode of a competing tool's opencode integration that reported
 success for months while recording nothing. `test_the_vendored_list_still_matches_the_installed_types`
-is marked `@pytest.mark.opencode` and may skip; it only guards the freshness of remem's own
+is marked `@pytest.mark.opencode` and may skip; it only guards the freshness of saddlebag's own
 vendored copy of opencode's `Hooks` interface (`HOOK_NAMES`, `PLUGIN_TYPES_VERSION`), which
 needs opencode's plugin types installed to check. Collapsing them into one test would
 produce a guard that skips on CI - the same failure mode the `db` markers already taught
@@ -809,19 +809,19 @@ this project to distrust.
 
 ### The cursor adapter
 
-`src/remem/agents/cursor/`, four modules and no generated script of any kind -
-`hooks.json` names the `remem` command directly, because `remem record event`
+`src/saddlebag/agents/cursor/`, four modules and no generated script of any kind -
+`hooks.json` names the `bag` command directly, because `bag record event`
 already reads its payload as JSON on stdin. It sits between the two adapters
 that shipped before it and deliberately borrows from each: `.cursor/hooks.json`
 is user-owned and shared - other tools write there too - so it gets Claude
 Code's treatment (read, merge, back up first, echo the backup path), while the
-generated `.cursor/rules/remem.mdc` is machine-owned and overwritten
-unconditionally, like opencode's `remem.js`. A user who wants local edits to
+generated `.cursor/rules/saddlebag.mdc` is machine-owned and overwritten
+unconditionally, like opencode's `saddlebag.js`. A user who wants local edits to
 the `.mdc` is asking for the wrong file.
 
 Cursor emits 21 hooks (vendored in `agents/cursor/hooks.py`, read out of
 `Cursor.app`'s minified bundle); this adapter subscribes to exactly four:
-`sessionStart` (injects, via `remem hook context --agent cursor`),
+`sessionStart` (injects, via `bag hook context --agent cursor`),
 `postToolUse` (`EventKind.TOOL_CALL`), and `beforeSubmitPrompt` /
 `afterAgentResponse` (both `EventKind.MESSAGE`). Six hooks **block** - Cursor
 waits on them for a permission decision on their stdout
@@ -855,9 +855,9 @@ in-process `Set` of session ids because it has no session hook at all, and
 Cursor needed neither once the stale "no `SessionStart` equivalent" premise
 from the events-and-recall spec was corrected.
 
-Writing the `.mdc` is also the first time remem puts context into the user's
+Writing the `.mdc` is also the first time saddlebag puts context into the user's
 **working tree** rather than a stream, which is why `agents/cursor/rules.py`
-adds `.cursor/rules/remem.mdc` to **`.git/info/exclude`, not `.gitignore`**:
+adds `.cursor/rules/saddlebag.mdc` to **`.git/info/exclude`, not `.gitignore`**:
 `.gitignore` is tracked and reviewed, so appending to it hands the user a diff
 they did not ask for, and in a shared repository that diff lands in somebody's
 pull request; `info/exclude` is local-only and exactly the mechanism git
@@ -867,7 +867,7 @@ commented-out line doesn't count as already-present) and resolves through
 `git rev-parse --git-common-dir` rather than assuming `.git` is a directory -
 in a linked worktree or a submodule `.git` is a *file* holding a `gitdir:`
 pointer, and `info/exclude` lives under the real common directory that
-pointer names, not under the worktree. remem's own development happens inside
+pointer names, not under the worktree. saddlebag's own development happens inside
 a worktree, so this is the ordinary case here, not an edge case. If there is
 no repository at all, the `.mdc` is still written and a note (not a warning)
 says the exclude was skipped - a workspace outside a repository is an
@@ -885,11 +885,11 @@ subscribing to a hook Cursor does not emit.
 auto-updates itself, so expect the freshness half to fire eventually, the
 same way opencode's did mid-branch.
 
-A Cursor-only install extracts as well as records. `remem events process` used
+A Cursor-only install extracts as well as records. `bag events process` used
 to be spawned from exactly one place, Claude Code's `SessionStart` hook, so a
 Cursor-only or opencode-only setup recorded events forever and never extracted
 one. It is now spawned from `hookio.spawn_process`, called both from that hook
-and from `remem hook context` - the session-start analogue opencode and Cursor
+and from `bag hook context` - the session-start analogue opencode and Cursor
 already call once per session, which makes it the single trigger all three
 harnesses share. Fixed once, rather than bolted onto each new install path.
 
@@ -900,12 +900,12 @@ produced a block says nothing about whether extraction has work waiting.
 
 Extraction shells out to `claude -p`, which a Cursor-only user may well not
 have installed. Those jobs **fail and record the reason** rather than being
-skipped - `MAX_ATTEMPTS` stops the retries and `remem record status` shows why.
+skipped - `MAX_ATTEMPTS` stops the retries and `bag record status` shows why.
 A probe for the extractor was considered and rejected: it can be wrong about
 where `claude` lives, while a recorded failure cannot.
 
 Every Cursor hook payload also carries `user_email` (read straight out of
-Cursor's payload constructor) and remem stores events in full and
+Cursor's payload constructor) and saddlebag stores events in full and
 indefinitely, so a recorded Cursor event carries the user's email address as
 a side effect of this design - unlike Claude Code's events today. Nothing in
 this adapter filters it; the payload is passed through whole, on purpose, for
@@ -931,15 +931,15 @@ disproved the failure it stood in for.
 
 Two things the live session taught that are not about Cursor at all. **Cursor
 loads Claude Code's `~/.claude/settings.json` hooks and runs them with Cursor
-payloads** - so remem's Claude-Code hooks fire inside Cursor, are handed a shape
+payloads** - so saddlebag's Claude-Code hooks fire inside Cursor, are handed a shape
 they cannot parse, and exit 0 in silence. Nothing is broken by it today; it is
 undecided territory rather than a bug, and it means the two adapters are not as
 independent as the seam suggests. And a `kb.RulesExceedBudget` failure is
 **invisible**, because every hook is fail-soft: when the knowledge base outgrew
-`REMEM_MAX_CHARS`, context injection silently died on *every* harness, Claude
+`BAG_MAX_CHARS`, context injection silently died on *every* harness, Claude
 Code included, with a 0 exit and no output. Fail-soft is still the right
 contract, but the budget is the one failure it hides that a user would want to
-know about - so `kb.budget_advisories` says so in `remem record status`, the
+know about - so `kb.budget_advisories` says so in `bag record status`, the
 place that already carries the doctor, ingest and memory advisories. See
 "The context block budget" below.
 
@@ -964,7 +964,7 @@ demand, exactly as `record status` is for recording.
   0.8) is the valuable one: by the time the hard failure fires, injection
   has already been dead in every session since the rule that tipped it
   over was written.
-- **Not in `remem doctor`**, deliberately: doctor reads files and opens no
+- **Not in `bag doctor`**, deliberately: doctor reads files and opens no
   database so that it still works when the system does not, and this
   question cannot be answered without resolving a collection.
 
@@ -996,7 +996,7 @@ failure; run it again.
   use `sys.stderr.write`, as `hookio.debug` always has. The CLI's own
   output goes through `typer.echo`, which the rule does not touch. The
   same discipline is why every hook prints its diagnostics to stderr
-  behind `REMEM_HOOK_DEBUG`.
+  behind `BAG_HOOK_DEBUG`.
 - Line width is 88 and the **formatter owns it**. The prose comments
   keep their older, narrower hand-wrapping; ruff does not reflow
   comments and neither should you, for a diff's sake.

@@ -1,19 +1,27 @@
+# Pinned, not left to follow the directory name. Compose names volumes
+# `<project>_<key>`, and the project defaults to the checkout's directory -
+# so every worktree that ran `docker compose up` got its own empty database
+# volume (five were left over by the time this was written), and renaming the
+# checkout would have pointed compose at a fresh empty one that looks exactly
+# like data loss.
+name: saddlebag
+
 services:
   db:
     image: pgvector/pgvector:pg18
     environment:
-      POSTGRES_USER: remem
-      POSTGRES_PASSWORD: remem
-      POSTGRES_DB: remem
+      POSTGRES_USER: saddlebag
+      POSTGRES_PASSWORD: saddlebag
+      POSTGRES_DB: saddlebag
     ports:
       - "5433:5432"
     volumes:
-      - remem-pgdata:/var/lib/postgresql
+      - saddlebag-pgdata:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U remem"]
+      test: ["CMD-SHELL", "pg_isready -U saddlebag"]
       interval: 2s
       timeout: 3s
       retries: 20
 
 volumes:
-  remem-pgdata:
+  saddlebag-pgdata:

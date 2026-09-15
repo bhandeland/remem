@@ -1,9 +1,9 @@
-"""`remem hook context` - the harness-neutral half of SessionStart.
+"""`bag hook context` - the harness-neutral half of SessionStart.
 
-Same contract as `remem record event` (tests/test_record_cli.py): a hook
+Same contract as `bag record event` (tests/test_record_cli.py): a hook
 entry point in everything but name, so it must exit 0 unconditionally and
 print nothing but the block itself to stdout. Every early return explains
-itself only through REMEM_HOOK_DEBUG on stderr.
+itself only through BAG_HOOK_DEBUG on stderr.
 """
 
 from __future__ import annotations
@@ -17,12 +17,12 @@ import psycopg
 import pytest
 from typer.testing import CliRunner
 
-from remem.agents.base import Identity
-from remem.agents.claude_code.adapter import ClaudeCodeAdapter
-from remem.agents.cursor.adapter import ROOT_KEY, CursorAdapter
-from remem.backends.postgres.migrate import migrate
-from remem.backends.postgres.store import PostgresStore
-from remem.cli import app
+from saddlebag.agents.base import Identity
+from saddlebag.agents.claude_code.adapter import ClaudeCodeAdapter
+from saddlebag.agents.cursor.adapter import ROOT_KEY, CursorAdapter
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.store import PostgresStore
+from saddlebag.cli import app
 
 runner = CliRunner()
 
@@ -34,11 +34,11 @@ def env(live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> str:
     with psycopg.connect(live_dsn) as c:
         migrate(c)
         c.commit()
-    monkeypatch.setenv("REMEM_DSN", live_dsn)
-    monkeypatch.setenv("REMEM_USER_ID", "brandon")
-    monkeypatch.setenv("REMEM_CONFIG", str(tmp_path / "none.toml"))
+    monkeypatch.setenv("BAG_DSN", live_dsn)
+    monkeypatch.setenv("BAG_USER_ID", "brandon")
+    monkeypatch.setenv("BAG_CONFIG", str(tmp_path / "none.toml"))
 
-    # `hook context` spawns three detached `remem` processes in a `finally`
+    # `hook context` spawns three detached `bag` processes in a `finally`
     # on every path (extraction, re-ingest and the memory sync). Pointed
     # at this live test
     # database, those processes outlive the test and race conftest's
@@ -49,9 +49,9 @@ def env(live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> str:
     def no_spawn(env: Mapping[str, str]) -> bool:
         return False
 
-    monkeypatch.setattr("remem.hookio.spawn_process", no_spawn)
-    monkeypatch.setattr("remem.hookio.spawn_ingest", no_spawn)
-    monkeypatch.setattr("remem.hookio.spawn_memory", no_spawn)
+    monkeypatch.setattr("saddlebag.hookio.spawn_process", no_spawn)
+    monkeypatch.setattr("saddlebag.hookio.spawn_ingest", no_spawn)
+    monkeypatch.setattr("saddlebag.hookio.spawn_memory", no_spawn)
     return live_dsn
 
 
@@ -66,9 +66,9 @@ def _seed_kb(dsn: str, *, project: str = "myrepo") -> None:
     """A knowledge base whose slug matches `repo`'s directory name, with one
     rule in it - so a test can assert the command's stdout actually carries
     that rule, not merely that the command ran without crashing."""
-    from remem.domain import CollectionQuery, Kind
-    from remem.services import kb
-    from remem.services.write import remember
+    from saddlebag.domain import CollectionQuery, Kind
+    from saddlebag.services import kb
+    from saddlebag.services.write import remember
 
     with psycopg.connect(dsn) as c:
         store = PostgresStore(c)
@@ -102,7 +102,7 @@ def test_context_exits_zero_on_garbage_stdin(env: str) -> None:
 def test_context_explains_garbage_stdin_under_hook_debug(
     env: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("REMEM_HOOK_DEBUG", "1")
+    monkeypatch.setenv("BAG_HOOK_DEBUG", "1")
     result = runner.invoke(app, ["hook", "context"], input="not json")
     assert result.exit_code == 0
     assert result.stdout == ""
@@ -122,7 +122,7 @@ def test_context_exits_zero_for_an_unknown_agent(env: str, repo: Path) -> None:
 def test_context_explains_an_unknown_agent_under_hook_debug(
     env: str, monkeypatch: pytest.MonkeyPatch, repo: Path
 ) -> None:
-    monkeypatch.setenv("REMEM_HOOK_DEBUG", "1")
+    monkeypatch.setenv("BAG_HOOK_DEBUG", "1")
     result = runner.invoke(
         app,
         ["hook", "context", "--agent", "no-such-agent"],
@@ -146,7 +146,7 @@ def test_context_exits_zero_when_the_payload_carries_no_cwd(env: str) -> None:
 def test_context_explains_a_missing_cwd_under_hook_debug(
     env: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("REMEM_HOOK_DEBUG", "1")
+    monkeypatch.setenv("BAG_HOOK_DEBUG", "1")
     result = runner.invoke(
         app, ["hook", "context"], input=json.dumps({"session_id": "x"})
     )
@@ -180,7 +180,7 @@ def test_an_adapter_whose_identity_capability_raises_degrades(
 def test_an_adapter_whose_identity_capability_raises_explains_itself(
     env: str, monkeypatch: pytest.MonkeyPatch, repo: Path
 ) -> None:
-    monkeypatch.setenv("REMEM_HOOK_DEBUG", "1")
+    monkeypatch.setenv("BAG_HOOK_DEBUG", "1")
 
     def boom(
         self: ClaudeCodeAdapter, env: Mapping[str, str], payload: dict[str, Any]
@@ -223,7 +223,7 @@ def test_context_reads_a_named_agent_and_matches_the_default(
 ) -> None:
     """The opencode adapter reads sessionID, not session_id - a payload
     shape difference `--agent` exists to absorb. This is the injection-half
-    equivalent of `remem record event`'s --agent tests: with a knowledge
+    equivalent of `bag record event`'s --agent tests: with a knowledge
     base actually in place, the two adapters must read different keys out
     of different payloads and still produce byte-identical output - proving
     --agent reached a distinct, working adapter rather than merely failing
@@ -277,7 +277,7 @@ def test_an_adapter_whose_inject_capability_raises_degrades_to_stdout(
 def test_an_adapter_whose_inject_capability_raises_explains_itself(
     env: str, monkeypatch: pytest.MonkeyPatch, repo: Path
 ) -> None:
-    monkeypatch.setenv("REMEM_HOOK_DEBUG", "1")
+    monkeypatch.setenv("BAG_HOOK_DEBUG", "1")
     _seed_kb(env, project=repo.name)
 
     def boom(
@@ -316,14 +316,14 @@ def test_an_adapter_with_inject_does_not_print_the_block_to_stdout(
 
     assert result.exit_code == 0
     assert result.stdout == ""
-    written = repo / ".cursor" / "rules" / "remem.mdc"
+    written = repo / ".cursor" / "rules" / "saddlebag.mdc"
     assert written.exists()
     assert "Lint rule" in written.read_text()
 
 
 # --- Extraction is triggered from here, not only from Claude Code ---------
 #
-# `remem events process` used to be spawned from exactly one place, Claude
+# `bag events process` used to be spawned from exactly one place, Claude
 # Code's SessionStart hook, so a Cursor-only or opencode-only install
 # recorded events forever and never extracted one. `hook context` is the
 # session-start analogue every other harness already calls once per session,
@@ -338,7 +338,7 @@ def _spy(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
         calls.append(dict(env))
         return True
 
-    monkeypatch.setattr("remem.hookio.spawn_process", fake)
+    monkeypatch.setattr("saddlebag.hookio.spawn_process", fake)
     return calls
 
 
@@ -361,7 +361,7 @@ def test_context_spawns_the_processor_even_when_no_project_resolves(
 ) -> None:
     """The backlog is global, not this session's project.
 
-    `remem events process` works off every extractable session for the
+    `bag events process` works off every extractable session for the
     owner, so whether THIS payload produced a block has no bearing on
     whether there is extraction work waiting. Claude Code spawns
     regardless of whether its block rendered; this must match.
@@ -389,7 +389,7 @@ def test_context_spawns_the_memory_sync(
         calls.append(dict(env))
         return True
 
-    monkeypatch.setattr("remem.hookio.spawn_memory", record_spawn)
+    monkeypatch.setattr("saddlebag.hookio.spawn_memory", record_spawn)
     _seed_kb(env)
     result = runner.invoke(
         app,
@@ -411,7 +411,7 @@ def test_context_spawns_the_memory_sync_even_when_no_project_resolves(
         calls.append(dict(env))
         return True
 
-    monkeypatch.setattr("remem.hookio.spawn_memory", record_spawn)
+    monkeypatch.setattr("saddlebag.hookio.spawn_memory", record_spawn)
     result = runner.invoke(app, ["hook", "context"], input="not json")
     assert result.exit_code == 0
     assert len(calls) == 1
@@ -429,8 +429,8 @@ def test_spawn_process_refuses_to_run_inside_the_extractor(
     shells out to git to resolve the project - trapping every Popen would
     catch that instead and pass for the wrong reason.
     """
-    from remem import hookio
-    from remem.extract.base import CHILD_ENV_VAR
+    from saddlebag import hookio
+    from saddlebag.extract.base import CHILD_ENV_VAR
 
     def explode(*a: object, **k: object) -> None:
         raise AssertionError("spawned a processor inside the extractor")
@@ -443,7 +443,7 @@ def test_spawn_process_launches_the_processor_detached(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The guard must not be the only reason it ever returns False."""
-    from remem import hookio
+    from saddlebag import hookio
 
     seen: dict[str, Any] = {}
 
@@ -454,5 +454,5 @@ def test_spawn_process_launches_the_processor_detached(
 
     monkeypatch.setattr("subprocess.Popen", fake_popen)
     assert hookio.spawn_process({}) is True
-    assert seen["argv"] == ["remem", "events", "process"]
+    assert seen["argv"] == ["bag", "events", "process"]
     assert seen["kwargs"]["start_new_session"] is True

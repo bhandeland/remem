@@ -6,14 +6,14 @@ from typing import Never, override
 
 import pytest
 
-from remem.agents.claude_code.hook import main, session_start
-from remem.backends.postgres.migrate import migrate
+from saddlebag.agents.claude_code.hook import main, session_start
+from saddlebag.backends.postgres.migrate import migrate
 
 
 def test_returns_empty_when_the_database_is_unreachable():
     payload = json.dumps({"cwd": "/tmp/whatever", "session_id": "s1"})
     out = session_start(
-        payload, env={"REMEM_DSN": "postgresql://nobody@127.0.0.1:1/none"}
+        payload, env={"BAG_DSN": "postgresql://nobody@127.0.0.1:1/none"}
     )
     assert out == ""
 
@@ -29,7 +29,7 @@ def test_returns_empty_on_empty_stdin():
 def test_main_exits_zero_when_the_database_is_unreachable(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setenv("REMEM_DSN", "postgresql://nobody@127.0.0.1:1/none")
+    monkeypatch.setenv("BAG_DSN", "postgresql://nobody@127.0.0.1:1/none")
     monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps({"cwd": "/tmp/x"})))
     assert main() == 0
     assert capsys.readouterr().out == ""
@@ -49,34 +49,34 @@ def test_injects_the_project_knowledge_base(
 ) -> None:
     import psycopg
 
-    from remem.services import kb
-    from remem.services.write import remember
-    from remem.session import open_session
+    from saddlebag.services import kb
+    from saddlebag.services.write import remember
+    from saddlebag.session import open_session
 
     with psycopg.connect(live_dsn) as c:
         migrate(c)
         c.commit()
 
-    monkeypatch.setenv("REMEM_DSN", live_dsn)
-    monkeypatch.setenv("REMEM_USER_ID", "brandon")
-    monkeypatch.setenv("REMEM_CONFIG", str(tmp_path / "none.toml"))
+    monkeypatch.setenv("BAG_DSN", live_dsn)
+    monkeypatch.setenv("BAG_USER_ID", "brandon")
+    monkeypatch.setenv("BAG_CONFIG", str(tmp_path / "none.toml"))
 
-    # session_start spawns three detached `remem` processes in a `finally` on
+    # session_start spawns three detached `bag` processes in a `finally` on
     # every path. Pointed at this live test database they outlive the test
     # and race conftest's truncate-cascade for table locks - the same
     # deadlock test_hook_context_cli.py's env fixture stubs against.
     def no_spawn(env: Mapping[str, str]) -> bool:
         return False
 
-    monkeypatch.setattr("remem.agents.claude_code.hook.spawn_process", no_spawn)
-    monkeypatch.setattr("remem.agents.claude_code.hook.spawn_ingest", no_spawn)
-    monkeypatch.setattr("remem.agents.claude_code.hook.spawn_memory", no_spawn)
+    monkeypatch.setattr("saddlebag.agents.claude_code.hook.spawn_process", no_spawn)
+    monkeypatch.setattr("saddlebag.agents.claude_code.hook.spawn_ingest", no_spawn)
+    monkeypatch.setattr("saddlebag.agents.claude_code.hook.spawn_memory", no_spawn)
 
     project_dir = tmp_path / "myproj"
     project_dir.mkdir()
 
     with open_session() as s:
-        from remem.domain import CollectionQuery, Kind
+        from saddlebag.domain import CollectionQuery, Kind
 
         kb.create(
             s.store,
@@ -99,9 +99,9 @@ def test_injects_the_project_knowledge_base(
     out = session_start(
         json.dumps({"cwd": str(project_dir), "session_id": "s1"}),
         env={
-            "REMEM_DSN": live_dsn,
-            "REMEM_USER_ID": "brandon",
-            "REMEM_CONFIG": str(tmp_path / "none.toml"),
+            "BAG_DSN": live_dsn,
+            "BAG_USER_ID": "brandon",
+            "BAG_CONFIG": str(tmp_path / "none.toml"),
         },
     )
     assert "Run ruff linter" in out
@@ -120,13 +120,13 @@ def test_returns_empty_when_the_project_has_no_knowledge_base(
     def no_spawn(env: Mapping[str, str]) -> bool:
         return False
 
-    monkeypatch.setattr("remem.agents.claude_code.hook.spawn_process", no_spawn)
-    monkeypatch.setattr("remem.agents.claude_code.hook.spawn_ingest", no_spawn)
-    monkeypatch.setattr("remem.agents.claude_code.hook.spawn_memory", no_spawn)
+    monkeypatch.setattr("saddlebag.agents.claude_code.hook.spawn_process", no_spawn)
+    monkeypatch.setattr("saddlebag.agents.claude_code.hook.spawn_ingest", no_spawn)
+    monkeypatch.setattr("saddlebag.agents.claude_code.hook.spawn_memory", no_spawn)
     env = {
-        "REMEM_DSN": live_dsn,
-        "REMEM_USER_ID": "brandon",
-        "REMEM_CONFIG": str(tmp_path / "none.toml"),
+        "BAG_DSN": live_dsn,
+        "BAG_USER_ID": "brandon",
+        "BAG_CONFIG": str(tmp_path / "none.toml"),
     }
     out = session_start(json.dumps({"cwd": str(tmp_path / "unknown-proj")}), env=env)
     assert out == ""
@@ -135,7 +135,7 @@ def test_returns_empty_when_the_project_has_no_knowledge_base(
 def test_debug_is_silent_unless_asked_for(capsys: pytest.CaptureFixture[str]) -> None:
     payload = json.dumps({"cwd": "/tmp/whatever", "session_id": "s1"})
     out = session_start(
-        payload, env={"REMEM_DSN": "postgresql://nobody@127.0.0.1:1/none"}
+        payload, env={"BAG_DSN": "postgresql://nobody@127.0.0.1:1/none"}
     )
     captured = capsys.readouterr()
     assert out == ""
@@ -146,8 +146,8 @@ def test_debug_is_silent_unless_asked_for(capsys: pytest.CaptureFixture[str]) ->
 def test_main_is_silent_on_both_streams_by_default(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.delenv("REMEM_HOOK_DEBUG", raising=False)
-    monkeypatch.setenv("REMEM_DSN", "postgresql://nobody@127.0.0.1:1/none")
+    monkeypatch.delenv("BAG_HOOK_DEBUG", raising=False)
+    monkeypatch.setenv("BAG_DSN", "postgresql://nobody@127.0.0.1:1/none")
     monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps({"cwd": "/tmp/x"})))
     assert main() == 0
     captured = capsys.readouterr()
@@ -162,14 +162,14 @@ def test_debug_explains_an_unreachable_database_on_stderr(
     out = session_start(
         payload,
         env={
-            "REMEM_DSN": "postgresql://nobody@127.0.0.1:1/none",
-            "REMEM_HOOK_DEBUG": "1",
+            "BAG_DSN": "postgresql://nobody@127.0.0.1:1/none",
+            "BAG_HOOK_DEBUG": "1",
         },
     )
     captured = capsys.readouterr()
     assert out == ""
     assert captured.out == ""
-    assert "remem hook" in captured.err
+    assert "bag hook" in captured.err
 
 
 def test_debug_never_breaks_fail_soft(capsys: pytest.CaptureFixture[str]) -> None:
@@ -199,14 +199,14 @@ def test_debug_names_the_missing_knowledge_base(
     def no_spawn(env: Mapping[str, str]) -> bool:
         return False
 
-    monkeypatch.setattr("remem.agents.claude_code.hook.spawn_process", no_spawn)
-    monkeypatch.setattr("remem.agents.claude_code.hook.spawn_ingest", no_spawn)
-    monkeypatch.setattr("remem.agents.claude_code.hook.spawn_memory", no_spawn)
+    monkeypatch.setattr("saddlebag.agents.claude_code.hook.spawn_process", no_spawn)
+    monkeypatch.setattr("saddlebag.agents.claude_code.hook.spawn_ingest", no_spawn)
+    monkeypatch.setattr("saddlebag.agents.claude_code.hook.spawn_memory", no_spawn)
     env = {
-        "REMEM_DSN": live_dsn,
-        "REMEM_USER_ID": "brandon",
-        "REMEM_CONFIG": str(tmp_path / "none.toml"),
-        "REMEM_HOOK_DEBUG": "1",
+        "BAG_DSN": live_dsn,
+        "BAG_USER_ID": "brandon",
+        "BAG_CONFIG": str(tmp_path / "none.toml"),
+        "BAG_HOOK_DEBUG": "1",
     }
     out = session_start(json.dumps({"cwd": str(tmp_path / "unknown-proj")}), env=env)
     err = capsys.readouterr().err
@@ -223,7 +223,7 @@ def test_main_guard_survives_a_failure_inside_session_start(
     session_start's own guard already covers them. This one bypasses that by
     making session_start itself raise.
     """
-    import remem.agents.claude_code.hook as hook
+    import saddlebag.agents.claude_code.hook as hook
 
     def boom(*_args: object, **_kwargs: object) -> str:
         raise RuntimeError("session_start exploded")
@@ -239,7 +239,7 @@ def test_main_returns_zero_when_stdin_itself_raises(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """A hook must exit 0 even if reading stdin fails."""
-    import remem.agents.claude_code.hook as hook
+    import saddlebag.agents.claude_code.hook as hook
 
     class ExplodingStdin:
         def read(self) -> str:

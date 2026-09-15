@@ -12,9 +12,9 @@ from uuid import UUID
 import psycopg
 import pytest
 
-from remem.backends.postgres.migrate import migrate
-from remem.backends.postgres.store import PostgresStore
-from remem.domain import Entry, Kind, Origin, Query, new_id
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.store import PostgresStore
+from saddlebag.domain import Entry, Kind, Origin, Query, new_id
 
 pytestmark = pytest.mark.db
 

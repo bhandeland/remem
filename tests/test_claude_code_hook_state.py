@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from remem.agents.claude_code.adapter import ClaudeCodeAdapter
+from saddlebag.agents.claude_code.adapter import ClaudeCodeAdapter
 
 
 def write_settings(home: Path, hooks: dict[str, Any]) -> Path:
@@ -33,14 +33,14 @@ def test_a_hook_that_is_not_registered_is_reported_as_absent(tmp_path: Path) -> 
     write_settings(
         tmp_path,
         {
-            "SessionStart": [entry("remem hook session-start")],
-            "SessionEnd": [entry("remem hook record-event")],
-            "UserPromptSubmit": [entry("remem hook session-size")],
+            "SessionStart": [entry("bag hook session-start")],
+            "SessionEnd": [entry("bag hook record-event")],
+            "UserPromptSubmit": [entry("bag hook session-size")],
         },
     )
     state = ClaudeCodeAdapter().hook_state("user", tmp_path, {})
     assert state.found["PostToolUse"] == ()
-    assert state.found["SessionStart"] == ("remem hook session-start",)
+    assert state.found["SessionStart"] == ("bag hook session-start",)
 
 
 def test_a_hook_registered_twice_reports_both(tmp_path: Path) -> None:
@@ -50,30 +50,30 @@ def test_a_hook_registered_twice_reports_both(tmp_path: Path) -> None:
         tmp_path,
         {
             "PostToolUse": [
-                entry("remem hook record-event"),
-                entry("remem hook record-event"),
+                entry("bag hook record-event"),
+                entry("bag hook record-event"),
             ],
         },
     )
     state = ClaudeCodeAdapter().hook_state("user", tmp_path, {})
     assert state.found["PostToolUse"] == (
-        "remem hook record-event",
-        "remem hook record-event",
+        "bag hook record-event",
+        "bag hook record-event",
     )
 
 
 def test_a_legacy_command_is_reported_as_the_command_it_actually_names(
     tmp_path: Path,
 ) -> None:
-    """`remem hook session-end` is a real back-compat alias, so the hook
+    """`bag hook session-end` is a real back-compat alias, so the hook
     still fires. Reporting it as MISSING would be a lie; the service calls
     it STALE."""
-    write_settings(tmp_path, {"SessionEnd": [entry("remem hook session-end")]})
+    write_settings(tmp_path, {"SessionEnd": [entry("bag hook session-end")]})
     state = ClaudeCodeAdapter().hook_state("user", tmp_path, {})
-    assert state.found["SessionEnd"] == ("remem hook session-end",)
+    assert state.found["SessionEnd"] == ("bag hook session-end",)
 
 
-def test_another_tool_s_hook_on_the_same_event_is_not_remem_s_business(
+def test_another_tool_s_hook_on_the_same_event_is_not_saddlebag_s_business(
     tmp_path: Path,
 ) -> None:
     write_settings(
@@ -81,12 +81,12 @@ def test_another_tool_s_hook_on_the_same_event_is_not_remem_s_business(
         {
             "PostToolUse": [
                 entry("some-other-tool --hook"),
-                entry("remem hook record-event"),
+                entry("bag hook record-event"),
             ],
         },
     )
     state = ClaudeCodeAdapter().hook_state("user", tmp_path, {})
-    assert state.found["PostToolUse"] == ("remem hook record-event",)
+    assert state.found["PostToolUse"] == ("bag hook record-event",)
 
 
 def test_no_settings_file_at_all_is_an_answer_not_an_error(tmp_path: Path) -> None:
@@ -121,14 +121,14 @@ def test_opencode_declines_the_capability_rather_than_answering_ok() -> None:
     registration to check. It must DECLINE - an adapter that answered with
     an empty expected set would render as a clean bill of health for
     something never examined."""
-    from remem.agents.opencode.adapter import OpenCodeAdapter
+    from saddlebag.agents.opencode.adapter import OpenCodeAdapter
 
     assert not hasattr(OpenCodeAdapter, "hook_state")
 
 
 def test_a_missing_settings_file_still_names_the_path_examined(tmp_path: Path) -> None:
     """ "Not installed" without a path is indistinguishable from a check
-    that looked somewhere else entirely - which is exactly how `remem
+    that looked somewhere else entirely - which is exactly how `saddlebag
     doctor` came to report cursor absent while it was installed."""
     state = ClaudeCodeAdapter().hook_state("user", tmp_path, {})
     assert state.path == tmp_path / ".claude" / "settings.json"

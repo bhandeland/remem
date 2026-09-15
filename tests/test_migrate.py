@@ -3,7 +3,7 @@ from typing import Any
 import psycopg
 import pytest
 
-from remem.backends.postgres.migrate import (
+from saddlebag.backends.postgres.migrate import (
     applied_versions,
     migrate,
     pending_versions,

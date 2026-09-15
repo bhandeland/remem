@@ -12,9 +12,9 @@ from typing import Any
 import psycopg
 import pytest
 
-from remem.backends.postgres.migrate import migrate
-from remem.backends.postgres.store import PostgresStore
-from remem.domain import Principal, new_id
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.store import PostgresStore
+from saddlebag.domain import Principal, new_id
 
 pytestmark = pytest.mark.db
 
@@ -69,7 +69,7 @@ def test_a_left_over_job_is_counted_for_its_owner_only(
         conn.execute(
             "insert into capture_jobs_legacy (id, owner_id, project, "
             "transcript_path) values (%s, %s, %s, %s)",
-            (new_id(), principal.id, "remem", "/tmp/t.jsonl"),
+            (new_id(), principal.id, "saddlebag", "/tmp/t.jsonl"),
         )
 
     assert store.pending_legacy_capture_jobs(owner.id) == 1
@@ -82,6 +82,6 @@ def test_a_finished_job_is_not_pending(
     conn.execute(
         "insert into capture_jobs_legacy (id, owner_id, project, "
         "transcript_path, status) values (%s, %s, %s, %s, 'done')",
-        (job_id, owner.id, "remem", "/tmp/t.jsonl"),
+        (job_id, owner.id, "saddlebag", "/tmp/t.jsonl"),
     )
     assert store.pending_legacy_capture_jobs(owner.id) == 0

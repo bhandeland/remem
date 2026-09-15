@@ -3,10 +3,10 @@ from __future__ import annotations
 from collections.abc import Sequence
 from pathlib import Path
 
-from remem import memory_file
-from remem.domain import Entry
-from remem.services import memory
-from remem.services.memory import Case
+from saddlebag import memory_file
+from saddlebag.domain import Entry
+from saddlebag.services import memory
+from saddlebag.services.memory import Case
 
 MARK = memory.Watermark(entry_id="e", body_sha="A", exported_at="t")
 
@@ -36,7 +36,7 @@ def test_both_moved_is_a_conflict():
 
 
 def test_both_moved_to_the_same_content_is_not_a_conflict():
-    # Claude and remem independently arriving at the same text is agreement,
+    # Claude and saddlebag independently arriving at the same text is agreement,
     # not a conflict, and asking the user to resolve it would be noise.
     assert memory.classify(file_sha="B", entry_sha="B", mark=MARK) == Case.HEAL
 
@@ -54,7 +54,7 @@ def test_an_entry_gone_from_the_collection_deletes_its_file():
 
 
 def test_a_file_that_moved_since_export_is_never_deleted():
-    # The gate: remem removes only what it wrote and knows to be untouched.
+    # The gate: saddlebag removes only what it wrote and knows to be untouched.
     assert memory.classify(file_sha="B", entry_sha=None, mark=MARK) == (Case.ADOPT_EDIT)
 
 
@@ -82,7 +82,7 @@ def test_a_corrupt_watermark_file_is_an_empty_mapping(tmp_path: Path) -> None:
 # the file being replaced for exactly this reason; `type` belongs on the
 # same footing whenever the entry has nothing to say about it.
 def _entry(tags: Sequence[str]) -> Entry:
-    from remem.domain import Kind, Origin, new_id
+    from saddlebag.domain import Kind, Origin, new_id
 
     return Entry(
         id=new_id(),
@@ -121,5 +121,5 @@ def test_a_type_only_on_disk_is_carried_through_a_regenerate():
     assert mf.type == "reference"
 
 
-def test_a_file_remem_creates_from_scratch_still_has_no_type():
+def test_a_file_saddlebag_creates_from_scratch_still_has_no_type():
     assert memory._as_file(_entry(["mem:n"]), "n").type is None

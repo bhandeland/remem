@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from remem.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.migrate import migrate
 
 pytestmark = pytest.mark.db
 
@@ -16,21 +16,21 @@ def env(live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> str:
     with psycopg.connect(live_dsn) as c:
         migrate(c)
         c.commit()
-    monkeypatch.setenv("REMEM_DSN", live_dsn)
-    monkeypatch.setenv("REMEM_USER_ID", "brandon")
-    monkeypatch.setenv("REMEM_CONFIG", str(tmp_path / "none.toml"))
+    monkeypatch.setenv("BAG_DSN", live_dsn)
+    monkeypatch.setenv("BAG_USER_ID", "brandon")
+    monkeypatch.setenv("BAG_CONFIG", str(tmp_path / "none.toml"))
     return live_dsn
 
 
 def test_recall_hides_archived_chunks_unless_asked(env: str, tmp_path: Path) -> None:
-    from remem.mcp_server import recall_tool
-    from remem.services import ingest
-    from remem.session import open_session
+    from saddlebag.mcp_server import recall_tool
+    from saddlebag.services import ingest
+    from saddlebag.session import open_session
 
     doc = tmp_path / "plan.md"
     doc.write_text("# Plan\n\nlead\n\n## Task 9\n\nsession wiring and the CLI\n")
     with open_session() as s:
-        ingest.ingest_file(s.store, s.owner.id, doc, project="remem", archive=True)
+        ingest.ingest_file(s.store, s.owner.id, doc, project="saddlebag", archive=True)
 
     assert recall_tool(query="session wiring") == []
 

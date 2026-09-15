@@ -4,7 +4,7 @@
 "rather than writing nothing silently" - the same contract
 `store.set_superseded` carries, and which `write.supersede` already checks
 and raises on. `kb.pin` threw the answer away, so a pin that wrote no row
-reported success to `remem kb pin` and to the MCP `kb_pin` tool.
+reported success to `bag kb pin` and to the MCP `kb_pin` tool.
 
 The Protocol is what hid it: `Store.pin` was declared `-> None`, so no
 reader of the interface could see there was a verdict to check.
@@ -17,11 +17,11 @@ from typing import Any
 import psycopg
 import pytest
 
-from remem.backends.postgres.migrate import migrate
-from remem.backends.postgres.store import PostgresStore
-from remem.domain import CollectionQuery, Kind, Origin, Principal
-from remem.services import kb
-from remem.services.write import remember
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.store import PostgresStore
+from saddlebag.domain import CollectionQuery, Kind, Origin, Principal
+from saddlebag.services import kb
+from saddlebag.services.write import remember
 
 pytestmark = pytest.mark.db
 

@@ -1,4 +1,4 @@
-"""`remem events prune` - the one command in this pipeline that deletes.
+"""`bag events prune` - the one command in this pipeline that deletes.
 
 Deleting raw events is irreversible, so the command is built to refuse: no
 default window, no unextracted events without `--force`, and it always
@@ -17,11 +17,11 @@ import psycopg
 import pytest
 from typer.testing import CliRunner
 
-from remem.backends.postgres.migrate import migrate
-from remem.backends.postgres.store import PostgresStore
-from remem.cli import app
-from remem.domain import Event, EventKind, JobStatus, Principal, SessionRef, new_id
-from remem.services import events, write
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.store import PostgresStore
+from saddlebag.cli import app
+from saddlebag.domain import Event, EventKind, JobStatus, Principal, SessionRef, new_id
+from saddlebag.services import events, write
 from tests.conftest import found
 
 runner = CliRunner()
@@ -53,7 +53,7 @@ def an_event(
     return Event(
         id=new_id(),
         owner_id=owner.id,
-        project="remem",
+        project="saddlebag",
         harness="claude-code",
         session_id=session,
         kind=EventKind.TOOL_CALL,
@@ -71,7 +71,7 @@ def _mark_done(
     job = store.claim_extract_job(
         owner.id,
         SessionRef(
-            project="remem",
+            project="saddlebag",
             harness="claude-code",
             session_id=session_id,
             event_count=0,
@@ -84,9 +84,9 @@ def _mark_done(
 def test_prune_without_a_window_is_refused_at_the_cli(
     live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.setenv("REMEM_DSN", live_dsn)
-    monkeypatch.setenv("REMEM_USER_ID", "brandon")
-    monkeypatch.setenv("REMEM_CONFIG", str(tmp_path / "none.toml"))
+    monkeypatch.setenv("BAG_DSN", live_dsn)
+    monkeypatch.setenv("BAG_USER_ID", "brandon")
+    monkeypatch.setenv("BAG_CONFIG", str(tmp_path / "none.toml"))
     result = runner.invoke(app, ["events", "prune"])
     assert result.exit_code != 0
     assert "--before" in result.stdout + str(result.stderr)
@@ -102,7 +102,7 @@ def test_prune_refuses_unextracted_events(
         events.prune(store, owner.id, before=NOW)
     assert exc.value.unextracted == 1
 
-    remaining = store.events_for_session(owner.id, "remem", "claude-code", "s1")
+    remaining = store.events_for_session(owner.id, "saddlebag", "claude-code", "s1")
     assert [e.id for e in remaining] == [old.id]
 
 
@@ -114,7 +114,7 @@ def test_force_deletes_unextracted_events(
     report = events.prune(store, owner.id, before=NOW, force=True)
 
     assert report.deleted == 1
-    assert store.events_for_session(owner.id, "remem", "claude-code", "s1") == []
+    assert store.events_for_session(owner.id, "saddlebag", "claude-code", "s1") == []
 
 
 def test_prune_leaves_entries_and_provenance_intact(
@@ -161,7 +161,7 @@ def test_events_inside_the_window_are_kept(
     report = events.prune(store, owner.id, before=NOW - timedelta(days=30))
 
     assert report.deleted == 1
-    remaining = store.events_for_session(owner.id, "remem", "claude-code", "s1")
+    remaining = store.events_for_session(owner.id, "saddlebag", "claude-code", "s1")
     assert [e.id for e in remaining] == [recent.id]
 
 
@@ -184,10 +184,10 @@ def test_a_mixed_window_prunes_what_it_can_without_refusing(
 
     assert report.deleted == 1
     assert report.kept_unextracted == 1
-    assert store.events_for_session(owner.id, "remem", "claude-code", "done") == []
+    assert store.events_for_session(owner.id, "saddlebag", "claude-code", "done") == []
     assert [
         e.id
-        for e in store.events_for_session(owner.id, "remem", "claude-code", "stuck")
+        for e in store.events_for_session(owner.id, "saddlebag", "claude-code", "stuck")
     ] == [unextracted.id]
 
 
@@ -207,8 +207,8 @@ def test_prune_never_reaches_across_owners(
     report = events.prune(store, owner.id, before=NOW)
 
     assert report.deleted == 1
-    assert store.events_for_session(owner.id, "remem", "claude-code", "s1") == []
-    survived = store.events_for_session(other.id, "remem", "claude-code", "s1")
+    assert store.events_for_session(owner.id, "saddlebag", "claude-code", "s1") == []
+    survived = store.events_for_session(other.id, "saddlebag", "claude-code", "s1")
     assert [e.id for e in survived] == [theirs.id]
 
 
@@ -228,9 +228,9 @@ def cli_env(live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> s
     with psycopg.connect(live_dsn) as c:
         migrate(c)
         c.commit()
-    monkeypatch.setenv("REMEM_DSN", live_dsn)
-    monkeypatch.setenv("REMEM_USER_ID", "brandon")
-    monkeypatch.setenv("REMEM_CONFIG", str(tmp_path / "none.toml"))
+    monkeypatch.setenv("BAG_DSN", live_dsn)
+    monkeypatch.setenv("BAG_USER_ID", "brandon")
+    monkeypatch.setenv("BAG_CONFIG", str(tmp_path / "none.toml"))
     return live_dsn
 
 
@@ -246,7 +246,9 @@ def test_prune_deletes_through_the_cli(cli_env: str) -> None:
     assert "deleted 1 events" in result.stdout
     with psycopg.connect(cli_env) as c:
         store = PostgresStore(c)
-        assert store.events_for_session(owner_id, "remem", "claude-code", "s1") == []
+        assert (
+            store.events_for_session(owner_id, "saddlebag", "claude-code", "s1") == []
+        )
 
 
 def test_prune_json_reports_all_three_counts_and_the_scope(cli_env: str) -> None:
@@ -256,7 +258,7 @@ def test_prune_json_reports_all_three_counts_and_the_scope(cli_env: str) -> None
     `project` is here for the same reason, and is null on an unscoped run
     rather than absent: a wrapper that has to tell "all projects" from "one
     project" cannot do it by a missing key, which reads identically to an
-    older remem that never reported scope at all.
+    older saddlebag that never reported scope at all.
     """
     _seed_prunable(cli_env)
 
@@ -347,7 +349,7 @@ def _mark_done_in(
 
 def _seed_two_projects(store: PostgresStore, owner: Principal) -> datetime:
     old = NOW - timedelta(days=40)
-    for project, session in (("remem", "s1"), ("client-work", "s2")):
+    for project, session in (("saddlebag", "s1"), ("client-work", "s2")):
         e = store.put_event(an_event_in(owner, project, at=old, session=session))
         _mark_done_in(store, owner, project, session, found(e.occurred_at))
     return old
@@ -365,7 +367,7 @@ def test_prune_scoped_to_a_project_leaves_every_other_project_alone(
     )
 
     assert report.deleted == 1
-    assert store.events_for_session(owner.id, "remem", "claude-code", "s1") != []
+    assert store.events_for_session(owner.id, "saddlebag", "claude-code", "s1") != []
     assert store.events_for_session(owner.id, "client-work", "claude-code", "s2") == []
 
 
@@ -392,7 +394,7 @@ def test_a_project_with_nothing_in_the_window_deletes_nothing(
     )
 
     assert report.deleted == 0
-    assert store.events_for_session(owner.id, "remem", "claude-code", "s1") != []
+    assert store.events_for_session(owner.id, "saddlebag", "claude-code", "s1") != []
 
 
 def test_the_unextracted_refusal_is_scoped_to_the_project_too(
@@ -418,7 +420,7 @@ def test_the_unextracted_refusal_is_scoped_to_the_project_too(
 def test_prune_project_still_requires_a_window(cli_env: str) -> None:
     """--project narrows the blast radius; it does not buy an exemption
     from the rule that the window is always typed."""
-    result = runner.invoke(app, ["events", "prune", "--project", "remem"])
+    result = runner.invoke(app, ["events", "prune", "--project", "saddlebag"])
 
     assert result.exit_code == 1
     assert "--before is required" in (result.stdout + str(result.stderr))
@@ -443,7 +445,9 @@ def test_prune_project_through_the_cli(cli_env: str) -> None:
         assert (
             store.events_for_session(owner_id, "client-work", "claude-code", "s2") == []
         )
-        assert store.events_for_session(owner_id, "remem", "claude-code", "s1") != []
+        assert (
+            store.events_for_session(owner_id, "saddlebag", "claude-code", "s1") != []
+        )
 
 
 def test_the_cli_says_which_project_it_pruned(cli_env: str) -> None:

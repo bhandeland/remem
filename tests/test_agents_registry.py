@@ -2,8 +2,8 @@ from importlib.metadata import EntryPoint, entry_points
 
 import pytest
 
-import remem.agents.registry as registry
-from remem.agents.registry import UnknownAgent, discover, get
+import saddlebag.agents.registry as registry
+from saddlebag.agents.registry import UnknownAgent, discover, get
 
 
 def test_claude_code_is_discovered() -> None:
@@ -27,7 +27,7 @@ def test_a_broken_entry_point_is_reported_but_does_not_break_discovery(
     real = list(entry_points(group=registry.GROUP))
     broken = EntryPoint(
         name="broken-agent",
-        value="remem.agents.nonexistent_module:NoSuchAdapter",
+        value="saddlebag.agents.nonexistent_module:NoSuchAdapter",
         group=registry.GROUP,
     )
 

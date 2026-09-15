@@ -3,10 +3,10 @@ from typing import Any
 import psycopg
 import pytest
 
-from remem.backends.postgres.migrate import migrate
-from remem.backends.postgres.store import PostgresStore
-from remem.domain import CollectionQuery, Origin, Principal, Query
-from remem.services import kb, write
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.store import PostgresStore
+from saddlebag.domain import CollectionQuery, Origin, Principal, Query
+from saddlebag.services import kb, write
 
 pytestmark = pytest.mark.db
 

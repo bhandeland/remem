@@ -4,11 +4,11 @@ from pathlib import Path
 
 import pytest
 
-from remem.agents.claude_code import hook
-from remem.backends.postgres.migrate import migrate
-from remem.backends.postgres.store import PostgresStore
-from remem.domain import CollectionQuery
-from remem.services import handoff, kb, write
+from saddlebag.agents.claude_code import hook
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.store import PostgresStore
+from saddlebag.domain import CollectionQuery
+from saddlebag.services import handoff, kb, write
 
 pytestmark = pytest.mark.db
 
@@ -25,25 +25,25 @@ def live(
         migrate(c)
         c.commit()
 
-    # session_start spawns three detached `remem` processes in a `finally` on
+    # session_start spawns three detached `bag` processes in a `finally` on
     # every path. Pointed at this live test database they outlive the test
     # and race conftest's truncate-cascade for table locks - the same
     # deadlock test_hook_context_cli.py's env fixture stubs against.
     def no_spawn(env: Mapping[str, str]) -> bool:
         return False
 
-    monkeypatch.setattr("remem.agents.claude_code.hook.spawn_process", no_spawn)
-    monkeypatch.setattr("remem.agents.claude_code.hook.spawn_ingest", no_spawn)
-    monkeypatch.setattr("remem.agents.claude_code.hook.spawn_memory", no_spawn)
+    monkeypatch.setattr("saddlebag.agents.claude_code.hook.spawn_process", no_spawn)
+    monkeypatch.setattr("saddlebag.agents.claude_code.hook.spawn_ingest", no_spawn)
+    monkeypatch.setattr("saddlebag.agents.claude_code.hook.spawn_memory", no_spawn)
     return {
-        "REMEM_DSN": live_dsn,
-        "REMEM_USER_ID": "brandon",
-        "REMEM_CONFIG": str(tmp_path / "none.toml"),
+        "BAG_DSN": live_dsn,
+        "BAG_USER_ID": "brandon",
+        "BAG_CONFIG": str(tmp_path / "none.toml"),
     }
 
 
 def _seed(
-    dsn: str, *, with_kb: bool, with_handoff: bool, project: str = "remem"
+    dsn: str, *, with_kb: bool, with_handoff: bool, project: str = "saddlebag"
 ) -> None:
     import psycopg
 
@@ -75,7 +75,7 @@ def repo(tmp_path: Path) -> Path:
     """A real git repository, since the project comes from git, not the dir."""
     import subprocess
 
-    d = tmp_path / "remem"
+    d = tmp_path / "saddlebag"
     d.mkdir()
     subprocess.run(["git", "init", "-q"], cwd=d, check=True)
     return d
@@ -84,27 +84,27 @@ def repo(tmp_path: Path) -> Path:
 def test_the_pointer_is_appended_to_the_context_block(
     live: dict[str, str], repo: Path
 ) -> None:
-    _seed(live["REMEM_DSN"], with_kb=True, with_handoff=True)
+    _seed(live["BAG_DSN"], with_kb=True, with_handoff=True)
     out = hook.session_start(_payload(repo), env=live)
     assert "A note" in out
     assert "Handoff available: ci" in out
-    assert "remem-prime ci" in out
+    assert "bag-prime ci" in out
 
 
 def test_the_pointer_appears_with_no_knowledge_base_at_all(
     live: dict[str, str], repo: Path
 ) -> None:
-    _seed(live["REMEM_DSN"], with_kb=False, with_handoff=True)
+    _seed(live["BAG_DSN"], with_kb=False, with_handoff=True)
     out = hook.session_start(_payload(repo), env=live)
     assert "Handoff available: ci" in out
 
 
 def test_no_handoff_means_no_pointer(live: dict[str, str], repo: Path) -> None:
-    _seed(live["REMEM_DSN"], with_kb=True, with_handoff=False)
+    _seed(live["BAG_DSN"], with_kb=True, with_handoff=False)
     out = hook.session_start(_payload(repo), env=live)
     assert "Handoff available" not in out
 
 
 def test_nothing_at_all_still_returns_empty(live: dict[str, str], repo: Path) -> None:
-    _seed(live["REMEM_DSN"], with_kb=False, with_handoff=False)
+    _seed(live["BAG_DSN"], with_kb=False, with_handoff=False)
     assert hook.session_start(_payload(repo), env=live) == ""

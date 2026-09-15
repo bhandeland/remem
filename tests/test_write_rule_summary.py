@@ -10,10 +10,10 @@ from typing import Any
 import psycopg
 import pytest
 
-from remem.backends.postgres.migrate import migrate
-from remem.backends.postgres.store import PostgresStore
-from remem.domain import Kind, Origin, Principal
-from remem.services import write
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.store import PostgresStore
+from saddlebag.domain import Kind, Origin, Principal
+from saddlebag.services import write
 
 pytestmark = pytest.mark.db
 
@@ -39,7 +39,7 @@ def test_a_rule_without_a_summary_is_refused(
             title="A rule",
             body="the case for it",
             kind=Kind.RULE,
-            project="remem",
+            project="saddlebag",
         )
 
 
@@ -54,7 +54,7 @@ def test_a_blank_summary_is_refused_too(store: PostgresStore, owner: Principal) 
             body="the case",
             summary="   ",
             kind=Kind.RULE,
-            project="remem",
+            project="saddlebag",
         )
 
 
@@ -68,7 +68,7 @@ def test_a_rule_with_a_summary_is_written(
         body="the case",
         summary="do the thing",
         kind=Kind.RULE,
-        project="remem",
+        project="saddlebag",
     )
     assert e.summary == "do the thing"
 
@@ -85,7 +85,7 @@ def test_a_human_rule_without_a_summary_is_still_refused(
             title="A rule",
             body="the case",
             kind=Kind.RULE,
-            project="remem",
+            project="saddlebag",
             origin=Origin.HUMAN,
         )
 
@@ -103,7 +103,7 @@ def test_an_extracted_rule_writes_without_a_summary(
         title="An extracted rule",
         body="the case",
         kind=Kind.RULE,
-        project="remem",
+        project="saddlebag",
         origin=Origin.EXTRACTED,
     )
     assert e.summary is None
@@ -116,7 +116,12 @@ def test_notes_and_docs_do_not_need_a_summary(
     forced to state themselves in a line."""
     for kind in (Kind.NOTE, Kind.DOC):
         e = write.remember(
-            store, owner.id, title=f"A {kind}", body="body", kind=kind, project="remem"
+            store,
+            owner.id,
+            title=f"A {kind}",
+            body="body",
+            kind=kind,
+            project="saddlebag",
         )
         assert e.summary is None
 
@@ -137,7 +142,7 @@ def test_update_sets_a_summary_without_creating_a_second_entry(
         body="the case",
         summary="first",
         kind=Kind.RULE,
-        project="remem",
+        project="saddlebag",
     )
 
     updated = write.update(store, owner.id, e.id, summary="better line")
@@ -160,7 +165,7 @@ def test_update_refuses_to_empty_a_rules_summary(
         body="the case",
         summary="do the thing",
         kind=Kind.RULE,
-        project="remem",
+        project="saddlebag",
     )
     with pytest.raises(write.RuleNeedsSummary):
         write.update(store, owner.id, e.id, summary="")
@@ -179,7 +184,7 @@ def test_update_refuses_a_whitespace_summary_too(
         body="the case",
         summary="do the thing",
         kind=Kind.RULE,
-        project="remem",
+        project="saddlebag",
     )
     with pytest.raises(write.RuleNeedsSummary):
         write.update(store, owner.id, e.id, summary="   ")
@@ -195,7 +200,7 @@ def test_update_strips_the_summary_it_stores(
         body="the case",
         summary="do the thing",
         kind=Kind.RULE,
-        project="remem",
+        project="saddlebag",
     )
     updated = write.update(store, owner.id, e.id, summary="  padded  ")
     assert updated.summary == "padded"
@@ -211,7 +216,7 @@ def test_remember_strips_the_summary_it_stores(
         body="b",
         summary="  padded  ",
         kind=Kind.NOTE,
-        project="remem",
+        project="saddlebag",
     )
     assert e.summary == "padded"
 
@@ -229,7 +234,7 @@ def test_update_leaves_the_summary_alone_when_not_given(
         body="the case",
         summary="keep me",
         kind=Kind.RULE,
-        project="remem",
+        project="saddlebag",
     )
 
     updated = write.update(store, owner.id, e.id, title="A renamed rule")

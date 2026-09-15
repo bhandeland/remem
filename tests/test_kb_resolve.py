@@ -3,11 +3,11 @@ from typing import Any
 import psycopg
 import pytest
 
-from remem.backends.postgres.migrate import migrate
-from remem.backends.postgres.store import PostgresStore
-from remem.domain import CollectionQuery, Kind, Principal, new_id
-from remem.services import kb
-from remem.services.write import remember, supersede
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.store import PostgresStore
+from saddlebag.domain import CollectionQuery, Kind, Principal, new_id
+from saddlebag.services import kb
+from saddlebag.services.write import remember, supersede
 
 pytestmark = pytest.mark.db
 

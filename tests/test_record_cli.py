@@ -1,9 +1,9 @@
-"""`remem record event` - the CLI half of the write path.
+"""`bag record event` - the CLI half of the write path.
 
 This is a hook entry point in everything but name: it runs once per tool
 call, must exit 0 unconditionally, and prints nothing on stdout unless
 stdout is meant to be consumed. The one loud case is a human debugging by
-hand, which is why REMEM_HOOK_DEBUG and --strict exist.
+hand, which is why BAG_HOOK_DEBUG and --strict exist.
 """
 
 from __future__ import annotations
@@ -17,10 +17,10 @@ import psycopg
 import pytest
 from typer.testing import CliRunner
 
-from remem.agents.base import HarnessEvent
-from remem.agents.claude_code.adapter import ClaudeCodeAdapter
-from remem.backends.postgres.migrate import migrate
-from remem.cli import app
+from saddlebag.agents.base import HarnessEvent
+from saddlebag.agents.claude_code.adapter import ClaudeCodeAdapter
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.cli import app
 from tests.conftest import scalar
 
 runner = CliRunner()
@@ -33,9 +33,9 @@ def env(live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> str:
     with psycopg.connect(live_dsn) as c:
         migrate(c)
         c.commit()
-    monkeypatch.setenv("REMEM_DSN", live_dsn)
-    monkeypatch.setenv("REMEM_USER_ID", "brandon")
-    monkeypatch.setenv("REMEM_CONFIG", str(tmp_path / "none.toml"))
+    monkeypatch.setenv("BAG_DSN", live_dsn)
+    monkeypatch.setenv("BAG_USER_ID", "brandon")
+    monkeypatch.setenv("BAG_CONFIG", str(tmp_path / "none.toml"))
     return live_dsn
 
 
@@ -93,11 +93,11 @@ def test_record_event_exits_zero_on_garbage_stdin(env: str) -> None:
 def test_record_event_explains_itself_under_hook_debug(
     env: str, monkeypatch: pytest.MonkeyPatch, repo: Path
 ) -> None:
-    monkeypatch.setenv("REMEM_HOOK_DEBUG", "1")
+    monkeypatch.setenv("BAG_HOOK_DEBUG", "1")
     result = runner.invoke(app, ["record", "event"], input=json.dumps(_payload(repo)))
     assert result.exit_code == 0
     assert "myrepo" in result.stderr
-    assert "remem record enable" in result.stderr
+    assert "bag record enable" in result.stderr
 
 
 def test_an_adapter_whose_event_capability_raises_degrades(
@@ -124,7 +124,7 @@ def test_an_adapter_with_no_event_capability_says_so(
     answer, and it is the one Cursor and opencode give until their adapters
     ship."""
     monkeypatch.delattr(ClaudeCodeAdapter, "event")
-    monkeypatch.setenv("REMEM_HOOK_DEBUG", "1")
+    monkeypatch.setenv("BAG_HOOK_DEBUG", "1")
 
     result = runner.invoke(app, ["record", "event"], input=json.dumps(_payload(repo)))
 
@@ -168,4 +168,4 @@ def test_record_enable_states_the_model_and_cost(env: str) -> None:
     assert result.exit_code == 0
     out = result.stdout.lower()
     assert "sonnet" in out
-    assert "REMEM_EXTRACT_MODEL".lower() in out
+    assert "BAG_EXTRACT_MODEL".lower() in out

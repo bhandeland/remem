@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from remem.agents.claude_code.env_vars import CLAUDE_CODE_ENV_VARS
-from remem.services.settings import (
-    REMEM_VARS,
+from saddlebag.agents.claude_code.env_vars import CLAUDE_CODE_ENV_VARS
+from saddlebag.services.settings import (
+    BAG_VARS,
     InvalidValue,
     Target,
     coerce,
@@ -84,27 +84,27 @@ def test_a_bool_key_normalises_true_and_false():
 
 def test_an_empty_string_is_allowed_on_an_agent_key():
     # Claude Code's documented way to neutralise a shell variable the user
-    # does not control: "VAR": "" in the settings file. The remem side of
+    # does not control: "VAR": "" in the settings file. The saddlebag side of
     # this rule is the pair of tests at the foot of the file.
     var = CLAUDE_CODE_ENV_VARS["BASH_DEFAULT_TIMEOUT_MS"]
     assert coerce(var, "", Target.AGENT) == ""
 
 
 def test_a_float_key_rejects_a_non_number():
-    # REMEM_FUZZY_THRESHOLD advertises "0 < t <= 1" in its help. Declared as
+    # BAG_FUZZY_THRESHOLD advertises "0 < t <= 1" in its help. Declared as
     # a plain string it enforced none of it: the junk reached config.toml and
     # config.load() then silently fell back to the default - the exact
     # accepted-then-ignored write this command exists to prevent.
-    var = REMEM_VARS["REMEM_FUZZY_THRESHOLD"]
+    var = BAG_VARS["BAG_FUZZY_THRESHOLD"]
     with pytest.raises(InvalidValue) as exc:
-        coerce(var, "not-a-number", Target.REMEM)
-    assert "REMEM_FUZZY_THRESHOLD" in str(exc.value)
+        coerce(var, "not-a-number", Target.SADDLEBAG)
+    assert "BAG_FUZZY_THRESHOLD" in str(exc.value)
 
 
 def test_a_float_key_rejects_a_value_above_the_maximum():
-    var = REMEM_VARS["REMEM_FUZZY_THRESHOLD"]
+    var = BAG_VARS["BAG_FUZZY_THRESHOLD"]
     with pytest.raises(InvalidValue) as exc:
-        coerce(var, "5", Target.REMEM)
+        coerce(var, "5", Target.SADDLEBAG)
     # The constraint is stated, not just the refusal.
     assert "1" in str(exc.value) and "0" in str(exc.value)
 
@@ -112,31 +112,31 @@ def test_a_float_key_rejects_a_value_above_the_maximum():
 def test_a_float_key_rejects_its_exclusive_lower_bound():
     # 0 is not merely below the range, it is the boundary: a threshold of 0
     # matches everything, which is why config.load() throws it away too.
-    var = REMEM_VARS["REMEM_FUZZY_THRESHOLD"]
+    var = BAG_VARS["BAG_FUZZY_THRESHOLD"]
     with pytest.raises(InvalidValue):
-        coerce(var, "0", Target.REMEM)
+        coerce(var, "0", Target.SADDLEBAG)
 
 
 def test_a_float_key_accepts_a_value_inside_the_range():
-    var = REMEM_VARS["REMEM_FUZZY_THRESHOLD"]
-    assert coerce(var, "0.45", Target.REMEM) == "0.45"
-    assert coerce(var, "1", Target.REMEM) == "1.0"
+    var = BAG_VARS["BAG_FUZZY_THRESHOLD"]
+    assert coerce(var, "0.45", Target.SADDLEBAG) == "0.45"
+    assert coerce(var, "1", Target.SADDLEBAG) == "1.0"
 
 
-def test_a_remem_numeric_key_refuses_an_empty_string():
+def test_a_saddlebag_numeric_key_refuses_an_empty_string():
     # Empty string is Claude Code's documented way to neutralise a shell
-    # export. remem's own file has the opposite precedence - the environment
+    # export. saddlebag's own file has the opposite precedence - the environment
     # already wins - so an empty value neutralises nothing there and is only
     # ever thrown away by config.load(). Refuse it and name the alternative.
-    var = REMEM_VARS["REMEM_MAX_CHARS"]
+    var = BAG_VARS["BAG_MAX_CHARS"]
     with pytest.raises(InvalidValue) as exc:
-        coerce(var, "", Target.REMEM)
+        coerce(var, "", Target.SADDLEBAG)
     assert "unset" in str(exc.value)
 
 
-def test_a_remem_string_key_still_accepts_an_empty_string():
+def test_a_saddlebag_string_key_still_accepts_an_empty_string():
     # Only the numeric keys are refused: an empty extract model or DSN is a
     # legitimate way to blank a file value, and config.load() has its own
     # fallback for it.
-    var = REMEM_VARS["REMEM_EXTRACT_MODEL"]
-    assert coerce(var, "", Target.REMEM) == ""
+    var = BAG_VARS["BAG_EXTRACT_MODEL"]
+    assert coerce(var, "", Target.SADDLEBAG) == ""

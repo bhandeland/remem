@@ -3,7 +3,7 @@
 The reserved project is forced into recording by round_trip() and must
 never be left that way. The cleanup block ran both statements
 unguarded, so an exception from the delete skipped the disable and left
-__remem_verify__ recording for the rest of the process's life.
+__saddlebag_verify__ recording for the rest of the process's life.
 """
 
 from __future__ import annotations
@@ -12,8 +12,8 @@ from typing import Any
 
 import pytest
 
-import remem.services.record  # noqa: F401 - makes the submodule patchable by string path below
-from remem.agents import verify
+import saddlebag.services.record  # noqa: F401 - makes the submodule patchable by string path below
+from saddlebag.agents import verify
 
 
 def test_a_failing_delete_still_disables_recording(
@@ -66,9 +66,9 @@ def test_a_failing_delete_still_disables_recording(
         },
     )
 
-    monkeypatch.setattr("remem.config.load", lambda env=None: object())
-    monkeypatch.setattr("remem.session.open_session", fake_open_session)
-    monkeypatch.setattr("remem.services.record", fake_record)
+    monkeypatch.setattr("saddlebag.config.load", lambda env=None: object())
+    monkeypatch.setattr("saddlebag.session.open_session", fake_open_session)
+    monkeypatch.setattr("saddlebag.services.record", fake_record)
 
     report = verify.round_trip("cursor", env={})
 
@@ -128,9 +128,9 @@ def test_a_failing_disable_is_reported_too(monkeypatch: pytest.MonkeyPatch) -> N
         },
     )
 
-    monkeypatch.setattr("remem.config.load", lambda env=None: object())
-    monkeypatch.setattr("remem.session.open_session", fake_open_session)
-    monkeypatch.setattr("remem.services.record", fake_record)
+    monkeypatch.setattr("saddlebag.config.load", lambda env=None: object())
+    monkeypatch.setattr("saddlebag.session.open_session", fake_open_session)
+    monkeypatch.setattr("saddlebag.services.record", fake_record)
 
     report = verify.round_trip("cursor", env={})
 

@@ -7,8 +7,8 @@ under test pins nothing.
 
 from __future__ import annotations
 
-from remem.domain import INJECTED_ORIGINS, Origin
-from remem.services.search import DEFAULT_ORIGINS
+from saddlebag.domain import INJECTED_ORIGINS, Origin
+from saddlebag.services.search import DEFAULT_ORIGINS
 
 
 def test_the_imported_origin_exists():

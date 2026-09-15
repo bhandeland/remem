@@ -1,4 +1,4 @@
-"""The SessionStart hook's detached `remem events process`.
+"""The SessionStart hook's detached `bag events process`.
 
 Any session works off the backlog, which is what keeps extraction from being
 stranded by the session that produced the events having ended. It must never
@@ -10,7 +10,7 @@ from typing import Any
 
 import pytest
 
-from remem.agents.claude_code import hook
+from saddlebag.agents.claude_code import hook
 
 
 def test_spawn_process_launches_a_detached_run(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -23,7 +23,7 @@ def test_spawn_process_launches_a_detached_run(monkeypatch: pytest.MonkeyPatch) 
 
     monkeypatch.setattr(subprocess, "Popen", fake_popen)
     assert hook.spawn_process({"PATH": "/usr/bin"}) is True
-    assert seen["cmd"][:3] == ["remem", "events", "process"]
+    assert seen["cmd"][:3] == ["bag", "events", "process"]
 
 
 def test_spawn_process_does_not_block_on_the_child(
@@ -52,15 +52,15 @@ def test_spawn_process_is_skipped_inside_an_extraction_child(
         called.append(1)
 
     monkeypatch.setattr(subprocess, "Popen", fake_popen)
-    assert hook.spawn_process({"REMEM_EXTRACT_CHILD": "1"}) is False
+    assert hook.spawn_process({"BAG_EXTRACT_CHILD": "1"}) is False
     assert called == []
 
 
-def test_spawn_process_returns_false_when_remem_is_missing(
+def test_spawn_process_returns_false_when_saddlebag_is_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def boom(*a: object, **k: object) -> None:
-        raise FileNotFoundError("remem")
+        raise FileNotFoundError("bag")
 
     monkeypatch.setattr(subprocess, "Popen", boom)
     assert hook.spawn_process({}) is False

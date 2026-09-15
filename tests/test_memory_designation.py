@@ -5,10 +5,10 @@ from typing import Any
 import psycopg
 import pytest
 
-from remem.backends.postgres.migrate import migrate
-from remem.backends.postgres.store import PostgresStore
-from remem.domain import Principal
-from remem.services import kb, memory
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.store import PostgresStore
+from saddlebag.domain import Principal
+from saddlebag.services import kb, memory
 
 pytestmark = pytest.mark.db
 

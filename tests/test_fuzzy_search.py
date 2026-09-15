@@ -12,11 +12,11 @@ from typing import Any
 import psycopg
 import pytest
 
-from remem.backends.postgres.migrate import migrate
-from remem.backends.postgres.store import PostgresStore
-from remem.domain import Kind, Match, Principal, Query
-from remem.services.search import find
-from remem.services.write import remember
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.store import PostgresStore
+from saddlebag.domain import Kind, Match, Principal, Query
+from saddlebag.services.search import find
+from saddlebag.services.write import remember
 
 pytestmark = pytest.mark.db
 
@@ -124,7 +124,7 @@ def test_fuzzy_respects_owner_scoping(store: PostgresStore, owner: Principal) ->
 def test_fuzzy_excludes_superseded_entries(
     store: PostgresStore, owner: Principal
 ) -> None:
-    from remem.services.write import supersede
+    from saddlebag.services.write import supersede
 
     old = remember(
         store, owner.id, title="Postgres connection pooling", body="the old truth"
@@ -187,14 +187,14 @@ def test_cli_marks_fuzzy_results_and_says_so(
     import psycopg
     from typer.testing import CliRunner
 
-    from remem.cli import app
+    from saddlebag.cli import app
 
     with psycopg.connect(live_dsn) as c:
         migrate(c)
         c.commit()
-    monkeypatch.setenv("REMEM_DSN", live_dsn)
-    monkeypatch.setenv("REMEM_USER_ID", "brandon")
-    monkeypatch.setenv("REMEM_CONFIG", str(tmp_path / "none.toml"))
+    monkeypatch.setenv("BAG_DSN", live_dsn)
+    monkeypatch.setenv("BAG_USER_ID", "brandon")
+    monkeypatch.setenv("BAG_CONFIG", str(tmp_path / "none.toml"))
 
     runner = CliRunner()
     runner.invoke(
@@ -228,11 +228,11 @@ def test_mcp_recall_labels_fuzzy_results(
     with psycopg.connect(live_dsn) as c:
         migrate(c)
         c.commit()
-    monkeypatch.setenv("REMEM_DSN", live_dsn)
-    monkeypatch.setenv("REMEM_USER_ID", "brandon")
-    monkeypatch.setenv("REMEM_CONFIG", str(tmp_path / "none.toml"))
+    monkeypatch.setenv("BAG_DSN", live_dsn)
+    monkeypatch.setenv("BAG_USER_ID", "brandon")
+    monkeypatch.setenv("BAG_CONFIG", str(tmp_path / "none.toml"))
 
-    from remem.mcp_server import recall_tool, remember_tool
+    from saddlebag.mcp_server import recall_tool, remember_tool
 
     remember_tool(
         title="Postgres connection pooling", body="the pool saturates under load"

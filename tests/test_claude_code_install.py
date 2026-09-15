@@ -4,18 +4,18 @@ from typing import Any
 
 import pytest
 
-from remem.agents.base import UnsupportedScope
-from remem.agents.claude_code.adapter import ClaudeCodeAdapter
-from remem.jsonfile import backup
+from saddlebag.agents.base import UnsupportedScope
+from saddlebag.agents.claude_code.adapter import ClaudeCodeAdapter
+from saddlebag.jsonfile import backup
 
 
 @pytest.mark.db
 def test_install_writes_the_mcp_server_entry(tmp_path: Path) -> None:
     report = ClaudeCodeAdapter().install(scope="user", home=tmp_path)
     config = json.loads((tmp_path / ".claude.json").read_text())
-    assert "remem" in config["mcpServers"]
-    assert config["mcpServers"]["remem"]["command"] == "remem"
-    assert config["mcpServers"]["remem"]["args"] == ["serve"]
+    assert "saddlebag" in config["mcpServers"]
+    assert config["mcpServers"]["saddlebag"]["command"] == "bag"
+    assert config["mcpServers"]["saddlebag"]["args"] == ["serve"]
     assert any("mcp" in a.lower() for a in report.actions)
 
 
@@ -26,7 +26,7 @@ def test_install_preserves_existing_config(tmp_path: Path) -> None:
     ClaudeCodeAdapter().install(scope="user", home=tmp_path)
     config = json.loads((tmp_path / ".claude.json").read_text())
     assert "other" in config["mcpServers"]
-    assert "remem" in config["mcpServers"]
+    assert "saddlebag" in config["mcpServers"]
     assert config["theme"] == "dark"
 
 
@@ -42,9 +42,9 @@ def test_install_backs_up_before_overwriting(tmp_path: Path) -> None:
 @pytest.mark.db
 def test_install_copies_the_skill(tmp_path: Path) -> None:
     ClaudeCodeAdapter().install(scope="user", home=tmp_path)
-    skill = tmp_path / ".claude" / "skills" / "remem" / "SKILL.md"
+    skill = tmp_path / ".claude" / "skills" / "bag" / "SKILL.md"
     assert skill.exists()
-    assert "remem search" in skill.read_text()
+    assert "bag search" in skill.read_text()
 
 
 @pytest.mark.db
@@ -53,7 +53,7 @@ def test_install_registers_the_session_start_hook(tmp_path: Path) -> None:
     settings = json.loads((tmp_path / ".claude" / "settings.json").read_text())
     hooks = settings["hooks"]["SessionStart"]
     command = hooks[0]["hooks"][0]["command"]
-    assert "remem hook session-start" in command
+    assert "bag hook session-start" in command
 
 
 @pytest.mark.db
@@ -66,7 +66,7 @@ def test_install_is_idempotent(tmp_path: Path) -> None:
     # enqueue the same session twice on every exit.
     assert len(settings["hooks"]["SessionEnd"]) == 1
     config = json.loads((tmp_path / ".claude.json").read_text())
-    assert list(config["mcpServers"]) == ["remem"]
+    assert list(config["mcpServers"]) == ["saddlebag"]
     # .claude.json is rewritten on every install (it already exists after the
     # first run), so the second run must back it up again.
     assert len(list(tmp_path.glob(".claude.json.bak*"))) == 1
@@ -133,7 +133,7 @@ def test_the_install_registers_a_posttooluse_hook(tmp_path: Path) -> None:
     ClaudeCodeAdapter().install(scope="user", home=tmp_path)
     settings = json.loads((tmp_path / ".claude" / "settings.json").read_text())
     command = settings["hooks"]["PostToolUse"][0]["hooks"][0]["command"]
-    assert "remem hook record-event" in command
+    assert "bag hook record-event" in command
 
 
 @pytest.mark.db
@@ -142,7 +142,7 @@ def test_the_install_still_registers_session_start(tmp_path: Path) -> None:
     ClaudeCodeAdapter().install(scope="user", home=tmp_path)
     settings = json.loads((tmp_path / ".claude" / "settings.json").read_text())
     command = settings["hooks"]["SessionStart"][0]["hooks"][0]["command"]
-    assert "remem hook session-start" in command
+    assert "bag hook session-start" in command
 
 
 @pytest.mark.db
@@ -158,7 +158,7 @@ def test_install_registers_the_session_size_hook(tmp_path: Path) -> None:
     ClaudeCodeAdapter().install(scope="user", home=tmp_path)
     settings = json.loads((tmp_path / ".claude" / "settings.json").read_text())
     command = settings["hooks"]["UserPromptSubmit"][0]["hooks"][0]["command"]
-    assert "remem hook session-size" in command
+    assert "bag hook session-size" in command
 
 
 @pytest.mark.db
@@ -175,37 +175,37 @@ def test_the_session_size_hook_is_registered_once(tmp_path: Path) -> None:
 def test_install_copies_every_bundled_skill(tmp_path: Path) -> None:
     ClaudeCodeAdapter().install(scope="user", home=tmp_path)
     skills = tmp_path / ".claude" / "skills"
-    assert (skills / "remem" / "SKILL.md").exists()
-    assert (skills / "remem-handoff" / "SKILL.md").exists()
-    assert (skills / "remem-prime" / "SKILL.md").exists()
-    assert (skills / "remem-record" / "SKILL.md").exists()
+    assert (skills / "bag" / "SKILL.md").exists()
+    assert (skills / "bag-handoff" / "SKILL.md").exists()
+    assert (skills / "bag-prime" / "SKILL.md").exists()
+    assert (skills / "bag-record" / "SKILL.md").exists()
 
 
 @pytest.mark.db
 def test_the_record_skill_leads_with_the_opt_in_gate(tmp_path: Path) -> None:
     ClaudeCodeAdapter().install(scope="user", home=tmp_path)
-    text = (tmp_path / ".claude" / "skills" / "remem-record" / "SKILL.md").read_text()
+    text = (tmp_path / ".claude" / "skills" / "bag-record" / "SKILL.md").read_text()
     # The gate is the whole safety story, and it is also the answer to the
     # question that brings anyone to this skill: nothing was recorded because
     # nobody turned it on.
-    assert "remem record enable" in text
+    assert "bag record enable" in text
 
 
 @pytest.mark.db
 def test_the_record_skill_explains_the_context_block_exclusion(tmp_path: Path) -> None:
     ClaudeCodeAdapter().install(scope="user", home=tmp_path)
-    text = (tmp_path / ".claude" / "skills" / "remem-record" / "SKILL.md").read_text()
+    text = (tmp_path / ".claude" / "skills" / "bag-record" / "SKILL.md").read_text()
     # An agent that finds an extracted entry in `search` but never in a
     # context block will otherwise conclude extraction is broken. It is
     # deliberate, and `kb pin` is the way out.
-    assert "remem kb pin" in text
+    assert "bag kb pin" in text
 
 
 @pytest.mark.db
 def test_the_record_skill_points_at_the_failure_surface(tmp_path: Path) -> None:
     ClaudeCodeAdapter().install(scope="user", home=tmp_path)
-    text = (tmp_path / ".claude" / "skills" / "remem-record" / "SKILL.md").read_text()
-    assert "remem record status" in text
+    text = (tmp_path / ".claude" / "skills" / "bag-record" / "SKILL.md").read_text()
+    assert "bag record status" in text
     # Retrying a job past the attempt cap is the one recovery path that is not
     # discoverable from `--help` on the parent command.
     assert "--job" in text
@@ -214,24 +214,24 @@ def test_the_record_skill_points_at_the_failure_surface(tmp_path: Path) -> None:
 @pytest.mark.db
 def test_the_handoff_skill_drives_the_cli(tmp_path: Path) -> None:
     ClaudeCodeAdapter().install(scope="user", home=tmp_path)
-    text = (tmp_path / ".claude" / "skills" / "remem-handoff" / "SKILL.md").read_text()
-    assert "remem handoff write" in text
+    text = (tmp_path / ".claude" / "skills" / "bag-handoff" / "SKILL.md").read_text()
+    assert "bag handoff write" in text
 
 
 @pytest.mark.db
 def test_the_prime_skill_reads_the_latest_handoff(tmp_path: Path) -> None:
     ClaudeCodeAdapter().install(scope="user", home=tmp_path)
-    text = (tmp_path / ".claude" / "skills" / "remem-prime" / "SKILL.md").read_text()
-    assert "remem handoff latest" in text
+    text = (tmp_path / ".claude" / "skills" / "bag-prime" / "SKILL.md").read_text()
+    assert "bag handoff latest" in text
 
 
 def test_identity_reads_the_hook_payload():
     ident = ClaudeCodeAdapter().identity(
-        env={}, payload={"session_id": "abc", "cwd": "/x/y/remem"}
+        env={}, payload={"session_id": "abc", "cwd": "/x/y/saddlebag"}
     )
     assert ident.agent == "claude-code"
     assert ident.session_id == "abc"
-    assert ident.project == "remem"
+    assert ident.project == "saddlebag"
 
 
 def test_identity_tolerates_an_empty_payload():
@@ -252,7 +252,7 @@ def test_install_states_the_hook_slug_convention(tmp_path: Path) -> None:
     report = ClaudeCodeAdapter().install(scope="user", home=tmp_path)
     text = "\n".join(report.notes)
     assert "slug" in text and "repository name" in text
-    assert "remem kb new" in text
+    assert "bag kb new" in text
     # The convention people get wrong: a subdirectory or worktree is the same
     # project, so the note has to say so rather than just naming the rule.
     assert "worktree" in text or "subdirectory" in text
@@ -275,9 +275,9 @@ def test_install_honours_claude_config_dir(tmp_path: Path) -> None:
     ClaudeCodeAdapter().install(
         scope="user", home=tmp_path, env={"CLAUDE_CONFIG_DIR": str(alt)}
     )
-    assert json.loads((alt / ".claude.json").read_text())["mcpServers"]["remem"]
+    assert json.loads((alt / ".claude.json").read_text())["mcpServers"]["saddlebag"]
     assert (alt / "settings.json").exists()
-    assert (alt / "skills" / "remem" / "SKILL.md").exists()
+    assert (alt / "skills" / "bag" / "SKILL.md").exists()
 
 
 @pytest.mark.db
@@ -314,10 +314,10 @@ def test_install_reports_the_relocated_directory(tmp_path: Path) -> None:
 
 @pytest.mark.db
 def test_install_mentions_the_config_command(tmp_path: Path) -> None:
-    # The install report is where someone learns what remem can do for them
+    # The install report is where someone learns what saddlebag can do for them
     # next; a command nobody is pointed at is a command nobody runs.
     report = ClaudeCodeAdapter().install(scope="user", home=tmp_path)
-    assert any("remem config" in n for n in report.notes)
+    assert any("bag config" in n for n in report.notes)
 
 
 @pytest.mark.db
@@ -326,8 +326,8 @@ def test_installing_over_a_pre_events_settings_file_does_not_double_register(
 ) -> None:
     """The upgrade path, not the fresh install.
 
-    `remem hook session-end` is a back-compat alias that runs exactly what
-    `remem hook record-event` runs (cli.py) - it predates the idle trigger
+    `bag hook session-end` is a back-compat alias that runs exactly what
+    `bag hook record-event` runs (cli.py) - it predates the idle trigger
     and stayed because an already-installed settings.json names it. So a
     settings file written before the events pipeline has SessionEnd pointing
     at the alias, and a membership test that only looks for the canonical
@@ -351,7 +351,7 @@ def test_installing_over_a_pre_events_settings_file_does_not_double_register(
                             "hooks": [
                                 {
                                     "type": "command",
-                                    "command": "remem hook session-start",
+                                    "command": "bag hook session-start",
                                     "timeout": 10,
                                 }
                             ],
@@ -363,7 +363,7 @@ def test_installing_over_a_pre_events_settings_file_does_not_double_register(
                             "hooks": [
                                 {
                                     "type": "command",
-                                    "command": "remem hook session-end",
+                                    "command": "bag hook session-end",
                                     "timeout": 10,
                                 }
                             ],
@@ -378,7 +378,7 @@ def test_installing_over_a_pre_events_settings_file_does_not_double_register(
 
     groups = json.loads(settings.read_text())["hooks"]["SessionEnd"]
     commands = [h["command"] for g in groups for h in g["hooks"]]
-    assert commands == ["remem hook record-event"], (
+    assert commands == ["bag hook record-event"], (
         "the legacy alias should be migrated in place, not appended beside: "
         f"got {commands}"
     )
@@ -393,7 +393,7 @@ def test_migrating_the_legacy_session_end_alias_is_idempotent(tmp_path: Path) ->
     settings = json.loads((tmp_path / ".claude" / "settings.json").read_text())
     groups = settings["hooks"]["SessionEnd"]
     commands = [h["command"] for g in groups for h in g["hooks"]]
-    assert commands == ["remem hook record-event"]
+    assert commands == ["bag hook record-event"]
 
 
 @pytest.mark.db
@@ -420,8 +420,8 @@ def test_install_collapses_a_hook_already_registered_twice(tmp_path: Path) -> No
             {
                 "hooks": {
                     "SessionEnd": [
-                        group("remem hook session-end", 10),
-                        group("remem hook record-event", 10),
+                        group("bag hook session-end", 10),
+                        group("bag hook record-event", 10),
                     ]
                 }
             }
@@ -432,7 +432,7 @@ def test_install_collapses_a_hook_already_registered_twice(tmp_path: Path) -> No
 
     groups = json.loads(settings.read_text())["hooks"]["SessionEnd"]
     commands = [h["command"] for g in groups for h in g["hooks"]]
-    assert commands == ["remem hook record-event"], (
+    assert commands == ["bag hook record-event"], (
         f"the duplicate should be collapsed to one entry: got {commands}"
     )
 
@@ -441,7 +441,7 @@ def test_install_collapses_a_hook_already_registered_twice(tmp_path: Path) -> No
 def test_install_leaves_another_tools_hook_on_the_same_event_alone(
     tmp_path: Path,
 ) -> None:
-    """The collapse is scoped to remem's own commands.
+    """The collapse is scoped to saddlebag's own commands.
 
     settings.json is shared - other tools register hooks on these same
     events, and an install that tidied the file by deleting entries it did
@@ -469,7 +469,7 @@ def test_install_leaves_another_tools_hook_on_the_same_event_alone(
                             "hooks": [
                                 {
                                     "type": "command",
-                                    "command": "remem hook session-end",
+                                    "command": "bag hook session-end",
                                     "timeout": 10,
                                 }
                             ],
@@ -485,4 +485,4 @@ def test_install_leaves_another_tools_hook_on_the_same_event_alone(
     groups = json.loads(settings.read_text())["hooks"]["SessionEnd"]
     commands = [h["command"] for g in groups for h in g["hooks"]]
     assert "some-other-tool --flush" in commands
-    assert commands.count("remem hook record-event") == 1
+    assert commands.count("bag hook record-event") == 1

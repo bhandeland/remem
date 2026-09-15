@@ -15,10 +15,10 @@ from typing import Any, cast
 import psycopg
 import pytest
 
-from remem.agents.base import HarnessEvent
-from remem.backends.postgres.migrate import migrate
-from remem.backends.postgres.store import PostgresStore
-from remem.domain import (
+from saddlebag.agents.base import HarnessEvent
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.store import PostgresStore
+from saddlebag.domain import (
     Entry,
     Event,
     EventKind,
@@ -30,14 +30,14 @@ from remem.domain import (
     Query,
     new_id,
 )
-from remem.extract.base import (
+from saddlebag.extract.base import (
     ExtractedEntry,
     ExtractionFailed,
     Extractor,
     parse_entries,
 )
-from remem.services import extraction, record
-from remem.store import Store
+from saddlebag.services import extraction, record
+from saddlebag.store import Store
 from tests.conftest import found
 
 pytestmark = pytest.mark.db
@@ -61,7 +61,7 @@ def a_harness_event(**kw: Any):
     return HarnessEvent(
         kind=kw.get("kind", EventKind.TOOL_CALL),
         session_id=kw.get("session_id", "s1"),
-        project=kw.get("project", "remem"),
+        project=kw.get("project", "saddlebag"),
         tool=kw.get("tool", "Bash"),
         payload=kw.get("payload", {"command": "ls"}),
         occurred_at=kw.get("occurred_at", NOW - timedelta(hours=2)),
@@ -72,7 +72,7 @@ def three_events(
     store: PostgresStore,
     owner: Principal,
     session_id: str = "s1",
-    project: str = "remem",
+    project: str = "saddlebag",
     base: datetime | None = None,
 ):
     """Three events, spaced, all old enough for the idle trigger.
@@ -148,7 +148,7 @@ def test_an_extracted_rule_is_written_without_a_summary(
     need the one line that render exists to fill. Before that gate keyed
     on origin, this raised RuleNeedsSummary and failed the whole job -
     losing the note written earlier in the same batch along with it."""
-    record.enable(store, owner.id, "remem")
+    record.enable(store, owner.id, "saddlebag")
     three_events(store, owner)
     rule = ExtractedEntry(
         title="Always lint before committing",
@@ -165,7 +165,7 @@ def test_an_extracted_rule_is_written_without_a_summary(
     written = {
         h.entry.title: h.entry
         for h in store.search(
-            Query(project="remem", origins=[Origin.EXTRACTED], limit=10), owner.id
+            Query(project="saddlebag", origins=[Origin.EXTRACTED], limit=10), owner.id
         )
     }
     assert set(written) == {
@@ -179,7 +179,7 @@ def test_an_extracted_rule_is_written_without_a_summary(
 def test_processing_a_quiet_session_writes_entries_and_provenance(
     store: PostgresStore, owner: Principal
 ) -> None:
-    record.enable(store, owner.id, "remem")
+    record.enable(store, owner.id, "saddlebag")
     events = three_events(store, owner)
     extractor = FakeExtractor([an_entry()])
 
@@ -188,7 +188,7 @@ def test_processing_a_quiet_session_writes_entries_and_provenance(
     assert (report.claimed, report.succeeded, report.entries_written) == (1, 1, 1)
     assert report.failed == 0
     [written] = store.search(
-        Query(project="remem", origins=[Origin.EXTRACTED], limit=10), owner.id
+        Query(project="saddlebag", origins=[Origin.EXTRACTED], limit=10), owner.id
     )
     assert written.entry.origin is Origin.EXTRACTED
     assert written.entry.session_id == "s1"
@@ -204,7 +204,7 @@ def test_the_extractor_is_handed_events_not_a_transcript(
     store: PostgresStore, owner: Principal
 ) -> None:
     """The input is rows, oldest first - nothing here reads a file."""
-    record.enable(store, owner.id, "remem")
+    record.enable(store, owner.id, "saddlebag")
     events = three_events(store, owner)
     extractor = FakeExtractor([])
 
@@ -224,7 +224,7 @@ def test_a_second_run_extracts_nothing_new(
 ) -> None:
     """Idempotence. `events process` is a cron command; running it twice
     must do the work once."""
-    record.enable(store, owner.id, "remem")
+    record.enable(store, owner.id, "saddlebag")
     three_events(store, owner)
     extractor = FakeExtractor([an_entry()])
 
@@ -246,7 +246,7 @@ def test_a_session_still_being_worked_in_is_left_alone(
 ) -> None:
     """The idle window is the whole trigger: extracting a live session would
     read half a conversation and then never look again."""
-    record.enable(store, owner.id, "remem")
+    record.enable(store, owner.id, "saddlebag")
     record.record(store, owner.id, a_harness_event(occurred_at=NOW), "claude-code")
     extractor = FakeExtractor([an_entry()])
 
@@ -259,7 +259,7 @@ def test_a_session_still_being_worked_in_is_left_alone(
 def test_a_resumed_session_extracts_only_its_new_events(
     store: PostgresStore, owner: Principal
 ) -> None:
-    record.enable(store, owner.id, "remem")
+    record.enable(store, owner.id, "saddlebag")
     three_events(store, owner)
     extractor = FakeExtractor([])
     extraction.process(store, owner.id, extractor, idle_seconds=IDLE, limit=10)
@@ -288,7 +288,7 @@ def test_a_resumed_session_extracts_only_its_new_events(
 def test_an_extractor_that_raises_fails_the_job_and_records_why(
     store: PostgresStore, owner: Principal
 ) -> None:
-    record.enable(store, owner.id, "remem")
+    record.enable(store, owner.id, "saddlebag")
     three_events(store, owner)
     prose = "I read the session and found nothing worth remembering."
 
@@ -317,7 +317,7 @@ def test_an_empty_event_list_is_a_quiet_session_not_a_failure(
 ) -> None:
     """`process_job` on a session whose events have all been extracted
     already: nothing to read is not a broken job."""
-    record.enable(store, owner.id, "remem")
+    record.enable(store, owner.id, "saddlebag")
     three_events(store, owner)
     extractor = FakeExtractor([])
     extraction.process(store, owner.id, extractor, idle_seconds=IDLE, limit=10)
@@ -354,7 +354,7 @@ def test_the_attempt_cap_stops_a_job_and_process_job_overrides_it(
 ) -> None:
     """A job that can never succeed must stop being retried and say so -
     and `--job ID` is the only way back for one that has given up."""
-    record.enable(store, owner.id, "remem")
+    record.enable(store, owner.id, "saddlebag")
     three_events(store, owner)
     boom = FakeExtractor(error=RuntimeError("claude exploded"))
 
@@ -384,7 +384,7 @@ def test_a_session_that_gave_up_leaves_the_backlog(
     records "gave up" again, and reports `failed 1` forever - and because
     discovery is oldest-first, dead sessions sort ahead of live ones and
     fill the batch."""
-    record.enable(store, owner.id, "remem")
+    record.enable(store, owner.id, "saddlebag")
     three_events(store, owner)
     boom = FakeExtractor(error=RuntimeError("claude exploded"))
 
@@ -408,7 +408,7 @@ def test_a_dead_session_does_not_crowd_out_a_live_one(
     """Discovery is ordered oldest-event-first, so a session that has given
     up sorts ahead of a newer one. With --limit 1 it would take the whole
     batch, every run, and the newer session would never be extracted."""
-    record.enable(store, owner.id, "remem")
+    record.enable(store, owner.id, "saddlebag")
     three_events(store, owner, session_id="dead", base=NOW - timedelta(hours=5))
     boom = FakeExtractor(error=RuntimeError("claude exploded"))
     for _ in range(extraction.MAX_ATTEMPTS + 1):
@@ -435,7 +435,7 @@ def test_process_job_rejects_another_owners_job(
 ) -> None:
     """Owner scoping is not optional just because an id was supplied."""
     other = store.ensure_principal("someone-else")
-    record.enable(store, other.id, "remem")
+    record.enable(store, other.id, "saddlebag")
     three_events(store, other)
     extraction.process(store, other.id, FakeExtractor([]), idle_seconds=IDLE, limit=10)
     [job] = _all_jobs(conn, store, other)
@@ -450,15 +450,15 @@ def test_an_entry_the_project_already_holds_is_not_rewritten(
     """Carried over from capture unchanged: only a prior EXTRACTED entry
     with the same title suppresses a write. A human-written entry with that
     title is not a duplicate to swallow silently."""
-    from remem.services.write import remember
+    from saddlebag.services.write import remember
 
-    record.enable(store, owner.id, "remem")
+    record.enable(store, owner.id, "saddlebag")
     remember(
         store,
         owner.id,
         title="Pool sizing",
         body="the user wrote this",
-        project="remem",
+        project="saddlebag",
         origin=Origin.HUMAN,
     )
     three_events(store, owner, session_id="a")
@@ -501,14 +501,14 @@ def test_the_extractor_is_told_what_the_project_already_holds(
     """Including entries the USER wrote. The observed failure was extraction
     re-deriving a hand-written rule, so human titles are exactly the ones the
     extractor most needs to see."""
-    from remem.services.write import remember
+    from saddlebag.services.write import remember
 
     remember(
         store,
         owner.id,
         title="A rule the user wrote",
         body="b",
-        project="remem",
+        project="saddlebag",
         origin=Origin.HUMAN,
     )
     remember(
@@ -516,10 +516,10 @@ def test_the_extractor_is_told_what_the_project_already_holds(
         owner.id,
         title="An earlier extraction",
         body="b",
-        project="remem",
+        project="saddlebag",
         origin=Origin.EXTRACTED,
     )
-    record.enable(store, owner.id, "remem")
+    record.enable(store, owner.id, "saddlebag")
     three_events(store, owner)
     extractor = FakeExtractor([])
 
@@ -535,7 +535,7 @@ def test_an_extractor_without_known_titles_support_still_works(
     """The protocol's third argument is optional; a two-argument extractor
     must keep working rather than failing with a TypeError recorded as an
     extraction failure."""
-    record.enable(store, owner.id, "remem")
+    record.enable(store, owner.id, "saddlebag")
     three_events(store, owner)
 
     class TwoArg:
@@ -555,7 +555,7 @@ def test_an_extractor_without_known_titles_support_still_works(
 def test_a_long_raw_output_is_truncated_but_keeps_the_reason(
     store: PostgresStore, owner: Principal
 ) -> None:
-    record.enable(store, owner.id, "remem")
+    record.enable(store, owner.id, "saddlebag")
     three_events(store, owner)
 
     class ProseExtractor:
@@ -579,7 +579,7 @@ def test_a_write_that_explodes_is_recorded_not_raised(
 ) -> None:
     """A database error mid-write must be recorded against the job, and the
     loop must keep going rather than stranding it in `running`."""
-    record.enable(store, owner.id, "remem")
+    record.enable(store, owner.id, "saddlebag")
     three_events(store, owner)
 
     class ExplodingStore:
@@ -610,7 +610,7 @@ def test_a_write_that_explodes_is_recorded_not_raised(
 def test_one_failing_session_does_not_stop_the_others(
     store: PostgresStore, owner: Principal
 ) -> None:
-    record.enable(store, owner.id, "remem")
+    record.enable(store, owner.id, "saddlebag")
     three_events(store, owner, session_id="a")
     three_events(store, owner, session_id="b", base=NOW - timedelta(hours=3))
 
@@ -652,7 +652,7 @@ def test_process_on_an_idle_store_reports_nothing_claimed(
 
 
 def test_the_limit_bounds_one_run(store: PostgresStore, owner: Principal) -> None:
-    record.enable(store, owner.id, "remem")
+    record.enable(store, owner.id, "saddlebag")
     for i, session in enumerate(("a", "b", "c")):
         three_events(
             store, owner, session_id=session, base=NOW - timedelta(hours=2 + i)
@@ -677,7 +677,7 @@ def test_repeated_success_never_exhausts_the_attempt_budget(
     or a long one worked over successive runs by MAX_EVENTS_PER_JOB - dies
     with "gave up after N attempts", a reason that never happened.
     """
-    record.enable(store, owner.id, "remem")
+    record.enable(store, owner.id, "saddlebag")
     rounds = extraction.MAX_ATTEMPTS + 3
 
     for i in range(rounds):
@@ -717,7 +717,7 @@ def test_a_watermark_survives_a_later_failure_on_the_same_session(
     have no DONE job and every event it holds - including the ones already
     extracted into entries - would read as outstanding, forever.
     """
-    record.enable(store, owner.id, "remem")
+    record.enable(store, owner.id, "saddlebag")
     first = three_events(store, owner, base=NOW - timedelta(hours=4))
     extraction.process(
         store, owner.id, FakeExtractor([an_entry()]), idle_seconds=IDLE, limit=10

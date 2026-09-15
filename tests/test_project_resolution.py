@@ -1,7 +1,7 @@
 """Which project a write belongs to.
 
 Resolved from the git repository, not the current directory's name. Using the
-directory name meant `cd src && remem rule ...` filed the rule under project
+directory name meant `cd src && bag rule ...` filed the rule under project
 "src" - silently somewhere nothing would look for it - and a git worktree filed
 under the worktree's directory name rather than the repository's.
 """
@@ -12,7 +12,7 @@ from typing import Any
 
 import pytest
 
-from remem.project import resolve_project
+from saddlebag.project import resolve_project
 
 
 def _git(path: Path, *args: str) -> None:
@@ -64,7 +64,7 @@ def test_outside_a_repository_it_falls_back_to_the_directory_name(
 def test_a_missing_git_binary_falls_back_rather_than_raising(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """remem must work without git installed; project is a convenience, not a
+    """saddlebag must work without git installed; project is a convenience, not a
     dependency."""
 
     def boom(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[Any]:
@@ -95,7 +95,7 @@ def test_the_adapter_resolves_the_payload_cwd_through_the_repository(
     from this. Using the payload's directory name meant a session started in a
     subdirectory or a worktree injected nothing and captured under the wrong
     project - and the hook, being fail-soft, said nothing about it."""
-    from remem.agents.claude_code.adapter import ClaudeCodeAdapter
+    from saddlebag.agents.claude_code.adapter import ClaudeCodeAdapter
 
     sub = repo / "src"
     sub.mkdir()
@@ -104,7 +104,7 @@ def test_the_adapter_resolves_the_payload_cwd_through_the_repository(
 
 
 def test_the_adapter_still_handles_a_payload_without_a_cwd() -> None:
-    from remem.agents.claude_code.adapter import ClaudeCodeAdapter
+    from saddlebag.agents.claude_code.adapter import ClaudeCodeAdapter
 
     assert ClaudeCodeAdapter().identity({}, {}).project is None
 

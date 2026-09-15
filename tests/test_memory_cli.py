@@ -1,4 +1,4 @@
-"""CLI tests for `remem memory designate|sync|status`.
+"""CLI tests for `bag memory designate|sync|status`.
 
 Same bootstrap as tests/test_ingest_cli.py: these commands open their own
 session, so the schema has to be committed before the CLI connects, and the
@@ -16,15 +16,15 @@ import psycopg
 import pytest
 from typer.testing import CliRunner
 
-from remem import memory_file
-from remem.agents.claude_code.memory import slug_for
-from remem.backends.postgres.migrate import migrate
-from remem.backends.postgres.store import PostgresStore
-from remem.cli import app
-from remem.domain import CollectionQuery, Kind, Origin
-from remem.project import resolve_project
-from remem.services import kb, memory
-from remem.services.write import remember
+from saddlebag import memory_file
+from saddlebag.agents.claude_code.memory import slug_for
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.store import PostgresStore
+from saddlebag.cli import app
+from saddlebag.domain import CollectionQuery, Kind, Origin
+from saddlebag.project import resolve_project
+from saddlebag.services import kb, memory
+from saddlebag.services.write import remember
 
 pytestmark = pytest.mark.db
 
@@ -34,7 +34,7 @@ runner = CliRunner()
 #: does: from the real working directory, via git. Computed once so the
 #: fixtures that seed a collection and the CLI invocation neither can
 #: disagree about which project they mean.
-PROJECT = resolve_project() or "remem"
+PROJECT = resolve_project() or "saddlebag"
 
 
 @pytest.fixture
@@ -48,9 +48,9 @@ def env(live_dsn: str, tmp_path: Path) -> dict[str, str]:
         migrate(c)
         c.commit()
     return {
-        "REMEM_DSN": live_dsn,
-        "REMEM_USER_ID": "brandon",
-        "REMEM_CONFIG": str(tmp_path / "none.toml"),
+        "BAG_DSN": live_dsn,
+        "BAG_USER_ID": "brandon",
+        "BAG_CONFIG": str(tmp_path / "none.toml"),
         "CLAUDE_CONFIG_DIR": str(tmp_path / "claude"),
     }
 
@@ -61,7 +61,7 @@ def _designated_store(
     """A connection left open and committed, with `proj-memory` designated
     for PROJECT. The caller owns closing it; these fixtures return the
     directory, not the connection, so there is nothing left to close."""
-    conn = psycopg.connect(env["REMEM_DSN"])
+    conn = psycopg.connect(env["BAG_DSN"])
     store = PostgresStore(conn)
     owner = store.ensure_principal("brandon")
     kb.create(
@@ -82,8 +82,8 @@ def _memory_directory(env: dict[str, str]) -> Path:
 
 @pytest.fixture
 def memory_dir_with_one_stray(env: dict[str, str]) -> Path:
-    """A designated project whose directory holds one file remem has never
-    seen. `remem memory sync` should adopt it - the case the brief's
+    """A designated project whose directory holds one file saddlebag has never
+    seen. `bag memory sync` should adopt it - the case the brief's
     "1 adopted" assertion exercises."""
     _store, conn = _designated_store(env)
     conn.commit()
@@ -117,7 +117,7 @@ def memory_dir_in_conflict(env: dict[str, str]) -> Path:
         store,
         owner.id,
         title="A fact",
-        body="from remem\n",
+        body="from saddlebag\n",
         kind=Kind.NOTE,
         project=PROJECT,
         tags=["mem:a-fact"],
@@ -171,7 +171,7 @@ def test_sync_exits_nonzero_when_a_file_is_left_in_conflict(
     result = runner.invoke(app, ["memory", "sync"], env=env)
     assert result.exit_code == 1
     # Counts land on stdout, failures on stderr. Asserting the wrong stream
-    # is the mistake this repo has already made once with `remem ingest`.
+    # is the mistake this repo has already made once with `bag ingest`.
     assert "conflict" in result.stderr
 
 
@@ -260,7 +260,7 @@ def test_status_json_reports_the_sync_that_just_ran(
 
 # --- sync --all ---------------------------------------------------------
 def test_designate_records_the_working_directory(env: dict[str, str]) -> None:
-    conn = psycopg.connect(env["REMEM_DSN"])
+    conn = psycopg.connect(env["BAG_DSN"])
     store = PostgresStore(conn)
     owner = store.ensure_principal("brandon")
     kb.create(
@@ -277,7 +277,7 @@ def test_designate_records_the_working_directory(env: dict[str, str]) -> None:
     result = runner.invoke(app, ["memory", "designate", "proj-memory"], env=env)
     assert result.exit_code == 0, result.output
 
-    conn = psycopg.connect(env["REMEM_DSN"])
+    conn = psycopg.connect(env["BAG_DSN"])
     store = PostgresStore(conn)
     owner = store.ensure_principal("brandon")
     [d] = memory.designations(store, owner.id)

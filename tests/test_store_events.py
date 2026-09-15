@@ -8,11 +8,11 @@ from typing import Any
 import psycopg
 import pytest
 
-from remem.backends.postgres.migrate import migrate
-from remem.backends.postgres.store import PostgresStore
-from remem.domain import Event, EventKind, Principal, new_id
-from remem.services import write
-from remem.store import NotOwner
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.store import PostgresStore
+from saddlebag.domain import Event, EventKind, Principal, new_id
+from saddlebag.services import write
+from saddlebag.store import NotOwner
 
 pytestmark = pytest.mark.db
 
@@ -41,7 +41,7 @@ def an_event(
     return Event(
         id=new_id(),
         owner_id=owner.id,
-        project="remem",
+        project="saddlebag",
         harness="claude-code",
         session_id=session,
         kind=EventKind.TOOL_CALL,
@@ -57,7 +57,7 @@ def test_an_event_round_trips_with_its_payload_whole(
     big = {"output": "x" * 50_000, "nested": {"a": [1, 2, 3]}}
     stored = store.put_event(an_event(owner, payload=big))
 
-    got = store.events_for_session(owner.id, "remem", "claude-code", "s1")
+    got = store.events_for_session(owner.id, "saddlebag", "claude-code", "s1")
     assert [e.id for e in got] == [stored.id]
     assert got[0].payload == big
     assert got[0].tool == "Bash"
@@ -68,7 +68,7 @@ def test_events_come_back_oldest_first(store: PostgresStore, owner: Principal) -
     later = store.put_event(an_event(owner, at=NOW + timedelta(minutes=5)))
     earlier = store.put_event(an_event(owner, at=NOW))
 
-    got = store.events_for_session(owner.id, "remem", "claude-code", "s1")
+    got = store.events_for_session(owner.id, "saddlebag", "claude-code", "s1")
     assert [e.id for e in got] == [earlier.id, later.id]
 
 
@@ -78,7 +78,9 @@ def test_since_excludes_events_at_or_before_the_watermark(
     store.put_event(an_event(owner, at=NOW))
     after = store.put_event(an_event(owner, at=NOW + timedelta(minutes=5)))
 
-    got = store.events_for_session(owner.id, "remem", "claude-code", "s1", since=NOW)
+    got = store.events_for_session(
+        owner.id, "saddlebag", "claude-code", "s1", since=NOW
+    )
     assert [e.id for e in got] == [after.id]
 
 
@@ -87,7 +89,7 @@ def test_another_principals_events_are_invisible(
 ) -> None:
     store.put_event(an_event(owner))
     other = store.ensure_principal("someone-else")
-    assert store.events_for_session(other.id, "remem", "claude-code", "s1") == []
+    assert store.events_for_session(other.id, "saddlebag", "claude-code", "s1") == []
 
 
 def test_delete_session_events_is_scoped_to_all_four_keys(
@@ -116,7 +118,7 @@ def test_delete_session_events_is_scoped_to_all_four_keys(
         Event(
             id=new_id(),
             owner_id=owner.id,
-            project="remem",
+            project="saddlebag",
             harness="cursor",
             session_id="s1",
             kind=EventKind.TOOL_CALL,
@@ -126,16 +128,16 @@ def test_delete_session_events_is_scoped_to_all_four_keys(
         )
     )
 
-    deleted = store.delete_session_events(owner.id, "remem", "claude-code", "s1")
+    deleted = store.delete_session_events(owner.id, "saddlebag", "claude-code", "s1")
 
     assert deleted == 1
-    assert store.events_for_session(owner.id, "remem", "claude-code", "s1") == []
+    assert store.events_for_session(owner.id, "saddlebag", "claude-code", "s1") == []
     survivors = {
         e.id
         for e in (
-            store.events_for_session(owner.id, "remem", "claude-code", "s2")
+            store.events_for_session(owner.id, "saddlebag", "claude-code", "s2")
             + store.events_for_session(owner.id, "other-project", "claude-code", "s1")
-            + store.events_for_session(owner.id, "remem", "cursor", "s1")
+            + store.events_for_session(owner.id, "saddlebag", "cursor", "s1")
         )
     }
     assert survivors == {other_session.id, other_project.id, other_harness.id}
@@ -172,9 +174,9 @@ def test_provenance_for_another_owners_entry_raises(
 # Recording is one INSERT from a fail-soft hook, so the same event reaching
 # the store twice is a real possibility: a hook registered twice (which
 # happened - see the claude-code and cursor install repairs), a harness
-# retrying, a `remem events process` racing a live session.
+# retrying, a `bag events process` racing a live session.
 #
-# The key is the harness's OWN id, not remem's. Nothing remem computes can
+# The key is the harness's OWN id, not saddlebag's. Nothing saddlebag computes can
 # tell a duplicate from a genuine repeat: `Bash: git status` twice in a
 # session is ordinary, and every payload carries a duration that differs
 # between two recordings of the same event, so payload equality both misses
@@ -195,7 +197,7 @@ def a_cursor_event(
     return Event(
         id=new_id(),
         owner_id=owner.id,
-        project="remem",
+        project="saddlebag",
         harness="cursor",
         session_id="s1",
         kind=kind,
@@ -217,7 +219,7 @@ def test_the_same_tool_use_id_is_recorded_once(
     first = store.put_event(an_event(owner, payload={"tool_use_id": "tu_1"}))
     store.put_event(an_event(owner, payload={"tool_use_id": "tu_1", "duration_ms": 9}))
 
-    got = store.events_for_session(owner.id, "remem", "claude-code", "s1")
+    got = store.events_for_session(owner.id, "saddlebag", "claude-code", "s1")
     assert [e.id for e in got] == [first.id]
     assert got[0].payload == {"tool_use_id": "tu_1"}, "first write wins"
 
@@ -234,7 +236,7 @@ def test_a_repeated_tool_call_with_no_harness_id_is_still_recorded_twice(
     store.put_event(an_event(owner, payload={"command": "git status"}))
     store.put_event(an_event(owner, payload={"command": "git status"}))
 
-    got = store.events_for_session(owner.id, "remem", "claude-code", "s1")
+    got = store.events_for_session(owner.id, "saddlebag", "claude-code", "s1")
     assert len(got) == 2
 
 
@@ -255,7 +257,7 @@ def test_a_prompt_and_its_response_share_a_generation_id_and_both_survive(
         a_cursor_event(owner, hook="afterAgentResponse", gen="g1")
     )
 
-    got = store.events_for_session(owner.id, "remem", "cursor", "s1")
+    got = store.events_for_session(owner.id, "saddlebag", "cursor", "s1")
     assert {e.id for e in got} == {prompt.id, response.id}
 
 
@@ -266,7 +268,7 @@ def test_the_same_generation_and_hook_is_recorded_once(
     first = store.put_event(a_cursor_event(owner, hook="afterAgentResponse", gen="g1"))
     store.put_event(a_cursor_event(owner, hook="afterAgentResponse", gen="g1"))
 
-    got = store.events_for_session(owner.id, "remem", "cursor", "s1")
+    got = store.events_for_session(owner.id, "saddlebag", "cursor", "s1")
     assert [e.id for e in got] == [first.id]
 
 
@@ -294,7 +296,7 @@ def test_tool_use_id_wins_over_the_generation_it_belongs_to(
         )
     )
 
-    got = store.events_for_session(owner.id, "remem", "cursor", "s1")
+    got = store.events_for_session(owner.id, "saddlebag", "cursor", "s1")
     assert {e.id for e in got} == {a.id, b.id}
 
 
@@ -307,8 +309,12 @@ def test_the_same_id_in_two_sessions_is_two_events(
     store.put_event(an_event(owner, session="s1", payload={"tool_use_id": "tu_1"}))
     store.put_event(an_event(owner, session="s2", payload={"tool_use_id": "tu_1"}))
 
-    assert len(store.events_for_session(owner.id, "remem", "claude-code", "s1")) == 1
-    assert len(store.events_for_session(owner.id, "remem", "claude-code", "s2")) == 1
+    assert (
+        len(store.events_for_session(owner.id, "saddlebag", "claude-code", "s1")) == 1
+    )
+    assert (
+        len(store.events_for_session(owner.id, "saddlebag", "claude-code", "s2")) == 1
+    )
 
 
 def test_a_dropped_duplicate_still_returns_a_usable_event(

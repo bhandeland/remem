@@ -8,7 +8,7 @@ not the arithmetic of a particular model.
 
 import pytest
 
-from remem.embed import Embedder, EmbedderUnavailable, load_embedder
+from saddlebag.embed import Embedder, EmbedderUnavailable, load_embedder
 
 
 class FakeEmbedder:

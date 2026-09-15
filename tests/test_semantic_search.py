@@ -13,9 +13,9 @@ from uuid import UUID
 import psycopg
 import pytest
 
-from remem.backends.postgres.migrate import migrate
-from remem.backends.postgres.store import PostgresStore
-from remem.domain import Entry, Kind, Match, Query, new_id
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.store import PostgresStore
+from saddlebag.domain import Entry, Kind, Match, Query, new_id
 
 pytestmark = pytest.mark.db
 
@@ -132,7 +132,7 @@ def test_entries_missing_vectors_is_per_model(store: PostgresStore) -> None:
 
 
 def test_put_vector_refuses_another_owners_entry(store: PostgresStore) -> None:
-    from remem.store import NotOwner
+    from saddlebag.store import NotOwner
 
     mine = store.ensure_principal("put-mine")
     yours = store.ensure_principal("put-yours")

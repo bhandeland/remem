@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
-from remem.domain import (
+from saddlebag.domain import (
     DedupeReport,
     DuplicateSet,
     Entry,
@@ -15,7 +15,7 @@ from remem.domain import (
     Origin,
     new_id,
 )
-from remem.services.dedupe import render, suppress, survivor
+from saddlebag.services.dedupe import render, suppress, survivor
 
 OWNER = new_id()
 
@@ -82,7 +82,7 @@ def _report(**kw: Any) -> DedupeReport:
 def test_no_vectors_renders_as_not_checked_never_as_clean():
     out = render(_report(embedded=0, total=5))
     assert "not checked" in out
-    assert "remem embed" in out
+    assert "bag embed" in out
     assert "No near-duplicates" not in out
 
 
@@ -142,4 +142,4 @@ def test_every_group_prints_a_runnable_resolve_line():
     keep = _entry("keep", Origin.HUMAN)
     drop = _entry("drop", Origin.EXTRACTED)
     out = render(_report(exact=[DuplicateSet([drop, keep])]))
-    assert f"remem dedupe resolve {drop.id} --keep {keep.id}" in out
+    assert f"bag dedupe resolve {drop.id} --keep {keep.id}" in out

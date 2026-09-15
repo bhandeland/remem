@@ -7,7 +7,7 @@ from typing import Any
 import psycopg
 import pytest
 
-from remem.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.migrate import migrate
 
 pytestmark = pytest.mark.db
 

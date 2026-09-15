@@ -9,11 +9,11 @@ from uuid import UUID
 import psycopg
 import pytest
 
-from remem.backends.postgres.migrate import migrate
-from remem.backends.postgres.store import PostgresStore
-from remem.domain import CollectionQuery, MemoryRun, MemoryTrigger
-from remem.services import kb
-from remem.services import memory as memory_service
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.store import PostgresStore
+from saddlebag.domain import CollectionQuery, MemoryRun, MemoryTrigger
+from saddlebag.services import kb
+from saddlebag.services import memory as memory_service
 
 pytestmark = pytest.mark.db
 
@@ -104,7 +104,7 @@ def test_a_sidecar_on_disk_is_named(store: PostgresStore, tmp_path: Path) -> Non
     owner = store.ensure_principal("adv-sidecar")
     _designate(store, owner.id, "p", tmp_path)
     _finished(store, owner.id, "p")
-    (tmp_path / "note.remem-conflict.md").write_text("x")
+    (tmp_path / "note.saddlebag-conflict.md").write_text("x")
 
     assert "conflict" in memory_service.advisories(store, owner.id)[0]
 
@@ -182,7 +182,7 @@ def test_a_sidecar_is_not_attributed_to_the_last_run(
     owner = store.ensure_principal("adv-sidecar-trigger")
     _designate(store, owner.id, "p", tmp_path)
     _finished(store, owner.id, "p", trigger=MemoryTrigger.AUTO)
-    (tmp_path / "note.remem-conflict.md").write_text("x")
+    (tmp_path / "note.saddlebag-conflict.md").write_text("x")
 
     line = memory_service.advisories(store, owner.id)[0]
     assert "conflict" in line

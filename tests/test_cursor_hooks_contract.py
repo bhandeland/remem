@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from remem.agents.cursor.hooks import (
+from saddlebag.agents.cursor.hooks import (
     CURSOR_VERSION,
     HOOK_NAMES,
     installed_hook_names,
@@ -47,7 +47,7 @@ def test_the_vendored_list_records_what_it_was_checked_against():
 def test_the_blocking_hooks_are_not_subscribed():
     """Six hooks make Cursor wait for a permission decision. Subscribing
     to one would put a fail-soft hook in front of the user's tool calls."""
-    from remem.agents.cursor.hooks import BLOCKING_HOOKS
+    from saddlebag.agents.cursor.hooks import BLOCKING_HOOKS
 
     assert BLOCKING_HOOKS <= HOOK_NAMES
     assert "preToolUse" in BLOCKING_HOOKS
@@ -111,6 +111,6 @@ def test_the_vendored_list_still_matches_the_installed_app():
 
     assert installed == HOOK_NAMES, (
         "Cursor's hook set has changed. Update HOOK_NAMES and "
-        "CURSOR_VERSION in src/remem/agents/cursor/hooks.py, then check "
+        "CURSOR_VERSION in src/saddlebag/agents/cursor/hooks.py, then check "
         "whether the adapter should subscribe to anything new."
     )

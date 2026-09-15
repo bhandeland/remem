@@ -13,10 +13,10 @@ from typing import Any
 import psycopg
 import pytest
 
-from remem.backends.postgres.migrate import migrate
-from remem.backends.postgres.store import PostgresStore
-from remem.domain import Principal, Query
-from remem.services import write
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.store import PostgresStore
+from saddlebag.domain import Principal, Query
+from saddlebag.services import write
 
 pytestmark = pytest.mark.db
 
@@ -49,7 +49,7 @@ def test_editing_the_body_drops_the_vector(
 def test_a_write_that_changes_no_text_keeps_the_vector(
     store: PostgresStore, owner: Principal
 ) -> None:
-    """Re-embedding on every touch would make `remem embed` never finish.
+    """Re-embedding on every touch would make `bag embed` never finish.
 
     Linking two entries calls put_entry, and so does superseding. Neither
     changes what the entry says, so neither invalidates what it means.

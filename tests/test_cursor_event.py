@@ -12,8 +12,8 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from remem.agents.cursor.adapter import ROOT_KEY, SESSION_KEY, CursorAdapter
-from remem.domain import EventKind
+from saddlebag.agents.cursor.adapter import ROOT_KEY, SESSION_KEY, CursorAdapter
+from saddlebag.domain import EventKind
 
 
 def test_the_payload_keys_are_the_ones_cursor_sends() -> None:
@@ -154,7 +154,7 @@ def test_identity_of_an_empty_payload_is_not_an_error() -> None:
 
 
 def test_the_adapter_records_only_hooks_cursor_emits() -> None:
-    from remem.agents.cursor.hooks import BLOCKING_HOOKS, HOOK_NAMES
+    from saddlebag.agents.cursor.hooks import BLOCKING_HOOKS, HOOK_NAMES
 
     subscribed = frozenset(CursorAdapter.EVENT_KINDS)
     assert subscribed <= HOOK_NAMES

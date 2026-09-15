@@ -2,7 +2,7 @@
 
 `refresh` is the policy the detached session-start job runs: read this
 project's designations, resolve them against the git root, ingest, then
-embed. It is the automatic counterpart to `remem ingest` + `remem embed`,
+embed. It is the automatic counterpart to `bag ingest` + `bag embed`,
 and it differs from them in exactly one way - nobody asked for it, so it
 degrades where they would fail.
 """
@@ -16,11 +16,11 @@ from uuid import UUID
 import psycopg
 import pytest
 
-from remem.backends.postgres.migrate import migrate
-from remem.backends.postgres.store import PostgresStore
-from remem.domain import Hit, IngestTrigger, Origin, Principal, Query
-from remem.embed import Embedder, EmbedderUnavailable
-from remem.services import ingest
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.store import PostgresStore
+from saddlebag.domain import Hit, IngestTrigger, Origin, Principal, Query
+from saddlebag.embed import Embedder, EmbedderUnavailable
+from saddlebag.services import ingest
 from tests.conftest import found
 
 pytestmark = pytest.mark.db
@@ -177,7 +177,7 @@ def test_refresh_survives_an_unavailable_embedder(
 ) -> None:
     """Fail-soft: the ingest still happened, and nobody asked for any of it.
 
-    `remem embed` exits 1 here on purpose - embedding is its whole job. This
+    `bag embed` exits 1 here on purpose - embedding is its whole job. This
     one was spawned by a session start, so losing the semantic tier is worth
     strictly less than the entries it just wrote.
     """
@@ -198,7 +198,7 @@ def test_refresh_survives_an_unavailable_embedder(
 # --- identity must survive the switch from manual to automatic ---------
 # The bug this pins: `refresh` resolved designated paths by handing
 # `ingest_paths` an ABSOLUTE path, so `src:` came out as
-# `src:/Users/.../docs/specs/one.md` where the manual `remem ingest
+# `src:/Users/.../docs/specs/one.md` where the manual `bag ingest
 # docs/specs` had stored `src:docs/specs/one.md`. Nothing matched, nothing
 # was superseded, and the first automatic run duplicated the entire corpus -
 # 362 chunks - instead of reporting it unchanged.

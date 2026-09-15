@@ -18,11 +18,11 @@ from uuid import UUID, uuid4
 import psycopg
 import pytest
 
-from remem.backends.postgres.migrate import migration_files
-from remem.backends.postgres.sqltext import as_sql
-from remem.backends.postgres.store import PostgresStore
-from remem.domain import Kind, Origin
-from remem.services import kb
+from saddlebag.backends.postgres.migrate import migration_files
+from saddlebag.backends.postgres.sqltext import as_sql
+from saddlebag.backends.postgres.store import PostgresStore
+from saddlebag.domain import Kind, Origin
+from saddlebag.services import kb
 
 pytestmark = pytest.mark.db
 

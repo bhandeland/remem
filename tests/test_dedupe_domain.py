@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from remem.domain import DedupeReport, DuplicateSet, Entry, Kind, NearPair, new_id
+from saddlebag.domain import DedupeReport, DuplicateSet, Entry, Kind, NearPair, new_id
 
 
 def _entry(title: str, body: str = "b") -> Entry:

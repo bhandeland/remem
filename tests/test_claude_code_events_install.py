@@ -2,7 +2,7 @@
 install loud at the one moment the user is watching.
 
 claude-mem's opencode integration reported success for months while
-recording nothing. `remem record status` (Task 8) makes that visible on
+recording nothing. `bag record status` (Task 8) makes that visible on
 demand; this file is what makes it visible at install time, without waiting
 for anyone to ask.
 """
@@ -14,8 +14,8 @@ from pathlib import Path
 import psycopg
 import pytest
 
-from remem.agents.claude_code.adapter import VERIFY_PROJECT, ClaudeCodeAdapter
-from remem.backends.postgres.migrate import migrate
+from saddlebag.agents.claude_code.adapter import VERIFY_PROJECT, ClaudeCodeAdapter
+from saddlebag.backends.postgres.migrate import migrate
 from tests.conftest import scalar
 
 pytestmark = pytest.mark.db
@@ -27,9 +27,9 @@ def env(live_dsn: str, tmp_path: Path) -> dict[str, str]:
         migrate(c)
         c.commit()
     return {
-        "REMEM_DSN": live_dsn,
-        "REMEM_USER_ID": "brandon",
-        "REMEM_CONFIG": str(tmp_path / "none.toml"),
+        "BAG_DSN": live_dsn,
+        "BAG_USER_ID": "brandon",
+        "BAG_CONFIG": str(tmp_path / "none.toml"),
     }
 
 
@@ -53,7 +53,7 @@ def test_install_verification_cleans_up_after_itself(
     """Nothing is left behind: not the test event, not the setting."""
     ClaudeCodeAdapter().verify(env=env, home=tmp_path)
 
-    with psycopg.connect(env["REMEM_DSN"]) as c:
+    with psycopg.connect(env["BAG_DSN"]) as c:
         assert (
             scalar(
                 c.execute(
@@ -80,10 +80,10 @@ def test_install_verification_does_not_touch_events_outside_the_verify_project(
     same owner in a different project must survive the round-trip."""
     from datetime import datetime, timedelta, timezone
 
-    from remem.backends.postgres.store import PostgresStore
-    from remem.domain import Event, EventKind, new_id
+    from saddlebag.backends.postgres.store import PostgresStore
+    from saddlebag.domain import Event, EventKind, new_id
 
-    with psycopg.connect(env["REMEM_DSN"]) as c:
+    with psycopg.connect(env["BAG_DSN"]) as c:
         store = PostgresStore(c)
         owner = store.ensure_principal("brandon")
         other = store.put_event(
@@ -103,7 +103,7 @@ def test_install_verification_does_not_touch_events_outside_the_verify_project(
 
     ClaudeCodeAdapter().verify(env=env, home=tmp_path)
 
-    with psycopg.connect(env["REMEM_DSN"]) as c:
+    with psycopg.connect(env["BAG_DSN"]) as c:
         row = c.execute("select id from events where id = %s", (other.id,)).fetchone()
         assert row is not None, (
             "verify()'s cleanup deleted an event outside the reserved "
@@ -115,7 +115,7 @@ def test_install_verification_reports_a_failure_rather_than_raising() -> None:
     """An unreachable database becomes a warning naming what could not be
     demonstrated - never an exception, and the caller still finishes."""
     report = ClaudeCodeAdapter().verify(
-        env={"REMEM_DSN": "postgresql://nobody@127.0.0.1:1/none"}
+        env={"BAG_DSN": "postgresql://nobody@127.0.0.1:1/none"}
     )
 
     assert report.warnings != []
@@ -127,7 +127,7 @@ def test_the_hook_table_names_every_hook_the_install_registers() -> None:
     """The table install() reads and the table hook_state() reads are one
     table. Literals, not the constant: a guard that agrees with a wrong
     table is how PostToolUse went missing for the life of the pipeline."""
-    from remem.agents.claude_code.adapter import HOOK_ENTRIES
+    from saddlebag.agents.claude_code.adapter import HOOK_ENTRIES
 
     assert [h.event for h in HOOK_ENTRIES] == [
         "SessionStart",
@@ -140,13 +140,13 @@ def test_the_hook_table_names_every_hook_the_install_registers() -> None:
 def test_only_the_hooks_that_lose_events_are_required() -> None:
     """SessionEnd loses no events, only the promptness of the idle timer.
     UserPromptSubmit is the handoff warning, not the record path."""
-    from remem.agents.claude_code.adapter import HOOK_ENTRIES
+    from saddlebag.agents.claude_code.adapter import HOOK_ENTRIES
 
     required = {h.event for h in HOOK_ENTRIES if h.required}
     assert required == {"SessionStart", "PostToolUse"}
 
 
 def test_every_expected_hook_says_what_is_lost_without_it() -> None:
-    from remem.agents.claude_code.adapter import HOOK_ENTRIES
+    from saddlebag.agents.claude_code.adapter import HOOK_ENTRIES
 
     assert all(h.provides.strip() for h in HOOK_ENTRIES)

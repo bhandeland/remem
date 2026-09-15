@@ -7,8 +7,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from remem.domain import MemoryRun, MemoryTrigger, new_id
-from remem.services.memory import Status, render_run, status_to_dict
+from saddlebag.domain import MemoryRun, MemoryTrigger, new_id
+from saddlebag.services.memory import Status, render_run, status_to_dict
 
 WHEN = datetime(2026, 9, 5, 12, 0, tzinfo=timezone.utc)
 SHOWN = WHEN.astimezone().strftime("%Y-%m-%d %H:%M")
@@ -67,7 +67,7 @@ def test_the_four_spellings_are_distinct():
 
 def test_the_timestamp_is_shown_in_local_time():
     """The column is `timestamptz` and psycopg hands it back in UTC, so a
-    bare strftime prints UTC's wall clock while `remem reingest status`,
+    bare strftime prints UTC's wall clock while `bag reingest status`,
     two screens away, prints local. Same fact, two different times."""
     assert SHOWN in render_run(_run())
     assert SHOWN in render_run(_run(finished_at=None))

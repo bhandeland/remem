@@ -3,11 +3,11 @@ from typing import Any
 import psycopg
 import pytest
 
-from remem.backends.postgres.migrate import migrate
-from remem.backends.postgres.store import PostgresStore
-from remem.domain import Kind, Origin, Principal, Query
-from remem.services import write
-from remem.services.search import find
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.store import PostgresStore
+from saddlebag.domain import Kind, Origin, Principal, Query
+from saddlebag.services import write
+from saddlebag.services.search import find
 from tests.conftest import found
 
 pytestmark = pytest.mark.db
@@ -27,7 +27,7 @@ def owner(store: PostgresStore) -> Principal:
 def test_remember_returns_a_persisted_entry(
     store: PostgresStore, owner: Principal
 ) -> None:
-    e = write.remember(store, owner.id, title="T", body="B", project="remem")
+    e = write.remember(store, owner.id, title="T", body="B", project="saddlebag")
     assert e.id is not None
     assert found(store.get_entry(e.id, owner.id)).title == "T"
 
@@ -67,7 +67,7 @@ def test_update_changes_only_what_is_given(
 def test_update_raises_for_a_missing_entry(
     store: PostgresStore, owner: Principal
 ) -> None:
-    from remem.domain import new_id
+    from saddlebag.domain import new_id
 
     with pytest.raises(write.EntryNotFound):
         write.update(store, owner.id, new_id(), body="x")
@@ -81,7 +81,7 @@ def test_supersede_creates_a_new_entry_and_marks_the_old(
         owner.id,
         title="Fridays",
         body="deploy fridays",
-        project="remem",
+        project="saddlebag",
         tags=["deploys"],
     )
     new = write.supersede(
@@ -100,12 +100,12 @@ def test_supersede_inherits_project_and_tags(
         title="T",
         body="B",
         summary="Deploy on Fridays only with a rollback plan",
-        project="remem",
+        project="saddlebag",
         tags=["deploys"],
         kind=Kind.RULE,
     )
     new = write.supersede(store, owner.id, old.id, title="T2", body="B2")
-    assert new.project == "remem"
+    assert new.project == "saddlebag"
     assert new.tags == ["deploys"]
     assert new.kind is Kind.RULE
 
@@ -122,7 +122,7 @@ def test_superseded_entry_disappears_from_search(
 def test_supersede_raises_for_a_missing_entry(
     store: PostgresStore, owner: Principal
 ) -> None:
-    from remem.domain import new_id
+    from saddlebag.domain import new_id
 
     with pytest.raises(write.EntryNotFound):
         write.supersede(store, owner.id, new_id(), title="t", body="b")

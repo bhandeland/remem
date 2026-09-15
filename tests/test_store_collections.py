@@ -3,10 +3,10 @@ from typing import Any
 import psycopg
 import pytest
 
-from remem.backends.postgres.migrate import migrate
-from remem.backends.postgres.store import PostgresStore
-from remem.domain import Collection, CollectionQuery, Kind, Principal, new_id
-from remem.services.write import remember
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.store import PostgresStore
+from saddlebag.domain import Collection, CollectionQuery, Kind, Principal, new_id
+from saddlebag.services.write import remember
 from tests.conftest import found
 
 pytestmark = pytest.mark.db
@@ -28,20 +28,20 @@ def test_put_and_get_collection_roundtrip(
 ) -> None:
     c = Collection(
         id=new_id(),
-        slug="remem-core",
-        title="remem core",
+        slug="saddlebag-core",
+        title="saddlebag core",
         owner_id=owner.id,
         description="the important bits",
-        project="remem",
-        query=CollectionQuery(tags=["style"], kinds=[Kind.RULE], project="remem"),
+        project="saddlebag",
+        query=CollectionQuery(tags=["style"], kinds=[Kind.RULE], project="saddlebag"),
     )
     store.put_collection(c)
-    got = found(store.get_collection("remem-core", owner.id))
-    assert got.title == "remem core"
+    got = found(store.get_collection("saddlebag-core", owner.id))
+    assert got.title == "saddlebag core"
     assert got.description == "the important bits"
     assert got.query.tags == ["style"]
     assert got.query.kinds == [Kind.RULE]
-    assert got.query.project == "remem"
+    assert got.query.project == "saddlebag"
 
 
 def test_get_collection_is_owner_scoped(store: PostgresStore, owner: Principal) -> None:

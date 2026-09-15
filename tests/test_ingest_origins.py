@@ -13,11 +13,11 @@ from typing import Any
 import psycopg
 import pytest
 
-from remem.backends.postgres.migrate import migrate
-from remem.backends.postgres.store import PostgresStore
-from remem.domain import CollectionQuery, Kind, Origin, Principal, Query
-from remem.services import kb, search
-from remem.services.write import remember
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.store import PostgresStore
+from saddlebag.domain import CollectionQuery, Kind, Origin, Principal, Query
+from saddlebag.services import kb, search
+from saddlebag.services.write import remember
 
 pytestmark = pytest.mark.db
 
@@ -47,7 +47,7 @@ def test_default_search_finds_ingested_and_hides_archived(
         title="Sweep design",
         body="the sweep supersedes orphans",
         kind=Kind.DOC,
-        project="remem",
+        project="saddlebag",
         origin=Origin.INGESTED,
     )
     remember(
@@ -56,7 +56,7 @@ def test_default_search_finds_ingested_and_hides_archived(
         title="Task 9 sweep",
         body="the sweep supersedes orphans",
         kind=Kind.DOC,
-        project="remem",
+        project="saddlebag",
         origin=Origin.ARCHIVED,
     )
 
@@ -71,7 +71,7 @@ def test_include_archived_surfaces_both(store: PostgresStore, owner: Principal) 
         title="Sweep design",
         body="the sweep supersedes orphans",
         kind=Kind.DOC,
-        project="remem",
+        project="saddlebag",
         origin=Origin.INGESTED,
     )
     remember(
@@ -80,7 +80,7 @@ def test_include_archived_surfaces_both(store: PostgresStore, owner: Principal) 
         title="Task 9 sweep",
         body="the sweep supersedes orphans",
         kind=Kind.DOC,
-        project="remem",
+        project="saddlebag",
         origin=Origin.ARCHIVED,
     )
 
@@ -98,7 +98,7 @@ def test_neither_origin_reaches_a_context_block(
         body="never in context",
         summary="Ingested docs stay out of every session's context",
         kind=Kind.RULE,
-        project="remem",
+        project="saddlebag",
         origin=Origin.INGESTED,
     )
     remember(
@@ -108,17 +108,17 @@ def test_neither_origin_reaches_a_context_block(
         body="never in context",
         summary="Archived plans stay out of every session's context",
         kind=Kind.RULE,
-        project="remem",
+        project="saddlebag",
         origin=Origin.ARCHIVED,
     )
     kb.create(
         store,
         owner.id,
-        slug="remem",
-        title="remem",
-        query=CollectionQuery(project="remem"),
+        slug="saddlebag",
+        title="saddlebag",
+        query=CollectionQuery(project="saddlebag"),
     )
 
     # kb.resolve takes the collection's SLUG, not the object.
-    entries = kb.resolve(store, owner.id, "remem")
+    entries = kb.resolve(store, owner.id, "saddlebag")
     assert entries == []

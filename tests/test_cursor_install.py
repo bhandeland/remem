@@ -3,10 +3,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import psycopg
 import pytest
 
-from remem.agents.base import UnsupportedScope
-from remem.agents.cursor import install
+from saddlebag.agents.base import UnsupportedScope
+from saddlebag.agents.cursor import install
+from saddlebag.backends.postgres.migrate import migrate
 
 
 def test_user_scope_is_the_home_cursor_directory(tmp_path: Path) -> None:
@@ -32,16 +34,16 @@ def test_an_unknown_scope_raises_rather_than_falling_back(tmp_path: Path) -> Non
 def test_merging_into_nothing_creates_the_document(tmp_path: Path) -> None:
     path = tmp_path / "hooks.json"
 
-    merged, backup = install.merge(path, {"sessionStart": "remem hook context"})
+    merged, backup = install.merge(path, {"sessionStart": "bag hook context"})
 
     assert backup is None
     assert merged["version"] == 1
-    assert merged["hooks"]["sessionStart"] == [{"command": "remem hook context"}]
+    assert merged["hooks"]["sessionStart"] == [{"command": "bag hook context"}]
 
 
 def test_merging_preserves_another_tools_hooks(tmp_path: Path) -> None:
-    """hooks.json is user-owned and shared - unlike opencode's remem.js,
-    which remem is the only thing that ever writes."""
+    """hooks.json is user-owned and shared - unlike opencode's saddlebag.js,
+    which saddlebag is the only thing that ever writes."""
     path = tmp_path / "hooks.json"
     path.write_text(
         json.dumps(
@@ -55,18 +57,18 @@ def test_merging_preserves_another_tools_hooks(tmp_path: Path) -> None:
         )
     )
 
-    merged, backup = install.merge(path, {"sessionStart": "remem hook context"})
+    merged, backup = install.merge(path, {"sessionStart": "bag hook context"})
 
     assert merged["hooks"]["stop"] == [{"command": "someone-elses-tool"}]
     commands = [h["command"] for h in merged["hooks"]["sessionStart"]]
     assert "also-theirs" in commands
-    assert "remem hook context" in commands
+    assert "bag hook context" in commands
     assert backup is not None and backup.exists()
 
 
 def test_merging_twice_does_not_duplicate_our_entry(tmp_path: Path) -> None:
     path = tmp_path / "hooks.json"
-    entries = {"sessionStart": "remem hook context"}
+    entries = {"sessionStart": "bag hook context"}
 
     merged, _ = install.merge(path, entries)
     path.write_text(json.dumps(merged))
@@ -79,7 +81,7 @@ def test_the_backup_holds_what_was_there_before(tmp_path: Path) -> None:
     path = tmp_path / "hooks.json"
     path.write_text('{"version": 1, "hooks": {"stop": [{"command": "x"}]}}')
 
-    _, backup = install.merge(path, {"sessionStart": "remem hook context"})
+    _, backup = install.merge(path, {"sessionStart": "bag hook context"})
 
     assert backup is not None
     assert json.loads(backup.read_text())["hooks"]["stop"] == [{"command": "x"}]
@@ -91,15 +93,15 @@ def test_unreadable_json_is_backed_up_and_replaced(tmp_path: Path) -> None:
     path = tmp_path / "hooks.json"
     path.write_text("{not json at all")
 
-    merged, backup = install.merge(path, {"sessionStart": "remem hook context"})
+    merged, backup = install.merge(path, {"sessionStart": "bag hook context"})
 
-    assert merged["hooks"]["sessionStart"] == [{"command": "remem hook context"}]
+    assert merged["hooks"]["sessionStart"] == [{"command": "bag hook context"}]
     assert backup is not None
     assert backup.read_text() == "{not json at all"
 
 
 def test_the_installed_entries_name_only_hooks_cursor_emits():
-    from remem.agents.cursor.hooks import BLOCKING_HOOKS, HOOK_NAMES
+    from saddlebag.agents.cursor.hooks import BLOCKING_HOOKS, HOOK_NAMES
 
     named = frozenset(install.ENTRIES)
 
@@ -123,29 +125,53 @@ def test_every_recorded_hook_is_also_installed():
     makes executable is "every hook the adapter parses is also installed",
     not "the two tables name the same hooks".
     """
-    from remem.agents.cursor.adapter import CursorAdapter
+    from saddlebag.agents.cursor.adapter import CursorAdapter
 
     assert frozenset(CursorAdapter.EVENT_KINDS) <= frozenset(install.ENTRIES)
 
 
 def test_the_entries_call_the_harness_neutral_command():
-    """`remem hook record-event` is hardcoded to Claude Code and takes no
+    """`bag hook record-event` is hardcoded to Claude Code and takes no
     --agent. Getting this wrong records nothing, silently."""
     for hook, command in install.ENTRIES.items():
         assert "--agent cursor" in command
         assert "hook record-event" not in command
 
 
+@pytest.fixture
+def env(live_dsn: str, tmp_path: Path) -> dict[str, str]:
+    """A real, migrated database for install() to round-trip through.
+
+    The same fixture tests/test_opencode_install.py and
+    tests/test_claude_code_events_install.py carry, and this file went
+    without. install() folds verify()'s live round-trip into its report, and
+    `env=None` does not skip it: round_trip falls back to os.environ, which
+    on a developer machine names no DSN, so the round-trip resolved to the
+    default address - the developer's own store - and wrote and deleted a
+    verify event there on every run, reading the real config file while it
+    was at it. Renaming the default role is what made it visible, as an
+    authentication failure against a database that had never been the test's.
+    """
+    with psycopg.connect(live_dsn) as c:
+        migrate(c)
+        c.commit()
+    return {
+        "BAG_DSN": live_dsn,
+        "BAG_USER_ID": "brandon",
+        "BAG_CONFIG": str(tmp_path / "none.toml"),
+    }
+
+
 @pytest.mark.db
 def test_install_writes_the_hooks_and_verifies(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, env: dict[str, str]
 ) -> None:
     """install() performs a live database round-trip - it proves the
     record path actually works - which is why this is marked db."""
-    from remem.agents.cursor.adapter import CursorAdapter
+    from saddlebag.agents.cursor.adapter import CursorAdapter
 
     monkeypatch.chdir(tmp_path)
-    report = CursorAdapter().install(scope="user", home=tmp_path, env=None)
+    report = CursorAdapter().install(scope="user", home=tmp_path, env=env)
 
     written = json.loads((tmp_path / ".cursor" / "hooks.json").read_text())
     assert set(written["hooks"]) == set(install.ENTRIES)
@@ -158,12 +184,12 @@ def test_merge_collapses_a_command_the_file_already_names_twice(tmp_path: Path) 
 
     The membership test below only ever prevented a duplicate this install
     would add; it never fixed one already in the file. A hooks.json that
-    names remem's command twice - hand-edited, or written by a buggy
+    names saddlebag's command twice - hand-edited, or written by a buggy
     earlier install - fires the hook twice and doubles every row it
     records, and `events` has no unique constraint to catch it.
     """
     path = tmp_path / "hooks.json"
-    command = "remem record event --agent cursor"
+    command = "bag record event --agent cursor"
     path.write_text(
         json.dumps(
             {
@@ -183,7 +209,7 @@ def test_merge_migrates_a_superseded_command_instead_of_appending_beside_it(
 ) -> None:
     """The migration half.
 
-    Renaming a command remem writes would otherwise leave the old entry in
+    Renaming a command saddlebag writes would otherwise leave the old entry in
     place next to the new one - both firing - because the membership test
     is by exact string. This is exactly what happened to the Claude Code
     adapter's SessionEnd hook; the table is empty here only because no
@@ -195,19 +221,19 @@ def test_merge_migrates_a_superseded_command_instead_of_appending_beside_it(
         json.dumps(
             {
                 "version": 1,
-                "hooks": {"postToolUse": [{"command": "remem record event --old"}]},
+                "hooks": {"postToolUse": [{"command": "bag record event --old"}]},
             }
         )
     )
 
     merged, _ = install.merge(
         path,
-        {"postToolUse": "remem record event --agent cursor"},
-        legacy={"postToolUse": ("remem record event --old",)},
+        {"postToolUse": "bag record event --agent cursor"},
+        legacy={"postToolUse": ("bag record event --old",)},
     )
 
     assert merged["hooks"]["postToolUse"] == [
-        {"command": "remem record event --agent cursor"}
+        {"command": "bag record event --agent cursor"}
     ]
 
 
@@ -220,14 +246,14 @@ def test_merge_repairs_a_file_naming_both_the_old_and_the_new_command(
     entries, the same duplicate bug wearing a different name.
     """
     path = tmp_path / "hooks.json"
-    new = "remem record event --agent cursor"
+    new = "bag record event --agent cursor"
     path.write_text(
         json.dumps(
             {
                 "version": 1,
                 "hooks": {
                     "postToolUse": [
-                        {"command": "remem record event --old"},
+                        {"command": "bag record event --old"},
                         {"command": new},
                     ]
                 },
@@ -238,13 +264,13 @@ def test_merge_repairs_a_file_naming_both_the_old_and_the_new_command(
     merged, _ = install.merge(
         path,
         {"postToolUse": new},
-        legacy={"postToolUse": ("remem record event --old",)},
+        legacy={"postToolUse": ("bag record event --old",)},
     )
 
     assert merged["hooks"]["postToolUse"] == [{"command": new}]
 
 
-def test_merge_never_removes_an_entry_remem_did_not_write(tmp_path: Path) -> None:
+def test_merge_never_removes_an_entry_saddlebag_did_not_write(tmp_path: Path) -> None:
     """hooks.json is shared and user-owned.
 
     An install that tidied the file by deleting entries it did not write
@@ -252,7 +278,7 @@ def test_merge_never_removes_an_entry_remem_did_not_write(tmp_path: Path) -> Non
     duplicate that belongs to somebody else.
     """
     path = tmp_path / "hooks.json"
-    command = "remem record event --agent cursor"
+    command = "bag record event --agent cursor"
     path.write_text(
         json.dumps(
             {
@@ -279,7 +305,7 @@ def test_merge_never_removes_an_entry_remem_did_not_write(tmp_path: Path) -> Non
 
 
 def test_the_hook_table_names_exactly_what_install_writes():
-    from remem.agents.cursor.install import HOOK_ENTRIES
+    from saddlebag.agents.cursor.install import HOOK_ENTRIES
 
     assert sorted(h.event for h in HOOK_ENTRIES) == sorted(
         [
@@ -300,9 +326,7 @@ def test_merge_preserves_other_keys_on_an_entry_it_rewrites(tmp_path: Path) -> N
             {
                 "version": 1,
                 "hooks": {
-                    "postToolUse": [
-                        {"command": "remem record event --old", "timeout": 7}
-                    ]
+                    "postToolUse": [{"command": "bag record event --old", "timeout": 7}]
                 },
             }
         )
@@ -310,10 +334,10 @@ def test_merge_preserves_other_keys_on_an_entry_it_rewrites(tmp_path: Path) -> N
 
     merged, _ = install.merge(
         path,
-        {"postToolUse": "remem record event --agent cursor"},
-        legacy={"postToolUse": ("remem record event --old",)},
+        {"postToolUse": "bag record event --agent cursor"},
+        legacy={"postToolUse": ("bag record event --old",)},
     )
 
     assert merged["hooks"]["postToolUse"] == [
-        {"command": "remem record event --agent cursor", "timeout": 7}
+        {"command": "bag record event --agent cursor", "timeout": 7}
     ]

@@ -1,4 +1,4 @@
-"""`remem doctor`. Reads files, opens no database."""
+"""`bag doctor`. Reads files, opens no database."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from typing import Any
 import pytest
 from typer.testing import CliRunner
 
-from remem.cli import app
+from saddlebag.cli import app
 
 runner = CliRunner()
 
@@ -27,10 +27,10 @@ def entry(command: str) -> dict[str, Any]:
 
 
 COMPLETE = {
-    "SessionStart": [entry("remem hook session-start")],
-    "SessionEnd": [entry("remem hook record-event")],
-    "PostToolUse": [entry("remem hook record-event")],
-    "UserPromptSubmit": [entry("remem hook session-size")],
+    "SessionStart": [entry("bag hook session-start")],
+    "SessionEnd": [entry("bag hook record-event")],
+    "PostToolUse": [entry("bag hook record-event")],
+    "UserPromptSubmit": [entry("bag hook session-size")],
 }
 
 
@@ -44,7 +44,7 @@ def test_a_missing_required_hook_is_named_and_exits_nonzero(
     result = runner.invoke(app, ["doctor", "claude-code"])
     assert result.exit_code == 1
     assert "PostToolUse" in result.stdout
-    assert "remem install claude-code" in result.stdout
+    assert "bag install claude-code" in result.stdout
 
 
 def test_a_complete_install_exits_zero(
@@ -98,7 +98,7 @@ def test_doctor_needs_no_database(
     """The whole point of a diagnostic: it has to work when the system is
     unhealthy. services/settings.py is the existing precedent."""
     monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setenv("REMEM_DSN", "postgresql://nobody@127.0.0.1:1/nothing")
+    monkeypatch.setenv("BAG_DSN", "postgresql://nobody@127.0.0.1:1/nothing")
     settings_with(tmp_path, COMPLETE)
     result = runner.invoke(app, ["doctor", "claude-code"])
     assert result.exit_code == 0

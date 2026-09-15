@@ -7,7 +7,7 @@
 set -euo pipefail
 read -rsp "GitHub PAT: " T; echo; echo
 
-for r in fleet kubesealpl kubesealpy nighthawk-blame nighthawk-cherrypick remem urlcontainers; do
+for r in fleet kubesealpl kubesealpy nighthawk-blame nighthawk-cherrypick saddlebag urlcontainers; do
   code=$(curl -s -o /dev/null -w '%{http_code}' -X PUT \
     -H "Authorization: Bearer $T" -H "Accept: application/vnd.github+json" \
     -d '{"message":"probe","content":"cHJvYmU=","sha":"0000000000000000000000000000000000000000"}' \

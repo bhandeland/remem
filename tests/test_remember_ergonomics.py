@@ -13,8 +13,8 @@ import psycopg
 import pytest
 from typer.testing import CliRunner
 
-from remem.backends.postgres.migrate import migrate
-from remem.cli import app
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.cli import app
 
 runner = CliRunner()
 
@@ -24,9 +24,9 @@ def env(live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> str:
     with psycopg.connect(live_dsn) as c:
         migrate(c)
         c.commit()
-    monkeypatch.setenv("REMEM_DSN", live_dsn)
-    monkeypatch.setenv("REMEM_USER_ID", "brandon")
-    monkeypatch.setenv("REMEM_CONFIG", str(tmp_path / "none.toml"))
+    monkeypatch.setenv("BAG_DSN", live_dsn)
+    monkeypatch.setenv("BAG_USER_ID", "brandon")
+    monkeypatch.setenv("BAG_CONFIG", str(tmp_path / "none.toml"))
     return live_dsn
 
 
@@ -151,7 +151,7 @@ def test_rule_accepts_tags_and_global(
 def test_editor_body_uses_the_configured_editor(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from remem import cli
+    from saddlebag import cli
 
     seen = {}
 
@@ -170,7 +170,7 @@ def test_editor_body_uses_the_configured_editor(
 def test_editor_falls_back_when_no_editor_is_set(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from remem import cli
+    from saddlebag import cli
 
     seen = {}
 
@@ -192,7 +192,7 @@ def test_an_empty_editor_body_aborts(monkeypatch: pytest.MonkeyPatch) -> None:
     writing is worse than doing nothing."""
     import typer
 
-    from remem import cli
+    from saddlebag import cli
 
     def fake_call(cmd: list[str], **kwargs: Any) -> int:
         with open(cmd[-1], "w") as fh:
@@ -208,7 +208,7 @@ def test_an_empty_editor_body_aborts(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_remember_edit_stores_the_edited_body(
     env: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    from remem import cli
+    from saddlebag import cli
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(
@@ -232,7 +232,7 @@ def test_mcp_remember_defaults_project_to_the_directory(
     project_dir.mkdir()
     monkeypatch.chdir(project_dir)
 
-    from remem.mcp_server import remember_tool
+    from saddlebag.mcp_server import remember_tool
 
     remember_tool(title="Agent wrote this", body="distinctive agent body")
     assert _entry("distinctive")["project"] == "agentproj"
@@ -243,7 +243,7 @@ def test_mcp_remember_honours_an_explicit_project(
     env: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.chdir(tmp_path)
-    from remem.mcp_server import remember_tool
+    from saddlebag.mcp_server import remember_tool
 
     remember_tool(title="Explicit", body="distinctive explicit body", project="chosen")
     assert _entry("distinctive")["project"] == "chosen"

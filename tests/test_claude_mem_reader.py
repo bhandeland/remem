@@ -13,8 +13,8 @@ from pathlib import Path
 
 import pytest
 
-from remem.importers.base import SourceKind
-from remem.importers.claude_mem import UnreadableSource, read
+from saddlebag.importers.base import SourceKind
+from saddlebag.importers.claude_mem import UnreadableSource, read
 
 MODERN_SCHEMA = """
 create table projects (
@@ -82,7 +82,7 @@ def test_an_observation_becomes_one_record(tmp_path: Path) -> None:
 
 def test_the_subtitle_becomes_the_summary(tmp_path: Path) -> None:
     """claude-mem's subtitle is already a one-line hook written to sit under
-    a title, which is exactly what remem's summary field is for."""
+    a title, which is exactly what saddlebag's summary field is for."""
     [record] = read(_modern(tmp_path)).records
 
     assert record.summary == "Mapped 80+ projects across Python, Node and Terraform"

@@ -1,7 +1,7 @@
 """Chunk identity is the repository-relative path, computed by the CLI.
 
-`remem ingest` used to identify a chunk by the path as typed, so `cd docs
-&& remem ingest a.md` stored `src:a.md` where a root run stored
+`bag ingest` used to identify a chunk by the path as typed, so `cd docs
+&& bag ingest a.md` stored `src:a.md` where a root run stored
 `src:docs/a.md` and duplicated every chunk. A rule said to run from the
 root; a rule is not a fix. No db marker: these use a scratch git repo
 and no store.
@@ -14,8 +14,8 @@ from pathlib import Path
 
 import pytest
 
-from remem.project import toplevel
-from remem.services import ingest
+from saddlebag.project import toplevel
+from saddlebag.services import ingest
 
 
 def _git(path: Path, *args: str) -> None:

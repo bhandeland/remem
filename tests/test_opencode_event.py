@@ -1,7 +1,7 @@
 """Reading opencode plugin payloads as events.
 
 The payload shape here is the contract with plugin.js: change one and the
-other stops recording, silently, because `remem record event` is fail-soft
+other stops recording, silently, because `bag record event` is fail-soft
 by design.
 """
 
@@ -12,8 +12,8 @@ from typing import Any
 
 import pytest
 
-from remem.agents.opencode.adapter import OpenCodeAdapter
-from remem.domain import EventKind
+from saddlebag.agents.opencode.adapter import OpenCodeAdapter
+from saddlebag.domain import EventKind
 from tests.conftest import found
 
 
@@ -98,13 +98,13 @@ def test_a_payload_with_no_session_id_records_nothing(repo: Path) -> None:
 def test_the_adapter_is_discoverable_under_its_entry_point() -> None:
     """Registry discovery reads *installed* entry points, so this test fails
     until the package is reinstalled - see the task's note on `uv sync`."""
-    from remem.agents import registry
+    from saddlebag.agents import registry
 
     assert registry.get("opencode") is OpenCodeAdapter
 
 
 def test_the_adapter_declares_no_env_capabilities() -> None:
-    """env_settings() and settings_path() are a pair, and remem has no
+    """env_settings() and settings_path() are a pair, and saddlebag has no
     curated table of opencode variables. An adapter with one of them cannot
     be written to but looks as though it can."""
     adapter = OpenCodeAdapter()

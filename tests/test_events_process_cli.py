@@ -1,4 +1,4 @@
-"""`remem events process` - the cron entry point.
+"""`bag events process` - the cron entry point.
 
 Three things this command has to get right, and each of them is invisible
 until it is wrong: it commits as it goes (a batch in one transaction discards
@@ -18,12 +18,12 @@ import psycopg
 import pytest
 from typer.testing import CliRunner
 
-from remem.backends.postgres.migrate import migrate
-from remem.backends.postgres.store import PostgresStore
-from remem.cli import app
-from remem.domain import Entry, Event, EventKind, Kind, new_id
-from remem.extract.base import ExtractedEntry
-from remem.services import record
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.store import PostgresStore
+from saddlebag.cli import app
+from saddlebag.domain import Entry, Event, EventKind, Kind, new_id
+from saddlebag.extract.base import ExtractedEntry
+from saddlebag.services import record
 from tests.conftest import one, scalar
 
 runner = CliRunner()
@@ -38,9 +38,9 @@ def env(live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> str:
     with psycopg.connect(live_dsn) as c:
         migrate(c)
         c.commit()
-    monkeypatch.setenv("REMEM_DSN", live_dsn)
-    monkeypatch.setenv("REMEM_USER_ID", "brandon")
-    monkeypatch.setenv("REMEM_CONFIG", str(tmp_path / "none.toml"))
+    monkeypatch.setenv("BAG_DSN", live_dsn)
+    monkeypatch.setenv("BAG_USER_ID", "brandon")
+    monkeypatch.setenv("BAG_CONFIG", str(tmp_path / "none.toml"))
     return live_dsn
 
 
@@ -97,9 +97,9 @@ def test_a_run_with_nothing_to_do_succeeds_quietly(env: str) -> None:
 def test_a_quiet_session_is_extracted(
     env: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _record(env, "remem", "s1", "GOOD")
+    _record(env, "saddlebag", "s1", "GOOD")
     monkeypatch.setattr(
-        "remem.extract.claude_cli.ClaudeCliExtractor", _TitleFromFirstEvent
+        "saddlebag.extract.claude_cli.ClaudeCliExtractor", _TitleFromFirstEvent
     )
 
     result = runner.invoke(app, ["events", "process"])
@@ -114,18 +114,18 @@ def test_a_quiet_session_is_extracted(
 def test_a_session_inside_the_idle_window_is_left_alone(
     env: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """REMEM_IDLE_MINUTES is the trigger, and the CLI must pass it through
+    """BAG_IDLE_MINUTES is the trigger, and the CLI must pass it through
     rather than letting the service's own default decide."""
     _record(
         env,
-        "remem",
+        "saddlebag",
         "s1",
         "STILL-GOING",
         when=datetime.now(timezone.utc) - timedelta(minutes=5),
     )
-    monkeypatch.setenv("REMEM_IDLE_MINUTES", "20")
+    monkeypatch.setenv("BAG_IDLE_MINUTES", "20")
     monkeypatch.setattr(
-        "remem.extract.claude_cli.ClaudeCliExtractor", _TitleFromFirstEvent
+        "saddlebag.extract.claude_cli.ClaudeCliExtractor", _TitleFromFirstEvent
     )
 
     result = runner.invoke(app, ["events", "process"])
@@ -139,14 +139,14 @@ def test_a_shorter_idle_window_makes_the_same_session_extractable(
 ) -> None:
     _record(
         env,
-        "remem",
+        "saddlebag",
         "s1",
         "RECENT",
         when=datetime.now(timezone.utc) - timedelta(minutes=5),
     )
-    monkeypatch.setenv("REMEM_IDLE_MINUTES", "1")
+    monkeypatch.setenv("BAG_IDLE_MINUTES", "1")
     monkeypatch.setattr(
-        "remem.extract.claude_cli.ClaudeCliExtractor", _TitleFromFirstEvent
+        "saddlebag.extract.claude_cli.ClaudeCliExtractor", _TitleFromFirstEvent
     )
 
     result = runner.invoke(app, ["events", "process"])
@@ -167,9 +167,9 @@ def test_a_real_database_error_does_not_discard_the_rest_of_the_run(
     real connection, which is the only way to reproduce that state.
     """
     owner_id = _record(
-        env, "remem", "good", "GOOD", when=LONG_AGO - timedelta(minutes=5)
+        env, "saddlebag", "good", "GOOD", when=LONG_AGO - timedelta(minutes=5)
     )
-    _record(env, "remem", "bad", "BAD")
+    _record(env, "saddlebag", "bad", "BAD")
 
     real_put = PostgresStore.put_entry
 
@@ -182,7 +182,7 @@ def test_a_real_database_error_does_not_discard_the_rest_of_the_run(
 
     monkeypatch.setattr(PostgresStore, "put_entry", flaky_put)
     monkeypatch.setattr(
-        "remem.extract.claude_cli.ClaudeCliExtractor", _TitleFromFirstEvent
+        "saddlebag.extract.claude_cli.ClaudeCliExtractor", _TitleFromFirstEvent
     )
 
     result = runner.invoke(app, ["events", "process"])
@@ -211,19 +211,19 @@ def test_a_real_database_error_does_not_discard_the_rest_of_the_run(
 def test_the_job_flag_retries_one_job_that_gave_up(
     env: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    owner_id = _record(env, "remem", "s1", "GOOD")
+    owner_id = _record(env, "saddlebag", "s1", "GOOD")
     with psycopg.connect(env) as c:
         job_id = new_id()
         c.execute(
             "insert into extract_jobs (id, owner_id, project, harness, "
             "session_id, status, attempts, error) values "
-            "(%s, %s, 'remem', 'claude-code', 's1', 'failed', 9, "
+            "(%s, %s, 'saddlebag', 'claude-code', 's1', 'failed', 9, "
             "'gave up after 3 attempts')",
             (job_id, owner_id),
         )
         c.commit()
     monkeypatch.setattr(
-        "remem.extract.claude_cli.ClaudeCliExtractor", _TitleFromFirstEvent
+        "saddlebag.extract.claude_cli.ClaudeCliExtractor", _TitleFromFirstEvent
     )
 
     result = runner.invoke(app, ["events", "process", "--job", str(job_id)])
@@ -269,9 +269,9 @@ def test_the_run_uses_the_configured_model(
         ) -> list[ExtractedEntry]:
             return []
 
-    _record(env, "remem", "s1", "anything")
-    monkeypatch.setenv("REMEM_CAPTURE_MODEL", "opus")
-    monkeypatch.setattr("remem.extract.claude_cli.ClaudeCliExtractor", Probe)
+    _record(env, "saddlebag", "s1", "anything")
+    monkeypatch.setenv("BAG_CAPTURE_MODEL", "opus")
+    monkeypatch.setattr("saddlebag.extract.claude_cli.ClaudeCliExtractor", Probe)
 
     assert runner.invoke(app, ["events", "process"]).exit_code == 0
     assert seen.get("model") == "opus"
@@ -282,9 +282,9 @@ def test_a_second_run_says_nothing_while_the_first_holds_the_lock(
 ) -> None:
     """Cron overlap is the expected case, not an error. A non-zero exit here
     would mail the user about a working system."""
-    owner_id = _record(env, "remem", "s1", "GOOD")
+    owner_id = _record(env, "saddlebag", "s1", "GOOD")
     monkeypatch.setattr(
-        "remem.extract.claude_cli.ClaudeCliExtractor", _TitleFromFirstEvent
+        "saddlebag.extract.claude_cli.ClaudeCliExtractor", _TitleFromFirstEvent
     )
 
     holder = psycopg.connect(env)
@@ -312,13 +312,13 @@ def test_the_lock_is_released_when_the_run_ends(
 ) -> None:
     """Session-level, so it dies with the connection - which is the process
     ending. A lock that outlived one run would stop every later one."""
-    _record(env, "remem", "s1", "GOOD")
+    _record(env, "saddlebag", "s1", "GOOD")
     monkeypatch.setattr(
-        "remem.extract.claude_cli.ClaudeCliExtractor", _TitleFromFirstEvent
+        "saddlebag.extract.claude_cli.ClaudeCliExtractor", _TitleFromFirstEvent
     )
 
     assert runner.invoke(app, ["events", "process"]).exit_code == 0
-    _record(env, "remem", "s2", "SECOND")
+    _record(env, "saddlebag", "s2", "SECOND")
     result = runner.invoke(app, ["events", "process"])
 
     assert "claimed 1" in result.stdout

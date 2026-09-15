@@ -1,4 +1,4 @@
-"""`remem record status` and `remem events show` - making recording's
+"""`bag record status` and `bag events show` - making recording's
 silence visible, and telling "pruned" apart from "never recorded".
 
 Fail-soft hooks make "recording nothing, silently, forever" the default
@@ -18,10 +18,10 @@ import psycopg
 import pytest
 from typer.testing import CliRunner
 
-from remem.backends.postgres.migrate import migrate
-from remem.backends.postgres.store import PostgresStore
-from remem.cli import app
-from remem.domain import (
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.store import PostgresStore
+from saddlebag.cli import app
+from saddlebag.domain import (
     Event,
     EventKind,
     IngestTrigger,
@@ -30,7 +30,7 @@ from remem.domain import (
     SessionRef,
     new_id,
 )
-from remem.services import events, extraction, ingest, record, write
+from saddlebag.services import events, extraction, ingest, record, write
 from tests.conftest import found
 
 runner = CliRunner()
@@ -63,7 +63,7 @@ def an_event(
     return Event(
         id=new_id(),
         owner_id=owner.id,
-        project="remem",
+        project="saddlebag",
         harness=harness,
         session_id=session,
         kind=EventKind.TOOL_CALL,
@@ -85,7 +85,7 @@ def _mark_done(
     job = store.claim_extract_job(
         owner.id,
         SessionRef(
-            project="remem",
+            project="saddlebag",
             harness=harness,
             session_id=session_id,
             event_count=0,
@@ -105,11 +105,11 @@ def test_status_reports_a_harness_that_has_recorded_nothing(
     a number the user can look at, so a harness with no events must appear
     in the report - as a zero - rather than being absent from it.
     """
-    record.enable(store, owner.id, "remem")
+    record.enable(store, owner.id, "saddlebag")
 
     report = events.status(store, owner.id, idle_seconds=IDLE)
 
-    assert report.enabled_projects == ["remem"]
+    assert report.enabled_projects == ["saddlebag"]
     assert report.harnesses == []
     assert "no events" in events.render(report)
 
@@ -194,13 +194,13 @@ def test_status_mentions_a_stranded_legacy_capture_job_once(
         conn.execute(
             "insert into capture_jobs_legacy (id, owner_id, project, "
             "transcript_path) values (%s, %s, %s, %s)",
-            (new_id(), live_owner.id, "remem", "/tmp/t.jsonl"),
+            (new_id(), live_owner.id, "saddlebag", "/tmp/t.jsonl"),
         )
         conn.commit()
 
-    monkeypatch.setenv("REMEM_DSN", live_dsn)
-    monkeypatch.setenv("REMEM_USER_ID", "brandon")
-    monkeypatch.setenv("REMEM_CONFIG", str(tmp_path / "none.toml"))
+    monkeypatch.setenv("BAG_DSN", live_dsn)
+    monkeypatch.setenv("BAG_USER_ID", "brandon")
+    monkeypatch.setenv("BAG_CONFIG", str(tmp_path / "none.toml"))
 
     result = runner.invoke(app, ["record", "status"])
 
@@ -249,7 +249,7 @@ def test_events_show_on_an_entry_with_no_provenance(
 # 011 made a duplicate impossible for any event carrying a harness id. It
 # cannot cover the rest: claude-code's SessionEnd payload has no per-event
 # id and neither does opencode's message, and inventing one for them would
-# be a constraint over a value remem made up - which is how a legitimate
+# be a constraint over a value saddlebag made up - which is how a legitimate
 # repeat gets deleted.
 #
 # So for those, the answer is a report rather than a constraint. It is safe
@@ -271,7 +271,7 @@ def an_unkeyed_event(
     return Event(
         id=new_id(),
         owner_id=owner.id,
-        project="remem",
+        project="saddlebag",
         harness=harness,
         session_id=session,
         kind=EventKind.SESSION_END,
@@ -382,7 +382,7 @@ def test_the_duplicate_report_names_the_fix(
 
     assert "duplicate" in out.lower()
     assert "claude-code" in out
-    assert "remem install claude-code" in out
+    assert "bag install claude-code" in out
 
 
 def test_the_duplicate_report_reaches_json_too(
@@ -396,7 +396,12 @@ def test_the_duplicate_report_reaches_json_too(
     payload = events.to_dict(events.status(store, owner.id, idle_seconds=IDLE))
 
     assert payload["suspected_duplicates"] == [
-        {"project": "remem", "harness": "claude-code", "session_id": "s1", "count": 2}
+        {
+            "project": "saddlebag",
+            "harness": "claude-code",
+            "session_id": "s1",
+            "count": 2,
+        }
     ]
 
 
@@ -425,12 +430,12 @@ def test_the_status_report_carries_hook_advisories(
         hook_advisories=[
             "claude-code is installed but its hooks are "
             "incomplete: PostToolUse (missing) - run "
-            "`remem doctor claude-code`"
+            "`bag doctor claude-code`"
         ],
     )
     text = events.render(report)
     assert "PostToolUse" in text
-    assert "remem doctor claude-code" in text
+    assert "bag doctor claude-code" in text
     assert events.to_dict(report)["hook_advisories"] == report.hook_advisories
 
 
@@ -439,14 +444,14 @@ def test_a_healthy_install_adds_no_advisory_lines(
 ) -> None:
     report = events.status(store, owner.id, idle_seconds=IDLE)
     assert report.hook_advisories == []
-    assert "remem doctor" not in events.render(report)
+    assert "bag doctor" not in events.render(report)
 
 
 def test_status_carries_an_ingest_advisory(
     store: PostgresStore, owner: Principal
 ) -> None:
-    ingest.designate(store, owner.id, "remem", ["docs/specs"])
-    run = store.start_ingest_run(owner.id, "remem", IngestTrigger.AUTO)
+    ingest.designate(store, owner.id, "saddlebag", ["docs/specs"])
+    run = store.start_ingest_run(owner.id, "saddlebag", IngestTrigger.AUTO)
     store.finish_ingest_run(
         run.id,
         owner.id,
@@ -463,7 +468,7 @@ def test_status_carries_an_ingest_advisory(
 
     report = events.status(store, owner.id, idle_seconds=IDLE, ingest_advisories=lines)
 
-    assert "! remem: last auto ingest" in events.render(report)
+    assert "! saddlebag: last auto ingest" in events.render(report)
     assert events.to_dict(report)["ingest_advisories"] == lines
 
 
@@ -477,8 +482,8 @@ def test_status_carries_a_knowledge_base_budget_advisory(
     injection dies on every harness at once in total silence. `record
     status` is already the fail-loud half of that pipeline.
     """
-    from remem.domain import CollectionQuery, Kind
-    from remem.services import kb
+    from saddlebag.domain import CollectionQuery, Kind
+    from saddlebag.services import kb
 
     kb.create(
         store,
@@ -518,8 +523,8 @@ def test_record_status_reports_an_over_budget_knowledge_base(
     """
     import psycopg
 
-    from remem.domain import CollectionQuery, Kind
-    from remem.services import kb
+    from saddlebag.domain import CollectionQuery, Kind
+    from saddlebag.services import kb
 
     with psycopg.connect(live_dsn) as conn:
         migrate(conn)
@@ -545,10 +550,10 @@ def test_record_status_reports_an_over_budget_knowledge_base(
             )
         conn.commit()
 
-    monkeypatch.setenv("REMEM_DSN", live_dsn)
-    monkeypatch.setenv("REMEM_USER_ID", "brandon")
-    monkeypatch.setenv("REMEM_CONFIG", str(tmp_path / "none.toml"))
-    monkeypatch.setenv("REMEM_MAX_CHARS", "800")
+    monkeypatch.setenv("BAG_DSN", live_dsn)
+    monkeypatch.setenv("BAG_USER_ID", "brandon")
+    monkeypatch.setenv("BAG_CONFIG", str(tmp_path / "none.toml"))
+    monkeypatch.setenv("BAG_MAX_CHARS", "800")
 
     result = runner.invoke(app, ["record", "status"])
 

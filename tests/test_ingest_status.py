@@ -1,4 +1,4 @@
-"""`remem reingest status` and the advisory line in `remem record status`.
+"""`bag reingest status` and the advisory line in `bag record status`.
 
 The refresh is fail-soft and detached; these are the on-demand answer to
 "did it run, and did it work". The render is pure so its four last-run
@@ -16,9 +16,9 @@ from uuid import uuid4
 import psycopg
 import pytest
 
-from remem.backends.postgres.store import PostgresStore
-from remem.domain import IngestDesignation, IngestRun, IngestTrigger, Principal
-from remem.services import ingest
+from saddlebag.backends.postgres.store import PostgresStore
+from saddlebag.domain import IngestDesignation, IngestRun, IngestTrigger, Principal
+from saddlebag.services import ingest
 from tests.conftest import found
 
 AT = datetime(2026, 9, 4, 14, 2, tzinfo=timezone.utc)
@@ -29,7 +29,7 @@ def _run(**kw: Any) -> IngestRun:
     base = dict(
         id=uuid4(),
         owner_id=uuid4(),
-        project="remem",
+        project="saddlebag",
         trigger=IngestTrigger.AUTO,
         started_at=AT,
         finished_at=AT,
@@ -39,8 +39,8 @@ def _run(**kw: Any) -> IngestRun:
 
 
 _BASE_STATUS = ingest.ProjectIngestStatus(
-    project="remem",
-    designations=[IngestDesignation("remem", ("docs/specs", "docs/notes"))],
+    project="saddlebag",
+    designations=[IngestDesignation("saddlebag", ("docs/specs", "docs/notes"))],
     last_run=None,
     checked_against=None,
     missing=[],
@@ -55,8 +55,8 @@ def _status(**kw: Any) -> ingest.ProjectIngestStatus:
 
 
 def test_render_lists_designations_and_never_run():
-    out = ingest.render_status([_status()], "remem")
-    assert "remem (default): docs/specs, docs/notes" in out
+    out = ingest.render_status([_status()], "saddlebag")
+    assert "saddlebag (default): docs/specs, docs/notes" in out
     assert "last run: never. A session start inside this repository spawns one." in out
 
 
@@ -67,7 +67,7 @@ def test_render_a_clean_finished_run():
                 last_run=_run(created=3, changed=1, unchanged=40, swept=0, embedded=4)
             )
         ],
-        "remem",
+        "saddlebag",
     )
     assert (
         f"last run: auto, {SHOWN}, 3 new, 1 changed, 40 unchanged, 0 swept, 4 embedded"
@@ -82,37 +82,37 @@ def test_render_a_run_with_failures_twins_and_an_embed_error():
         twins=[{"path": "docs/a.md", "existing": "notes/docs/a.md", "live": 12}],
         embed_error="fastembed is not installed",
     )
-    out = ingest.render_status([_status(last_run=run)], "remem")
+    out = ingest.render_status([_status(last_run=run)], "saddlebag")
     assert "  failed: docs/notes: No such file" in out
     assert "  twin: docs/a.md is new, but src:notes/docs/a.md has 12 live chunks" in out
     assert "  embed skipped: fastembed is not installed" in out
 
 
 def test_render_an_unfinished_run():
-    out = ingest.render_status([_status(last_run=_run(finished_at=None))], "remem")
+    out = ingest.render_status([_status(last_run=_run(finished_at=None))], "saddlebag")
     assert f"last run: auto, started {SHOWN}, did not finish" in out
 
 
 def test_render_names_where_the_disk_check_looked():
     out = ingest.render_status(
         [_status(checked_against=Path("/repo"), missing=["docs/notes"])],
-        "remem",
+        "saddlebag",
     )
     assert "missing on disk: docs/notes  (checked against /repo)" in out
 
 
 def test_render_says_when_paths_were_not_checked():
-    out = ingest.render_status([_status(checked_against=None)], "remem")
-    assert "paths not checked: run from inside remem's repository" in out
+    out = ingest.render_status([_status(checked_against=None)], "saddlebag")
+    assert "paths not checked: run from inside saddlebag's repository" in out
 
 
 def test_render_a_clean_disk_check_says_so():
-    out = ingest.render_status([_status(checked_against=Path("/repo"))], "remem")
+    out = ingest.render_status([_status(checked_against=Path("/repo"))], "saddlebag")
     assert "all designated paths present  (checked against /repo)" in out
 
 
 def test_render_nothing_designated():
-    assert "not designated" in ingest.render_status([], "remem")
+    assert "not designated" in ingest.render_status([], "saddlebag")
     assert "This project" in ingest.render_status([], None)
 
 
@@ -130,11 +130,11 @@ def test_render_an_undesignated_projects_manual_run_has_no_check_line():
                 checked_against=None,
             )
         ],
-        "remem",
+        "saddlebag",
     )
     assert (
-        "remem is not designated for automatic re-ingest. Designate it "
-        "with `remem reingest designate <paths>`."
+        "saddlebag is not designated for automatic re-ingest. Designate it "
+        "with `bag reingest designate <paths>`."
     ) in out
     assert "last run: manual" in out
     assert "all designated paths present" not in out
@@ -149,7 +149,7 @@ def test_status_to_dict_carries_the_run_and_the_check():
             )
         ]
     )
-    assert d["project"] == "remem"
+    assert d["project"] == "saddlebag"
     assert d["designations"] == [
         {"archive": False, "paths": ["docs/specs", "docs/notes"]}
     ]
@@ -164,8 +164,8 @@ def test_status_to_dict_carries_the_run_and_the_check():
 
 @pytest.fixture
 def store(conn: psycopg.Connection[Any]) -> PostgresStore:
-    from remem.backends.postgres.migrate import migrate
-    from remem.backends.postgres.store import PostgresStore
+    from saddlebag.backends.postgres.migrate import migrate
+    from saddlebag.backends.postgres.store import PostgresStore
 
     migrate(conn)
     return PostgresStore(conn)
@@ -244,7 +244,7 @@ def test_advisories_name_only_the_unhealthy_projects(
     assert any(
         ln.startswith("failed:")
         and "1 failure(s)" in ln
-        and ln.endswith("see: remem reingest status --project failed")
+        and ln.endswith("see: bag reingest status --project failed")
         for ln in lines
     )
     assert any(ln.startswith("stuck:") and "did not finish" in ln for ln in lines)
@@ -266,10 +266,10 @@ def test_advisories_ignore_an_undesignated_projects_failed_manual_run(
     """status()'s fallback surfaces an undesignated current project's run
     for `reingest status` - right there, since that screen is answering
     "what happened here". But the spec scopes this advisory to designated
-    projects: `remem ingest` is already fail-loud about its own failures,
+    projects: `bag ingest` is already fail-loud about its own failures,
     and an undesignated project's run row never repairs itself, so
     repeating it here would be a permanently stuck line whose pointer
-    (remem reingest status --project solo) contradicts itself from outside
+    (bag reingest status --project solo) contradicts itself from outside
     this directory, where the fallback's `project == current_project`
     guard fails and the screen reads "not designated" with no run shown.
     """

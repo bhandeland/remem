@@ -9,11 +9,11 @@ from uuid import UUID
 import psycopg
 import pytest
 
-from remem.backends.postgres.migrate import migrate
-from remem.backends.postgres.store import PostgresStore
-from remem.domain import CollectionQuery, MemoryTrigger
-from remem.services import kb
-from remem.services import memory as memory_service
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.store import PostgresStore
+from saddlebag.domain import CollectionQuery, MemoryTrigger
+from saddlebag.services import kb
+from saddlebag.services import memory as memory_service
 from tests.conftest import found
 
 pytestmark = pytest.mark.db

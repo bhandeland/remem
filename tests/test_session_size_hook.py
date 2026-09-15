@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from remem.agents.claude_code import hook
-from remem.extract.base import CHILD_ENV_VAR
+from saddlebag.agents.claude_code import hook
+from saddlebag.extract.base import CHILD_ENV_VAR
 
 
 @pytest.fixture(autouse=True)
@@ -13,7 +13,7 @@ def _isolated_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The warn-state path comes from platformdirs, which reads the real
     environment - without this the tests would read and write the
     developer's own cache file and depend on earlier runs."""
-    from remem import session_size
+    from saddlebag import session_size
 
     monkeypatch.setattr(
         session_size, "state_path", lambda: tmp_path / "session-size.json"
@@ -32,9 +32,9 @@ def _transcript(tmp_path: Path, turns: int) -> Path:
 
 def _env(tmp_path: Path, **extra: str) -> dict[str, str]:
     env = {
-        "REMEM_TURN_WARN_AT": "10",
-        "REMEM_TURN_WARN_EVERY": "5",
-        "REMEM_CONFIG": str(tmp_path / "none.toml"),
+        "BAG_TURN_WARN_AT": "10",
+        "BAG_TURN_WARN_EVERY": "5",
+        "BAG_CONFIG": str(tmp_path / "none.toml"),
     }
     env.update(extra)
     return env
@@ -49,7 +49,7 @@ def test_a_long_session_warns_once_then_stays_quiet(tmp_path: Path) -> None:
     t = _transcript(tmp_path, 12)
     env = _env(tmp_path)
     first = hook.session_size(_payload(t), env=env)
-    assert "12" in first and "remem-handoff" in first
+    assert "12" in first and "bag-handoff" in first
     assert hook.session_size(_payload(t), env=env) == ""
 
 
@@ -70,7 +70,7 @@ def test_a_missing_transcript_path_is_silent(tmp_path: Path) -> None:
 
 
 def test_a_capture_child_is_never_warned(tmp_path: Path) -> None:
-    """The extraction child is a session remem started; telling it to hand
+    """The extraction child is a session saddlebag started; telling it to hand
     off would be advice to nobody."""
     t = _transcript(tmp_path, 99)
     env = _env(tmp_path, **{CHILD_ENV_VAR: "1"})

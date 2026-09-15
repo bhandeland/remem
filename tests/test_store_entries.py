@@ -3,9 +3,9 @@ from typing import Any
 import psycopg
 import pytest
 
-from remem.backends.postgres.migrate import migrate
-from remem.backends.postgres.store import PostgresStore
-from remem.domain import Entry, Kind, Origin, Principal, new_id
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.store import PostgresStore
+from saddlebag.domain import Entry, Kind, Origin, Principal, new_id
 from tests.conftest import found
 
 pytestmark = pytest.mark.db
@@ -42,7 +42,7 @@ def test_put_and_get_entry_roundtrip(store: PostgresStore, owner: Principal) -> 
         title="Use spaced hyphens",
         body="Never em dashes.",
         owner_id=owner.id,
-        project="remem",
+        project="saddlebag",
         tags=["style", "writing"],
         agent="claude-code",
         session_id="sess-1",
@@ -54,7 +54,7 @@ def test_put_and_get_entry_roundtrip(store: PostgresStore, owner: Principal) -> 
     assert got.title == "Use spaced hyphens"
     assert got.kind is Kind.RULE
     assert got.tags == ["style", "writing"]
-    assert got.project == "remem"
+    assert got.project == "saddlebag"
     assert got.origin is Origin.HUMAN
     assert got.session_id == "sess-1"
     assert got.created_at is not None

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from remem.config import DEFAULT_DSN, DEFAULT_HANDLE, DEFAULT_MAX_CHARS, load
+from saddlebag.config import DEFAULT_DSN, DEFAULT_HANDLE, DEFAULT_MAX_CHARS, load
 
 
 def test_defaults_when_nothing_set() -> None:
@@ -23,7 +23,7 @@ def test_env_overrides_config_file(tmp_path: Path) -> None:
     p = tmp_path / "config.toml"
     p.write_text('dsn = "postgresql://from/file"\nuser_handle = "alice"\n')
     cfg = load(
-        env={"REMEM_DSN": "postgresql://from/env", "REMEM_USER_ID": "bob"},
+        env={"BAG_DSN": "postgresql://from/env", "BAG_USER_ID": "bob"},
         config_path=p,
     )
     assert cfg.dsn == "postgresql://from/env"
@@ -31,7 +31,7 @@ def test_env_overrides_config_file(tmp_path: Path) -> None:
 
 
 def test_max_chars_from_env_is_an_int() -> None:
-    cfg = load(env={"REMEM_MAX_CHARS": "1234"}, config_path=Path("/nonexistent"))
+    cfg = load(env={"BAG_MAX_CHARS": "1234"}, config_path=Path("/nonexistent"))
     assert cfg.max_chars == 1234
 
 
@@ -52,21 +52,21 @@ def test_extract_model_defaults_to_sonnet() -> None:
     durable rule); Sonnet and Opus produced 2 of 2. Extraction is a judgment
     task, not a compression one.
     """
-    from remem.config import DEFAULT_EXTRACT_MODEL, load
+    from saddlebag.config import DEFAULT_EXTRACT_MODEL, load
 
     cfg = load(env={}, config_path=Path("/nonexistent"))
     assert cfg.extract_model == DEFAULT_EXTRACT_MODEL == "sonnet"
 
 
 def test_extract_model_from_env() -> None:
-    from remem.config import load
+    from saddlebag.config import load
 
-    cfg = load(env={"REMEM_EXTRACT_MODEL": "opus"}, config_path=Path("/nonexistent"))
+    cfg = load(env={"BAG_EXTRACT_MODEL": "opus"}, config_path=Path("/nonexistent"))
     assert cfg.extract_model == "opus"
 
 
 def test_extract_model_from_config_file(tmp_path: Path) -> None:
-    from remem.config import load
+    from saddlebag.config import load
 
     p = tmp_path / "config.toml"
     p.write_text('extract_model = "haiku"\n')
@@ -75,15 +75,15 @@ def test_extract_model_from_config_file(tmp_path: Path) -> None:
 
 def test_a_blank_extract_model_falls_back_to_the_default() -> None:
     """An empty value must not produce `--model ''`, which claude rejects."""
-    from remem.config import DEFAULT_EXTRACT_MODEL, load
+    from saddlebag.config import DEFAULT_EXTRACT_MODEL, load
 
-    cfg = load(env={"REMEM_EXTRACT_MODEL": "   "}, config_path=Path("/nonexistent"))
+    cfg = load(env={"BAG_EXTRACT_MODEL": "   "}, config_path=Path("/nonexistent"))
     assert cfg.extract_model == DEFAULT_EXTRACT_MODEL
 
 
 def test_turn_thresholds_come_from_the_environment(tmp_path: Path) -> None:
     cfg = load(
-        env={"REMEM_TURN_WARN_AT": "80", "REMEM_TURN_WARN_EVERY": "20"},
+        env={"BAG_TURN_WARN_AT": "80", "BAG_TURN_WARN_EVERY": "20"},
         config_path=tmp_path / "none.toml",
     )
     assert cfg.turn_warn_at == 80
@@ -92,7 +92,7 @@ def test_turn_thresholds_come_from_the_environment(tmp_path: Path) -> None:
 
 def test_nonsense_turn_thresholds_fall_back_to_the_defaults(tmp_path: Path) -> None:
     cfg = load(
-        env={"REMEM_TURN_WARN_AT": "zero", "REMEM_TURN_WARN_EVERY": "0"},
+        env={"BAG_TURN_WARN_AT": "zero", "BAG_TURN_WARN_EVERY": "0"},
         config_path=tmp_path / "none.toml",
     )
     assert cfg.turn_warn_at == 150
@@ -100,26 +100,26 @@ def test_nonsense_turn_thresholds_fall_back_to_the_defaults(tmp_path: Path) -> N
 
 
 def test_idle_minutes_defaults_to_twenty(tmp_path: Path) -> None:
-    from remem.config import DEFAULT_IDLE_MINUTES, load
+    from saddlebag.config import DEFAULT_IDLE_MINUTES, load
 
     cfg = load(env={}, config_path=tmp_path / "none.toml")
     assert cfg.idle_minutes == DEFAULT_IDLE_MINUTES == 20
 
 
 def test_idle_minutes_comes_from_the_environment(tmp_path: Path) -> None:
-    cfg = load(env={"REMEM_IDLE_MINUTES": "5"}, config_path=tmp_path / "none.toml")
+    cfg = load(env={"BAG_IDLE_MINUTES": "5"}, config_path=tmp_path / "none.toml")
     assert cfg.idle_minutes == 5
 
 
 def test_a_zero_idle_window_falls_back_to_the_default(tmp_path: Path) -> None:
     """Zero would make a session extractable the instant its first event
     lands - extraction racing a session still being worked in."""
-    cfg = load(env={"REMEM_IDLE_MINUTES": "0"}, config_path=tmp_path / "none.toml")
+    cfg = load(env={"BAG_IDLE_MINUTES": "0"}, config_path=tmp_path / "none.toml")
     assert cfg.idle_minutes == 20
 
 
 def test_a_nonsense_idle_window_falls_back_to_the_default(tmp_path: Path) -> None:
-    cfg = load(env={"REMEM_IDLE_MINUTES": "soon"}, config_path=tmp_path / "none.toml")
+    cfg = load(env={"BAG_IDLE_MINUTES": "soon"}, config_path=tmp_path / "none.toml")
     assert cfg.idle_minutes == 20
 
 

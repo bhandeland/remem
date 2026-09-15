@@ -1,4 +1,4 @@
-# GitLab CI/CD Pipeline for remem
+# GitLab CI/CD Pipeline for saddlebag
 
 stages:
   - lint
@@ -71,7 +71,7 @@ pip-audit:
 # Test Stage
 # =============================================================================
 #
-# remem's db-marked tests pytest.skip with an explanatory message when Postgres
+# saddlebag's db-marked tests pytest.skip with an explanatory message when Postgres
 # is unreachable, so the suite reports success while never touching the
 # database. A green run here would otherwise prove nothing. The service block
 # provides Postgres, and the assert-db-ran step below fails the job if any
@@ -87,13 +87,13 @@ pytest:
     - name: pgvector/pgvector:pg18
       alias: postgres
   variables:
-    POSTGRES_USER: remem
-    POSTGRES_PASSWORD: remem
-    POSTGRES_DB: remem
-    # tests/conftest.py reads REMEM_TEST_DSN, NOT REMEM_DSN - the latter is the
+    POSTGRES_USER: saddlebag
+    POSTGRES_PASSWORD: saddlebag
+    POSTGRES_DB: saddlebag
+    # tests/conftest.py reads BAG_TEST_DSN, NOT BAG_DSN - the latter is the
     # runtime setting and setting only it leaves every db test skipping against
     # localhost:5433 while the suite still exits 0.
-    REMEM_TEST_DSN: "postgresql://remem:remem@postgres:5432/remem"
+    BAG_TEST_DSN: "postgresql://saddlebag:saddlebag@postgres:5432/saddlebag"
   before_script:
     # git: test_project_resolution.py shells out to it; slim images have none.
     - apt-get update -qq && apt-get install -y -qq --no-install-recommends git
@@ -107,7 +107,7 @@ pytest:
     - |
       uv run python - <<'PY'
       import os, sys, psycopg
-      dsn = os.environ["REMEM_TEST_DSN"]
+      dsn = os.environ["BAG_TEST_DSN"]
       try:
           with psycopg.connect(dsn, connect_timeout=10):
               print(f"Postgres reachable at {dsn}")
@@ -118,7 +118,7 @@ pytest:
     # Those are tuned for the local agent loop, where -x --tb=line is the
     # point; here the whole failure list is what the run is for, and -x
     # would report one test and hide the rest.
-    - uv run pytest tests/ -v --maxfail=0 --tb=short --cov=src/remem --cov-report=term-missing --cov-report=xml:coverage.xml --junitxml=report.xml
+    - uv run pytest tests/ -v --maxfail=0 --tb=short --cov=src/bag --cov-report=term-missing --cov-report=xml:coverage.xml --junitxml=report.xml
   coverage: '/TOTAL.*\s+(\d+%)/'
   artifacts:
     reports:
@@ -167,4 +167,4 @@ publish-pypi:
     - if: $CI_COMMIT_TAG
   environment:
     name: release
-    url: https://pypi.org/project/remem/
+    url: https://pypi.org/project/saddlebag/

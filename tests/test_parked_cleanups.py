@@ -9,11 +9,11 @@ from typing import Any
 import psycopg
 import pytest
 
-from remem.backends.postgres.migrate import migrate
-from remem.backends.postgres.store import PostgresStore
-from remem.domain import CollectionQuery, Principal, Query
-from remem.services import kb, write
-from remem.services.search import MAX_LIMIT, find
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.store import PostgresStore
+from saddlebag.domain import CollectionQuery, Principal, Query
+from saddlebag.services import kb, write
+from saddlebag.services.search import MAX_LIMIT, find
 from tests.conftest import found, scalar
 
 pytestmark = pytest.mark.db
@@ -112,7 +112,7 @@ def test_clamping_an_oversized_limit_preserves_the_origins_filter(
 ) -> None:
     """A filter that survives normal limits but vanishes on large ones is
     worse than no filter: nothing reports the loss."""
-    from remem.domain import Origin
+    from saddlebag.domain import Origin
 
     write.remember(store, owner.id, title="Human", body="shared", origin=Origin.HUMAN)
     write.remember(
@@ -147,7 +147,7 @@ def test_applied_versions_does_not_create_the_tracking_table(
     conn: psycopg.Connection[Any],
 ) -> None:
     """Inspecting an unmigrated database must not write to it."""
-    from remem.backends.postgres.migrate import applied_versions, pending_versions
+    from saddlebag.backends.postgres.migrate import applied_versions, pending_versions
 
     assert applied_versions(conn) == []
     exists = scalar(conn.execute("select to_regclass('public.schema_migrations')"))

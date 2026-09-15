@@ -11,8 +11,8 @@ import json
 import sqlite3
 from pathlib import Path
 
-from remem.importers.base import SourceKind, SourceRecord
-from remem.importers.claude_mem import read
+from saddlebag.importers.base import SourceKind, SourceRecord
+from saddlebag.importers.claude_mem import read
 
 LEGACY_SCHEMA = """
 create table observations (

@@ -12,12 +12,12 @@ from uuid import UUID
 import psycopg
 import pytest
 
-from remem.agents.base import HarnessEvent
-from remem.agents.opencode.adapter import OpenCodeAdapter
-from remem.agents.verify import VERIFY_PROJECT
-from remem.backends.postgres.migrate import migrate
-from remem.domain import Event
-from remem.store import Store
+from saddlebag.agents.base import HarnessEvent
+from saddlebag.agents.opencode.adapter import OpenCodeAdapter
+from saddlebag.agents.verify import VERIFY_PROJECT
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.domain import Event
+from saddlebag.store import Store
 
 pytestmark = pytest.mark.db
 
@@ -28,9 +28,9 @@ def env(live_dsn: str, tmp_path: Path) -> dict[str, str]:
         migrate(c)
         c.commit()
     return {
-        "REMEM_DSN": live_dsn,
-        "REMEM_USER_ID": "brandon",
-        "REMEM_CONFIG": str(tmp_path / "none.toml"),
+        "BAG_DSN": live_dsn,
+        "BAG_USER_ID": "brandon",
+        "BAG_CONFIG": str(tmp_path / "none.toml"),
     }
 
 
@@ -46,7 +46,7 @@ def test_verification_round_trips_a_real_event(
 def test_verification_records_under_the_opencode_harness(
     env: dict[str, str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Not 'claude-code'. The harness column is what `remem record status`
+    """Not 'claude-code'. The harness column is what `bag record status`
     groups by, so a shared round-trip that hardcoded a name would report
     the wrong harness as working.
 
@@ -57,7 +57,7 @@ def test_verification_records_under_the_opencode_harness(
     harness indirectly. The spy delegates to the real function; it does not
     replace the round-trip, only observes it.
     """
-    from remem.services import record as record_service
+    from saddlebag.services import record as record_service
 
     calls: list[str] = []
     real_record = record_service.record
@@ -100,8 +100,8 @@ def test_verification_leaves_another_principal_untouched(
     """
     from datetime import datetime, timezone
 
-    from remem.backends.postgres.store import PostgresStore
-    from remem.domain import Event, EventKind, new_id
+    from saddlebag.backends.postgres.store import PostgresStore
+    from saddlebag.domain import Event, EventKind, new_id
 
     with psycopg.connect(live_dsn) as c:
         other_store = PostgresStore(c)
@@ -147,12 +147,12 @@ def test_verification_leaves_the_same_owners_other_project_untouched(
     """
     from datetime import datetime, timezone
 
-    from remem.backends.postgres.store import PostgresStore
-    from remem.domain import Event, EventKind, new_id
+    from saddlebag.backends.postgres.store import PostgresStore
+    from saddlebag.domain import Event, EventKind, new_id
 
     with psycopg.connect(live_dsn) as c:
         store = PostgresStore(c)
-        # The same handle the round-trip's REMEM_USER_ID resolves to - not a
+        # The same handle the round-trip's BAG_USER_ID resolves to - not a
         # second principal. ensure_principal is idempotent by handle, so
         # this returns the identical id verify() will record under.
         owner = store.ensure_principal("brandon")

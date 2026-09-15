@@ -2,7 +2,7 @@ import json
 from collections.abc import Sequence
 from pathlib import Path
 
-from remem import session_size
+from saddlebag import session_size
 
 
 def _transcript(tmp_path: Path, lines: Sequence[str]) -> Path:
@@ -86,4 +86,4 @@ def test_old_sessions_are_pruned_on_write(tmp_path: Path) -> None:
 def test_the_reminder_names_the_count_and_the_skill():
     text = session_size.reminder(150)
     assert "150" in text
-    assert "remem-handoff" in text
+    assert "bag-handoff" in text

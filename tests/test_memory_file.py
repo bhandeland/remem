@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from remem import memory_file
+from saddlebag import memory_file
 
 FIXTURES = Path(__file__).parent / "fixtures" / "memory"
 
@@ -24,7 +24,7 @@ def test_the_fixture_corpus_is_actually_there() -> None:
 # bookkeeping metadata (node_type, originSessionId, modified) and a
 # trailing space after `metadata:` that no other fixture has. Chasing
 # whole-file equality would have meant reproducing that trailing space
-# byte for byte forever, which is not a property remem's sync needs -
+# byte for byte forever, which is not a property saddlebag's sync needs -
 # it needs the *body* to round-trip exactly (that is what the watermark
 # hashes), rendering to be idempotent (a file is normalised once and then
 # stable), and no metadata key to ever be silently dropped. The three
@@ -145,7 +145,7 @@ def test_body_sha_ignores_nothing_and_is_stable() -> None:
 # directories put `type:` and their bookkeeping keys at the top level of
 # the frontmatter with no `metadata:` line at all. Read as though the
 # indented form were the only one, every such key lands in the "fields
-# remem understands" bucket, is understood by nothing, and is dropped by
+# saddlebag understands" bucket, is understood by nothing, and is dropped by
 # the next render - taking the file's type and its provenance with it.
 def test_a_top_level_type_is_the_type() -> None:
     mf = _parse_fixture(FIXTURES / "flat-frontmatter-dialect.md")

@@ -1,4 +1,4 @@
-"""The partial indexes that encode remem's always-on read filters.
+"""The partial indexes that encode saddlebag's always-on read filters.
 
 Every entry read constrains `owner_id` and excludes superseded rows. These
 indexes put both predicates in the index itself, so the index holds only rows a
@@ -11,9 +11,9 @@ from typing import Any
 import psycopg
 import pytest
 
-from remem.backends.postgres.migrate import migrate
-from remem.backends.postgres.store import PostgresStore
-from remem.domain import Entry, Kind, new_id
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.store import PostgresStore
+from saddlebag.domain import Entry, Kind, new_id
 
 pytestmark = pytest.mark.db
 
@@ -69,7 +69,7 @@ def test_listing_query_actually_uses_the_ordered_index(
 ) -> None:
     """The planner must satisfy ORDER BY from the index, not by sorting.
 
-    This is the path `remem search` with no query and every `kb resolve` take.
+    This is the path `bag search` with no query and every `kb resolve` take.
     Without the index the whole owner's corpus is scanned and sorted before
     LIMIT applies.
     """

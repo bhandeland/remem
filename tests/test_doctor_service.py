@@ -12,8 +12,8 @@ import re
 from collections.abc import Mapping
 from pathlib import Path
 
-from remem.agents.base import ExpectedHook, HookState, UnsupportedScope
-from remem.services import doctor
+from saddlebag.agents.base import ExpectedHook, HookState, UnsupportedScope
+from saddlebag.services import doctor
 from tests.conftest import found
 
 
@@ -22,9 +22,9 @@ from tests.conftest import found
 # already passes it positionally; the marker only states that.
 def hooks(path: str = "/tmp/settings.json", /, **found: list[str]) -> HookState:
     expected = (
-        ExpectedHook("SessionStart", "remem hook session-start", True, "injection"),
-        ExpectedHook("PostToolUse", "remem hook record-event", True, "every tool call"),
-        ExpectedHook("SessionEnd", "remem hook record-event", False, "prompt close"),
+        ExpectedHook("SessionStart", "bag hook session-start", True, "injection"),
+        ExpectedHook("PostToolUse", "bag hook record-event", True, "every tool call"),
+        ExpectedHook("SessionEnd", "bag hook record-event", False, "prompt close"),
     )
     return HookState(
         expected=expected,
@@ -81,9 +81,9 @@ def verdicts(report: doctor.AgentReport) -> dict[str, doctor.Verdict]:
 
 def test_a_registered_hook_is_ok() -> None:
     state = hooks(
-        SessionStart=["remem hook session-start"],
-        PostToolUse=["remem hook record-event"],
-        SessionEnd=["remem hook record-event"],
+        SessionStart=["bag hook session-start"],
+        PostToolUse=["bag hook record-event"],
+        SessionEnd=["bag hook record-event"],
     )
     report = doctor.check({"fake": FakeAdapter(state)})[0]
     assert set(verdicts(report).values()) == {doctor.Verdict.OK}
@@ -92,8 +92,8 @@ def test_a_registered_hook_is_ok() -> None:
 
 def test_a_missing_required_hook_fails_the_check() -> None:
     state = hooks(
-        SessionStart=["remem hook session-start"],
-        SessionEnd=["remem hook record-event"],
+        SessionStart=["bag hook session-start"],
+        SessionEnd=["bag hook record-event"],
     )
     report = doctor.check({"fake": FakeAdapter(state)})[0]
     assert verdicts(report)["PostToolUse"] is doctor.Verdict.MISSING
@@ -102,8 +102,8 @@ def test_a_missing_required_hook_fails_the_check() -> None:
 
 def test_a_missing_optional_hook_is_reported_but_does_not_fail() -> None:
     state = hooks(
-        SessionStart=["remem hook session-start"],
-        PostToolUse=["remem hook record-event"],
+        SessionStart=["bag hook session-start"],
+        PostToolUse=["bag hook record-event"],
     )
     report = doctor.check({"fake": FakeAdapter(state)})[0]
     assert verdicts(report)["SessionEnd"] is doctor.Verdict.MISSING
@@ -114,8 +114,8 @@ def test_a_hook_registered_twice_is_duplicated_and_does_not_fail() -> None:
     """It fires twice and doubles every row it records, which is worth
     saying loudly - but the hook does fire, so the exit code stays 0."""
     state = hooks(
-        SessionStart=["remem hook session-start"],
-        PostToolUse=["remem hook record-event"] * 2,
+        SessionStart=["bag hook session-start"],
+        PostToolUse=["bag hook record-event"] * 2,
     )
     report = doctor.check({"fake": FakeAdapter(state)})[0]
     assert verdicts(report)["PostToolUse"] is doctor.Verdict.DUPLICATED
@@ -124,15 +124,15 @@ def test_a_hook_registered_twice_is_duplicated_and_does_not_fail() -> None:
 
 def test_a_superseded_command_is_stale_not_missing() -> None:
     state = hooks(
-        SessionStart=["remem hook session-start"],
-        PostToolUse=["remem hook post-tool-use-old"],
+        SessionStart=["bag hook session-start"],
+        PostToolUse=["bag hook post-tool-use-old"],
     )
     report = doctor.check({"fake": FakeAdapter(state)})[0]
     assert verdicts(report)["PostToolUse"] is doctor.Verdict.STALE
     assert not doctor.failed([report])
 
 
-def test_an_adapter_with_no_remem_hooks_at_all_is_simply_not_installed() -> None:
+def test_an_adapter_with_no_saddlebag_hooks_at_all_is_simply_not_installed() -> None:
     """Warning that Cursor's hooks are missing on a machine with no Cursor
     would make the whole report noise, and a report people skim hides the
     next PostToolUse."""
@@ -151,11 +151,11 @@ def test_an_adapter_without_the_capability_is_unchecked_never_ok() -> None:
 
 def test_an_adapter_that_raises_warns_and_the_rest_still_run() -> None:
     """The registry contract: a broken third-party adapter must never be
-    why remem will not run."""
+    why saddlebag will not run."""
     state = hooks(
-        SessionStart=["remem hook session-start"],
-        PostToolUse=["remem hook record-event"],
-        SessionEnd=["remem hook record-event"],
+        SessionStart=["bag hook session-start"],
+        PostToolUse=["bag hook record-event"],
+        SessionEnd=["bag hook record-event"],
     )
     reports = doctor.check(
         {
@@ -182,26 +182,26 @@ def test_unchecked_never_renders_as_ok():
 
 def test_the_advisory_names_the_hook_and_the_fix() -> None:
     state = hooks(
-        SessionStart=["remem hook session-start"],
-        SessionEnd=["remem hook record-event"],
+        SessionStart=["bag hook session-start"],
+        SessionEnd=["bag hook record-event"],
     )
     lines = doctor.advisories(doctor.check({"fake": FakeAdapter(state)}))
     assert len(lines) == 1
     assert "PostToolUse" in lines[0]
-    assert "remem doctor fake" in lines[0]
+    assert "bag doctor fake" in lines[0]
 
 
 def test_a_complete_install_produces_no_advisory() -> None:
     state = hooks(
-        SessionStart=["remem hook session-start"],
-        PostToolUse=["remem hook record-event"],
-        SessionEnd=["remem hook record-event"],
+        SessionStart=["bag hook session-start"],
+        PostToolUse=["bag hook record-event"],
+        SessionEnd=["bag hook record-event"],
     )
     assert doctor.advisories(doctor.check({"fake": FakeAdapter(state)})) == []
 
 
 def test_json_and_human_forms_read_off_the_same_reports() -> None:
-    state = hooks(SessionStart=["remem hook session-start"])
+    state = hooks(SessionStart=["bag hook session-start"])
     reports = doctor.check({"fake": FakeAdapter(state)})
     data = doctor.to_dict(reports)
     assert data["failed"] is True
@@ -225,9 +225,9 @@ class RaisesOnConstruction:
 
 def test_an_adapter_that_raises_from_init_warns_and_the_rest_still_run() -> None:
     state = hooks(
-        SessionStart=["remem hook session-start"],
-        PostToolUse=["remem hook record-event"],
-        SessionEnd=["remem hook record-event"],
+        SessionStart=["bag hook session-start"],
+        PostToolUse=["bag hook record-event"],
+        SessionEnd=["bag hook record-event"],
     )
     reports = doctor.check(
         {
@@ -244,9 +244,9 @@ def test_an_adapter_that_raises_from_init_warns_and_the_rest_still_run() -> None
 
 def complete(**over: list[str]) -> dict[str, list[str]]:
     base = dict(
-        SessionStart=["remem hook session-start"],
-        PostToolUse=["remem hook record-event"],
-        SessionEnd=["remem hook record-event"],
+        SessionStart=["bag hook session-start"],
+        PostToolUse=["bag hook record-event"],
+        SessionEnd=["bag hook record-event"],
     )
     base.update(over)
     return base
@@ -259,7 +259,7 @@ def test_a_sweep_reports_each_installed_scope_separately() -> None:
     adapter = TwoScopeAdapter(
         user=hooks("/home/u/.cursor/hooks.json", **complete()),
         project=hooks(
-            "/repo/.cursor/hooks.json", SessionStart=["remem hook session-start"]
+            "/repo/.cursor/hooks.json", SessionStart=["bag hook session-start"]
         ),
     )
     reports = doctor.check({"two": adapter})
@@ -278,7 +278,7 @@ def test_a_required_hook_missing_in_any_installed_scope_fails() -> None:
     adapter = TwoScopeAdapter(
         user=hooks("/home/u/.cursor/hooks.json", **complete()),
         project=hooks(
-            "/repo/.cursor/hooks.json", SessionStart=["remem hook session-start"]
+            "/repo/.cursor/hooks.json", SessionStart=["bag hook session-start"]
         ),
     )
     assert doctor.failed(doctor.check({"two": adapter}))
@@ -326,21 +326,21 @@ def test_the_advisory_and_the_fix_line_both_carry_the_scope() -> None:
     whole asset."""
     adapter = TwoScopeAdapter(
         project=hooks(
-            "/repo/.cursor/hooks.json", SessionStart=["remem hook session-start"]
+            "/repo/.cursor/hooks.json", SessionStart=["bag hook session-start"]
         ),
     )
     reports = doctor.check({"two": adapter})
     lines = doctor.advisories(reports)
     assert len(lines) == 1
     assert "project" in lines[0]
-    assert "remem doctor two --scope project" in lines[0]
-    assert "remem install two --scope project" in doctor.render(reports)
+    assert "bag doctor two --scope project" in lines[0]
+    assert "bag install two --scope project" in doctor.render(reports)
 
 
 def test_a_stale_only_install_does_not_claim_to_be_incomplete() -> None:
     """The command IS registered, under a superseded name. Calling that
     "incomplete" sends the user looking for something that is not missing."""
-    adapter = FakeAdapter(hooks(**complete(PostToolUse=["remem hook old"])))
+    adapter = FakeAdapter(hooks(**complete(PostToolUse=["bag hook old"])))
     line = doctor.advisories(doctor.check({"fake": adapter}))[0]
     assert "incomplete" not in line
     assert "PostToolUse" in line
@@ -357,7 +357,7 @@ def test_render_with_no_adapters_says_so_rather_than_printing_nothing() -> None:
 def test_a_failed_check_reads_differently_from_nothing_to_check() -> None:
     """R7: a warning means something broke; its absence means the adapter
     simply has no hook configuration. The distinction is the honest one and
-    needs no roster of which adapters remem ships."""
+    needs no roster of which adapters saddlebag ships."""
     broke = doctor.render(doctor.check({"fake": FakeAdapter(raises=True)}))
     nothing = doctor.render(doctor.check({"plain": NoCapability()}))
     assert broke != nothing

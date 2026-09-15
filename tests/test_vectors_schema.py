@@ -10,7 +10,7 @@ from typing import Any
 import psycopg
 import pytest
 
-from remem.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.migrate import migrate
 from tests.conftest import one, scalar
 
 pytestmark = pytest.mark.db
@@ -47,8 +47,8 @@ def test_primary_key_is_entry_and_model(migrated: psycopg.Connection[Any]) -> No
 def test_deleting_an_entry_deletes_its_vectors(
     migrated: psycopg.Connection[Any],
 ) -> None:
-    from remem.backends.postgres.store import PostgresStore
-    from remem.domain import Entry, Kind, new_id
+    from saddlebag.backends.postgres.store import PostgresStore
+    from saddlebag.domain import Entry, Kind, new_id
 
     store = PostgresStore(migrated)
     owner = store.ensure_principal("vec-cascade")

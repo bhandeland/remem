@@ -5,9 +5,9 @@ import psycopg
 import pytest
 from typer.testing import CliRunner
 
-from remem.agents.claude_code.adapter import ClaudeCodeAdapter
-from remem.backends.postgres.migrate import migrate
-from remem.cli import app
+from saddlebag.agents.claude_code.adapter import ClaudeCodeAdapter
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.cli import app
 
 runner = CliRunner()
 
@@ -24,7 +24,7 @@ def test_installer_registers_the_session_end_hook(tmp_path: Path) -> None:
         for group in settings["hooks"]["SessionEnd"]
         for h in group["hooks"]
     ]
-    assert any("remem hook record-event" in c for c in commands)
+    assert any("bag hook record-event" in c for c in commands)
 
 
 @pytest.mark.db
@@ -48,20 +48,21 @@ def env(live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> str:
     with psycopg.connect(live_dsn) as c:
         migrate(c)
         c.commit()
-    monkeypatch.setenv("REMEM_DSN", live_dsn)
-    monkeypatch.setenv("REMEM_USER_ID", "brandon")
-    monkeypatch.setenv("REMEM_CONFIG", str(tmp_path / "none.toml"))
+    monkeypatch.setenv("BAG_DSN", live_dsn)
+    monkeypatch.setenv("BAG_USER_ID", "brandon")
+    monkeypatch.setenv("BAG_CONFIG", str(tmp_path / "none.toml"))
     return live_dsn
 
 
 @pytest.mark.db
 def test_enable_then_status_reports_the_project(env: str) -> None:
     assert (
-        runner.invoke(app, ["capture", "enable", "--project", "remem"]).exit_code == 0
+        runner.invoke(app, ["capture", "enable", "--project", "saddlebag"]).exit_code
+        == 0
     )
     result = runner.invoke(app, ["capture", "status"])
     assert result.exit_code == 0
-    assert "remem" in result.stdout
+    assert "saddlebag" in result.stdout
 
 
 @pytest.mark.db
@@ -76,8 +77,8 @@ def test_status_json_is_valid_when_nothing_has_happened(env: str) -> None:
 
 @pytest.mark.db
 def test_disable_removes_the_project_from_status(env: str) -> None:
-    runner.invoke(app, ["capture", "enable", "--project", "remem"])
-    runner.invoke(app, ["capture", "disable", "--project", "remem"])
+    runner.invoke(app, ["capture", "enable", "--project", "saddlebag"])
+    runner.invoke(app, ["capture", "disable", "--project", "saddlebag"])
     payload = json.loads(runner.invoke(app, ["capture", "status", "--json"]).stdout)
     assert payload["enabled_projects"] == []
 
@@ -86,11 +87,11 @@ def test_disable_removes_the_project_from_status(env: str) -> None:
 def test_enable_states_the_model_and_cost(env: str) -> None:
     """Borrowed from claude-mem, which quotes a rate at install time. The
     moment a user opts in is the moment the tradeoff is actionable."""
-    result = runner.invoke(app, ["capture", "enable", "--project", "remem"])
+    result = runner.invoke(app, ["capture", "enable", "--project", "saddlebag"])
     assert result.exit_code == 0
     out = result.stdout.lower()
     assert "sonnet" in out
-    assert "REMEM_CAPTURE_MODEL".lower() in out
+    assert "BAG_CAPTURE_MODEL".lower() in out
 
 
 @pytest.mark.db

@@ -9,8 +9,8 @@ import psycopg
 import pytest
 from typer.testing import CliRunner
 
-from remem.backends.postgres.migrate import migrate
-from remem.cli import app
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.cli import app
 
 pytestmark = pytest.mark.db
 
@@ -22,9 +22,9 @@ def env(live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> str:
     with psycopg.connect(live_dsn) as c:
         migrate(c)
         c.commit()
-    monkeypatch.setenv("REMEM_DSN", live_dsn)
-    monkeypatch.setenv("REMEM_USER_ID", "brandon")
-    monkeypatch.setenv("REMEM_CONFIG", str(tmp_path / "none.toml"))
+    monkeypatch.setenv("BAG_DSN", live_dsn)
+    monkeypatch.setenv("BAG_USER_ID", "brandon")
+    monkeypatch.setenv("BAG_CONFIG", str(tmp_path / "none.toml"))
     return live_dsn
 
 
@@ -44,7 +44,7 @@ def test_report_exits_zero_when_it_finds_duplicates(env: str) -> None:
 
     assert result.exit_code == 0, result.stdout
     assert "Exact duplicates: 1 groups" in result.stdout
-    assert "remem dedupe resolve" in result.stdout
+    assert "bag dedupe resolve" in result.stdout
 
 
 def test_report_says_so_when_there_is_nothing(env: str) -> None:

@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from remem.domain import (
+from saddlebag.domain import (
     Collection,
     CollectionQuery,
     Entry,

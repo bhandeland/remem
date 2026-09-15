@@ -1,4 +1,4 @@
-"""The session-start hook's detached `remem memory refresh`.
+"""The session-start hook's detached `bag memory refresh`.
 
 The third sibling of `spawn_process` and `spawn_ingest`, making the same
 three promises: never block the session, never print into it, never recurse
@@ -13,8 +13,8 @@ from typing import Any
 
 import pytest
 
-from remem import hookio
-from remem.extract.base import CHILD_ENV_VAR
+from saddlebag import hookio
+from saddlebag.extract.base import CHILD_ENV_VAR
 
 
 def test_spawn_memory_launches_the_refresh(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -26,7 +26,7 @@ def test_spawn_memory_launches_the_refresh(monkeypatch: pytest.MonkeyPatch) -> N
 
     monkeypatch.setattr(subprocess, "Popen", fake_popen)
     assert hookio.spawn_memory({"PATH": "/usr/bin"}) is True
-    assert seen["cmd"][:3] == ["remem", "memory", "refresh"]
+    assert seen["cmd"][:3] == ["bag", "memory", "refresh"]
 
 
 def test_spawn_memory_does_not_block_on_the_child(
@@ -48,7 +48,7 @@ def test_spawn_memory_does_not_block_on_the_child(
 def test_spawn_memory_is_skipped_inside_an_extraction_child(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The extractor's `claude -p` runs remem's hooks. It must not sync.
+    """The extractor's `claude -p` runs saddlebag's hooks. It must not sync.
 
     Same guard, same reason, as its two siblings: an extraction child that
     spawns work which the next extraction reads has no bound. Sync is the
@@ -65,11 +65,11 @@ def test_spawn_memory_is_skipped_inside_an_extraction_child(
     assert called == []
 
 
-def test_spawn_memory_returns_false_when_remem_is_missing(
+def test_spawn_memory_returns_false_when_saddlebag_is_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def boom(*a: object, **k: object) -> None:
-        raise FileNotFoundError("remem")
+        raise FileNotFoundError("bag")
 
     monkeypatch.setattr(subprocess, "Popen", boom)
     assert hookio.spawn_memory({}) is False
@@ -77,7 +77,7 @@ def test_spawn_memory_returns_false_when_remem_is_missing(
 
 # --- both trigger points, because there are two and only two -----------
 def test_session_start_spawns_the_sync(monkeypatch: pytest.MonkeyPatch) -> None:
-    from remem.agents.claude_code import hook
+    from saddlebag.agents.claude_code import hook
 
     spawned: list[Mapping[str, str]] = []
 
@@ -88,9 +88,13 @@ def test_session_start_spawns_the_sync(monkeypatch: pytest.MonkeyPatch) -> None:
     def already_spawned(env: Mapping[str, str]) -> bool:
         return True
 
-    monkeypatch.setattr("remem.agents.claude_code.hook.spawn_memory", record_spawn)
-    monkeypatch.setattr("remem.agents.claude_code.hook.spawn_ingest", already_spawned)
-    monkeypatch.setattr("remem.agents.claude_code.hook.spawn_process", already_spawned)
+    monkeypatch.setattr("saddlebag.agents.claude_code.hook.spawn_memory", record_spawn)
+    monkeypatch.setattr(
+        "saddlebag.agents.claude_code.hook.spawn_ingest", already_spawned
+    )
+    monkeypatch.setattr(
+        "saddlebag.agents.claude_code.hook.spawn_process", already_spawned
+    )
     monkeypatch.setattr("sys.stdin", __import__("io").StringIO("{}"))
 
     assert hook.main() == 0
@@ -101,7 +105,7 @@ def test_session_start_still_prints_nothing_when_the_sync_cannot_spawn(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Fail-soft is not weakened by adding a third spawn."""
-    from remem.agents.claude_code import hook
+    from saddlebag.agents.claude_code import hook
 
     def boom(*a: object, **k: object) -> None:
         raise OSError("no processes")

@@ -1,4 +1,4 @@
-"""The built wheel must contain the non-Python files remem needs at runtime.
+"""The built wheel must contain the non-Python files saddlebag needs at runtime.
 
 Nothing else in the suite can catch a packaging regression. The install tests
 reach the migrations and skills through `resources.files()`, which under the
@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-SRC = Path(__file__).resolve().parent.parent / "src" / "remem"
+SRC = Path(__file__).resolve().parent.parent / "src" / "saddlebag"
 MIGRATIONS = SRC / "backends" / "postgres" / "migrations"
 SKILLS = SRC / "agents" / "claude_code" / "skills"
 OPENCODE_PLUGIN = SRC / "agents" / "opencode" / "plugin.js"
@@ -48,7 +48,8 @@ def wheel_names(tmp_path_factory: pytest.TempPathFactory) -> set[str]:
 @pytest.mark.slow
 def test_the_wheel_ships_every_migration(wheel_names: set[str]) -> None:
     expected = {
-        f"remem/backends/postgres/migrations/{p.name}" for p in MIGRATIONS.glob("*.sql")
+        f"saddlebag/backends/postgres/migrations/{p.name}"
+        for p in MIGRATIONS.glob("*.sql")
     }
     assert expected, "no migrations found in the source tree - test is broken"
     assert expected <= wheel_names
@@ -59,7 +60,7 @@ def test_the_wheel_ships_every_skill(wheel_names: set[str]) -> None:
     expected = {
         # Skills are a directory of arbitrary supporting files, not just
         # SKILL.md, so compare every file rather than just the manifests.
-        f"remem/agents/claude_code/skills/{p.relative_to(SKILLS).as_posix()}"
+        f"saddlebag/agents/claude_code/skills/{p.relative_to(SKILLS).as_posix()}"
         for p in SKILLS.rglob("*")
         if p.is_file() and "__pycache__" not in p.parts
     }
@@ -75,11 +76,11 @@ def test_the_wheel_ships_the_opencode_plugin(wheel_names: set[str]):
     # resolves straight back to the source tree and stays green even if the
     # wheel shipped none of it.
     assert OPENCODE_PLUGIN.is_file(), "plugin.js missing from the source tree"
-    assert "remem/agents/opencode/plugin.js" in wheel_names
+    assert "saddlebag/agents/opencode/plugin.js" in wheel_names
 
 
 @pytest.mark.slow
 def test_the_wheel_ships_the_console_script(wheel_names: set[str]) -> None:
-    # The MCP server and both hooks are registered as a bare `remem`; without
+    # The MCP server and both hooks are registered as a bare `bag`; without
     # the entry point the generated Claude Code config silently does nothing.
     assert any(n.endswith(".dist-info/entry_points.txt") for n in wheel_names)

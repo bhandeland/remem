@@ -11,11 +11,11 @@ from typing import Any
 import psycopg
 import pytest
 
-from remem.backends.postgres.migrate import migrate
-from remem.backends.postgres.store import PostgresStore
-from remem.domain import CollectionQuery, Principal
-from remem.services import context, handoff, kb
-from remem.services.write import remember
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.store import PostgresStore
+from saddlebag.domain import CollectionQuery, Principal
+from saddlebag.services import context, handoff, kb
+from saddlebag.services.write import remember
 
 pytestmark = pytest.mark.db
 
@@ -58,7 +58,7 @@ def test_block_is_empty_for_a_project_with_no_knowledge_base(
 def test_the_reason_for_an_empty_block_is_reported(
     store: PostgresStore, owner: Principal
 ) -> None:
-    """Silence is ambiguous, which is why REMEM_HOOK_DEBUG exists. The
+    """Silence is ambiguous, which is why BAG_HOOK_DEBUG exists. The
     service knows why it returned nothing; only the frontend knows where to
     say so, hence the callable."""
     said: list[str] = []
@@ -71,7 +71,7 @@ def test_the_reason_for_an_empty_block_is_reported(
 def test_the_reason_names_the_principal_when_the_caller_provides_it(
     store: PostgresStore, owner: Principal
 ) -> None:
-    """A wrong or unexpected REMEM_USER_ID is one of the likeliest reasons
+    """A wrong or unexpected BAG_USER_ID is one of the likeliest reasons
     for silent injection, so the diagnostic should name the principal it
     looked under - when the caller has one to give. The service has no
     handle of its own; only owner_id, which is not human-readable."""
@@ -111,4 +111,4 @@ def test_the_handoff_pointer_is_appended_outside_max_chars(
 
     assert "A rule" not in block
     assert "Handoff available: ci" in block
-    assert "remem-prime ci" in block
+    assert "bag-prime ci" in block

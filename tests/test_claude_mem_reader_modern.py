@@ -15,8 +15,8 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from remem.importers.base import SourceKind, SourceRecord
-from remem.importers.claude_mem import read
+from saddlebag.importers.base import SourceKind, SourceRecord
+from saddlebag.importers.claude_mem import read
 
 MODERN_SCHEMA = """
 create table projects (

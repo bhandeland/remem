@@ -8,11 +8,11 @@ from typing import Any
 import psycopg
 import pytest
 
-from remem.backends.postgres.migrate import migrate
-from remem.backends.postgres.store import PostgresStore
-from remem.domain import Hit, Kind, Origin, Principal, Query
-from remem.importers.base import SourceKind, SourceRecord
-from remem.services.import_ import ImportPreconditionFailed, run
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.store import PostgresStore
+from saddlebag.domain import Hit, Kind, Origin, Principal, Query
+from saddlebag.importers.base import SourceKind, SourceRecord
+from saddlebag.services.import_ import ImportPreconditionFailed, run
 
 pytestmark = pytest.mark.db
 
@@ -184,7 +184,7 @@ def test_a_second_live_hit_on_one_identity_tag_is_refused(
     two hits, since provoking a genuine collision would mean writing two
     live entries under one identity tag by hand, which is exactly the
     scenario this guard exists to catch before it can happen for real."""
-    from remem.services.import_ import IdentityCollision
+    from saddlebag.services.import_ import IdentityCollision
 
     run(store, owner.id, [_record()], namespace="cmem")
     real_search = store.search
@@ -250,12 +250,12 @@ def test_a_schema_without_the_imported_origin_is_refused_by_name(
 ) -> None:
     """A new enum value cannot be USED in the transaction that added it, so
     a store one migration behind fails at the first write. The message must
-    name `remem db up` for the genuine schema-too-old case, and also carry
+    name `bag db up` for the genuine schema-too-old case, and also carry
     the original database error so the user can see what actually happened."""
     conn.execute("alter type entry_origin rename value 'imported' to 'imported_x'")
     store = PostgresStore(conn)
 
-    with pytest.raises(ImportPreconditionFailed, match="remem db up"):
+    with pytest.raises(ImportPreconditionFailed, match="bag db up"):
         run(store, owner.id, [_record()], namespace="cmem")
 
 
@@ -265,7 +265,7 @@ def test_a_non_schema_probe_failure_surfaces_its_own_error(
     """When the probe fails for a reason other than schema, that reason must
     appear in the error message - not be hidden behind 'migration 019'.
     A user staring at a connection fault must see the connection fault, not
-    be misdirected to `remem db up`."""
+    be misdirected to `bag db up`."""
     unrelated_error = RuntimeError("simulated connection lost")
 
     def failing_search(*args: Any, **kwargs: Any) -> list[Hit]:

@@ -3,9 +3,9 @@ from typing import Any
 import psycopg
 import pytest
 
-from remem.backends.postgres.migrate import migrate, pending_versions
-from remem.backends.postgres.store import PostgresStore
-from remem.domain import Entry, Kind, Origin, new_id
+from saddlebag.backends.postgres.migrate import migrate, pending_versions
+from saddlebag.backends.postgres.store import PostgresStore
+from saddlebag.domain import Entry, Kind, Origin, new_id
 from tests.conftest import found
 
 pytestmark = pytest.mark.db
@@ -19,10 +19,10 @@ def test_the_handoff_origin_round_trips(conn: psycopg.Connection[Any]) -> None:
         Entry(
             id=new_id(),
             kind=Kind.DOC,
-            title="Handoff: remem (2026-08-27)",
+            title="Handoff: saddlebag (2026-08-27)",
             body="## Done\n",
             owner_id=owner.id,
-            project="remem",
+            project="saddlebag",
             origin=Origin.HANDOFF,
         )
     )

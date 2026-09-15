@@ -14,11 +14,11 @@ from typing import Any
 import psycopg
 import pytest
 
-from remem.agents.base import HarnessEvent
-from remem.backends.postgres.migrate import migrate
-from remem.backends.postgres.store import PostgresStore
-from remem.domain import EventKind, Principal
-from remem.services import record
+from saddlebag.agents.base import HarnessEvent
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.store import PostgresStore
+from saddlebag.domain import EventKind, Principal
+from saddlebag.services import record
 
 pytestmark = pytest.mark.db
 
@@ -40,7 +40,7 @@ def a_harness_event(**kw: Any) -> HarnessEvent:
     return HarnessEvent(
         kind=kw.get("kind", EventKind.TOOL_CALL),
         session_id=kw.get("session_id", "s1"),
-        project=kw.get("project", "remem"),
+        project=kw.get("project", "saddlebag"),
         tool=kw.get("tool", "Bash"),
         payload=kw.get("payload", {"command": "ls"}),
         occurred_at=kw.get("occurred_at", NOW),
@@ -51,23 +51,23 @@ def test_nothing_is_recorded_for_a_project_that_did_not_opt_in(
     store: PostgresStore, owner: Principal
 ) -> None:
     assert record.record(store, owner.id, a_harness_event(), "claude-code") is None
-    assert store.events_for_session(owner.id, "remem", "claude-code", "s1") == []
+    assert store.events_for_session(owner.id, "saddlebag", "claude-code", "s1") == []
 
 
 def test_an_opted_in_project_records(store: PostgresStore, owner: Principal) -> None:
-    record.enable(store, owner.id, "remem")
+    record.enable(store, owner.id, "saddlebag")
 
     event = record.record(store, owner.id, a_harness_event(), "claude-code")
 
     assert event is not None
-    stored = store.events_for_session(owner.id, "remem", "claude-code", "s1")
+    stored = store.events_for_session(owner.id, "saddlebag", "claude-code", "s1")
     assert [e.id for e in stored] == [event.id]
     assert stored[0].harness == "claude-code"
 
 
 def test_disable_closes_the_gate_again(store: PostgresStore, owner: Principal) -> None:
-    record.enable(store, owner.id, "remem")
-    record.disable(store, owner.id, "remem")
+    record.enable(store, owner.id, "saddlebag")
+    record.disable(store, owner.id, "saddlebag")
     assert record.record(store, owner.id, a_harness_event(), "claude-code") is None
 
 
@@ -80,7 +80,7 @@ def test_an_event_with_no_project_is_refused(
     belongs to would have to be either recorded unconditionally - defeating
     the gate - or attributed to a guess. Refusing is the only honest answer.
     """
-    record.enable(store, owner.id, "remem")
+    record.enable(store, owner.id, "saddlebag")
     assert (
         record.record(store, owner.id, a_harness_event(project=None), "claude-code")
         is None
@@ -90,7 +90,7 @@ def test_an_event_with_no_project_is_refused(
 def test_the_opt_in_is_per_project_not_global(
     store: PostgresStore, owner: Principal
 ) -> None:
-    record.enable(store, owner.id, "remem")
+    record.enable(store, owner.id, "saddlebag")
     assert (
         record.record(store, owner.id, a_harness_event(project="other"), "claude-code")
         is None

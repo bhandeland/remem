@@ -8,11 +8,11 @@ from uuid import UUID
 import psycopg
 import pytest
 
-from remem.backends.postgres.migrate import migrate
-from remem.backends.postgres.store import PostgresStore
-from remem.domain import Entry, Kind, new_id
-from remem.services.dedupe import CannotResolve, resolve
-from remem.store import NotOwner
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.store import PostgresStore
+from saddlebag.domain import Entry, Kind, new_id
+from saddlebag.services.dedupe import CannotResolve, resolve
+from saddlebag.store import NotOwner
 from tests.conftest import found
 
 pytestmark = pytest.mark.db

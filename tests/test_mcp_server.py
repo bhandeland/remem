@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from remem.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.migrate import migrate
 from tests.conftest import scalar
 
 pytestmark = pytest.mark.db
@@ -15,14 +15,14 @@ def env(live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> str:
     with psycopg.connect(live_dsn) as c:
         migrate(c)
         c.commit()
-    monkeypatch.setenv("REMEM_DSN", live_dsn)
-    monkeypatch.setenv("REMEM_USER_ID", "brandon")
-    monkeypatch.setenv("REMEM_CONFIG", str(tmp_path / "none.toml"))
+    monkeypatch.setenv("BAG_DSN", live_dsn)
+    monkeypatch.setenv("BAG_USER_ID", "brandon")
+    monkeypatch.setenv("BAG_CONFIG", str(tmp_path / "none.toml"))
     return live_dsn
 
 
 def test_remember_then_recall(env: str) -> None:
-    from remem.mcp_server import recall_tool, remember_tool
+    from saddlebag.mcp_server import recall_tool, remember_tool
 
     result = remember_tool(title="Postgres tuning", body="raise work_mem")
     assert "id" in result
@@ -37,27 +37,27 @@ def test_remember_then_recall(env: str) -> None:
 
 
 def test_recall_returns_an_empty_list_when_nothing_matches(env: str) -> None:
-    from remem.mcp_server import recall_tool
+    from saddlebag.mcp_server import recall_tool
 
     assert recall_tool(query="zzzz-no-match-zzzz") == []
 
 
 def test_get_entry_returns_the_full_body(env: str) -> None:
-    from remem.mcp_server import get_entry_tool, remember_tool
+    from saddlebag.mcp_server import get_entry_tool, remember_tool
 
     created = remember_tool(title="T", body="the complete body")
     assert get_entry_tool(entry_id=created["id"])["body"] == "the complete body"
 
 
 def test_get_entry_reports_a_missing_id_without_raising(env: str) -> None:
-    from remem.domain import new_id
-    from remem.mcp_server import get_entry_tool
+    from saddlebag.domain import new_id
+    from saddlebag.mcp_server import get_entry_tool
 
     assert "error" in get_entry_tool(entry_id=str(new_id()))
 
 
 def test_supersede_hides_the_old_entry_from_recall(env: str) -> None:
-    from remem.mcp_server import recall_tool, remember_tool, supersede_tool
+    from saddlebag.mcp_server import recall_tool, remember_tool, supersede_tool
 
     old = remember_tool(title="Fridays", body="deploy fridays")
     supersede_tool(entry_id=old["id"], title="Tuesdays", body="deploy tuesdays")
@@ -73,8 +73,8 @@ def _legacy_rule(dsn: str, title: str) -> str:
     way tests/test_cli.py's helper of the same name does."""
     import psycopg
 
-    from remem.backends.postgres.store import PostgresStore
-    from remem.domain import Entry, Kind, Origin, new_id
+    from saddlebag.backends.postgres.store import PostgresStore
+    from saddlebag.domain import Entry, Kind, Origin, new_id
 
     with psycopg.connect(dsn) as c:
         store = PostgresStore(c)
@@ -94,7 +94,7 @@ def _legacy_rule(dsn: str, title: str) -> str:
 
 
 def test_supersede_a_legacy_rule_without_a_summary_reports_an_error(env: str) -> None:
-    from remem.mcp_server import supersede_tool
+    from saddlebag.mcp_server import supersede_tool
 
     entry_id = _legacy_rule(env, "A legacy rule")
     result = supersede_tool(
@@ -105,7 +105,7 @@ def test_supersede_a_legacy_rule_without_a_summary_reports_an_error(env: str) ->
 
 
 def test_supersede_a_legacy_rule_with_a_summary_succeeds(env: str) -> None:
-    from remem.mcp_server import supersede_tool
+    from saddlebag.mcp_server import supersede_tool
 
     entry_id = _legacy_rule(env, "Another legacy rule")
     result = supersede_tool(
@@ -127,14 +127,14 @@ def test_supersede_a_legacy_rule_with_a_summary_succeeds(env: str) -> None:
 
 
 def test_kb_list_and_context(env: str) -> None:
-    from remem.mcp_server import (
+    from saddlebag.mcp_server import (
         kb_context_tool,
         kb_list_tool,
         kb_pin_tool,
         remember_tool,
     )
-    from remem.services import kb
-    from remem.session import open_session
+    from saddlebag.services import kb
+    from saddlebag.session import open_session
 
     with open_session() as s:
         kb.create(s.store, s.owner.id, slug="core", title="Core")
@@ -155,16 +155,16 @@ def test_kb_list_and_context(env: str) -> None:
 def test_kb_context_for_an_unknown_slug_returns_a_message_not_an_exception(
     env: str,
 ) -> None:
-    from remem.mcp_server import kb_context_tool
+    from saddlebag.mcp_server import kb_context_tool
 
     assert "core" not in kb_context_tool(slug="nope")
 
 
 def test_kb_pin_reports_a_nonexistent_entry_without_raising(env: str) -> None:
-    from remem.domain import new_id
-    from remem.mcp_server import kb_pin_tool
-    from remem.services import kb
-    from remem.session import open_session
+    from saddlebag.domain import new_id
+    from saddlebag.mcp_server import kb_pin_tool
+    from saddlebag.services import kb
+    from saddlebag.session import open_session
 
     with open_session() as s:
         kb.create(s.store, s.owner.id, slug="core", title="Core")
@@ -175,14 +175,14 @@ def test_kb_pin_reports_a_nonexistent_entry_without_raising(env: str) -> None:
 
 
 def test_remember_reports_an_invalid_kind_without_raising(env: str) -> None:
-    from remem.mcp_server import remember_tool
+    from saddlebag.mcp_server import remember_tool
 
     result = remember_tool(title="T", body="B", kind="bogus")
     assert "error" in result
 
 
 def test_recall_reports_an_invalid_kind_without_raising(env: str) -> None:
-    from remem.mcp_server import recall_tool
+    from saddlebag.mcp_server import recall_tool
 
     result = recall_tool(query="anything", kind="bogus")
     assert "error" in result
@@ -191,7 +191,7 @@ def test_recall_reports_an_invalid_kind_without_raising(env: str) -> None:
 def test_tools_are_registered_with_the_server(env: str) -> None:
     import asyncio
 
-    from remem.mcp_server import mcp
+    from saddlebag.mcp_server import mcp
 
     names = {t.name for t in asyncio.run(mcp.list_tools())}
     assert names == {

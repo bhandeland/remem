@@ -16,10 +16,10 @@ from uuid import UUID, uuid4
 import psycopg
 import pytest
 
-from remem.backends.postgres.store import PostgresStore
-from remem.domain import Entry, Kind, Origin, Principal
-from remem.services import ingest
-from remem.store import Store
+from saddlebag.backends.postgres.store import PostgresStore
+from saddlebag.domain import Entry, Kind, Origin, Principal
+from saddlebag.services import ingest
+from saddlebag.store import Store
 
 
 def _anchor(src: str) -> Entry:
@@ -61,8 +61,8 @@ def test_no_anchors_no_twin():
 
 @pytest.fixture
 def store(conn: psycopg.Connection[Any]) -> PostgresStore:
-    from remem.backends.postgres.migrate import migrate
-    from remem.backends.postgres.store import PostgresStore
+    from saddlebag.backends.postgres.migrate import migrate
+    from saddlebag.backends.postgres.store import PostgresStore
 
     migrate(conn)
     return PostgresStore(conn)

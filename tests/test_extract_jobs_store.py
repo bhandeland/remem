@@ -1,5 +1,5 @@
 """The extraction spool: the idle rule, the covers_through watermark, and
-claim/finish mechanics that `remem events process` (Task 6) will drive."""
+claim/finish mechanics that `bag events process` (Task 6) will drive."""
 
 from __future__ import annotations
 
@@ -9,9 +9,9 @@ from typing import Any
 import psycopg
 import pytest
 
-from remem.backends.postgres.migrate import migrate
-from remem.backends.postgres.store import PostgresStore
-from remem.domain import Event, EventKind, JobStatus, Principal, new_id
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.store import PostgresStore
+from saddlebag.domain import Event, EventKind, JobStatus, Principal, new_id
 
 pytestmark = pytest.mark.db
 
@@ -37,7 +37,7 @@ def put_event(
     *,
     at: datetime,
     session: str = "s1",
-    project: str = "remem",
+    project: str = "saddlebag",
     harness: str = "claude-code",
 ) -> Event:
     """A minimal tool_call event, timestamped by the caller.

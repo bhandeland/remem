@@ -1,7 +1,7 @@
 """The PostToolUse/SessionEnd recording hook.
 
-`record_event` is what both `remem hook record-event` (PostToolUse) and
-`remem hook session-end` now run - `ClaudeCodeAdapter.event()` maps both
+`record_event` is what both `bag hook record-event` (PostToolUse) and
+`bag hook session-end` now run - `ClaudeCodeAdapter.event()` maps both
 payload shapes to the same kinds, so one function and one command name
 serves both. The idle trigger means SessionEnd is a hint that shortens the
 wait, not a requirement: a harness with no SessionEnd hook loses nothing but
@@ -19,10 +19,10 @@ from typing import Any
 import psycopg
 import pytest
 
-from remem.agents.claude_code import hook
-from remem.agents.claude_code.adapter import ClaudeCodeAdapter
-from remem.backends.postgres.migrate import migrate
-from remem.extract.base import CHILD_ENV_VAR
+from saddlebag.agents.claude_code import hook
+from saddlebag.agents.claude_code.adapter import ClaudeCodeAdapter
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.extract.base import CHILD_ENV_VAR
 from tests.conftest import scalar
 
 
@@ -57,7 +57,7 @@ def test_the_hook_exits_zero_when_the_database_is_unreachable(
         "sys.stdin",
         io.StringIO(_payload("/tmp/whatever")),
     )
-    monkeypatch.setenv("REMEM_DSN", "postgresql://nobody@127.0.0.1:1/none")
+    monkeypatch.setenv("BAG_DSN", "postgresql://nobody@127.0.0.1:1/none")
     assert hook.main_record_event() == 0
     assert capsys.readouterr().out == ""
 
@@ -77,10 +77,10 @@ def test_the_hook_refuses_to_recurse_inside_an_extraction_child(
         calls.append(1)
 
     monkeypatch.setattr(
-        "remem.agents.claude_code.adapter.ClaudeCodeAdapter.event", fake_event
+        "saddlebag.agents.claude_code.adapter.ClaudeCodeAdapter.event", fake_event
     )
     hook.record_event(
-        _payload("/tmp/whatever"), env={CHILD_ENV_VAR: "1", "REMEM_HOOK_DEBUG": "1"}
+        _payload("/tmp/whatever"), env={CHILD_ENV_VAR: "1", "BAG_HOOK_DEBUG": "1"}
     )
     assert calls == []
     assert "extraction child" in capsys.readouterr().err
@@ -109,23 +109,23 @@ def test_debug_explains_an_unreachable_database_on_stderr(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """Stdout is reserved for real hook output; an explanation only ever
-    goes to stderr, and only under REMEM_HOOK_DEBUG."""
+    goes to stderr, and only under BAG_HOOK_DEBUG."""
     hook.record_event(
         _payload("/tmp/whatever"),
         env={
-            "REMEM_DSN": "postgresql://nobody@127.0.0.1:1/none",
-            "REMEM_HOOK_DEBUG": "1",
+            "BAG_DSN": "postgresql://nobody@127.0.0.1:1/none",
+            "BAG_HOOK_DEBUG": "1",
         },
     )
     captured = capsys.readouterr()
     assert captured.out == ""
-    assert "remem hook" in captured.err
+    assert "bag hook" in captured.err
 
 
 def test_debug_is_silent_unless_asked_for(capsys: pytest.CaptureFixture[str]) -> None:
     hook.record_event(
         _payload("/tmp/whatever"),
-        env={"REMEM_DSN": "postgresql://nobody@127.0.0.1:1/none"},
+        env={"BAG_DSN": "postgresql://nobody@127.0.0.1:1/none"},
     )
     captured = capsys.readouterr()
     assert captured.out == ""
@@ -148,13 +148,13 @@ def test_the_session_end_hook_records_an_event_and_enqueues_nothing(
         c.commit()
 
     env = {
-        "REMEM_DSN": live_dsn,
-        "REMEM_USER_ID": "brandon",
-        "REMEM_CONFIG": str(tmp_path / "none.toml"),
+        "BAG_DSN": live_dsn,
+        "BAG_USER_ID": "brandon",
+        "BAG_CONFIG": str(tmp_path / "none.toml"),
     }
 
-    from remem.backends.postgres.store import PostgresStore
-    from remem.services import record
+    from saddlebag.backends.postgres.store import PostgresStore
+    from saddlebag.services import record
 
     with psycopg.connect(live_dsn) as c:
         owner = PostgresStore(c).ensure_principal("brandon")

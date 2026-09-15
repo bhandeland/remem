@@ -3,13 +3,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from remem.agents.claude_code.env_vars import CLAUDE_CODE_ENV_VARS
-from remem.services.settings import (
+from saddlebag.agents.claude_code.env_vars import CLAUDE_CODE_ENV_VARS
+from saddlebag.services.settings import (
     Target,
     list_settings,
     shadow_warning,
     write_agent,
-    write_remem,
+    write_saddlebag,
 )
 
 TABLE = CLAUDE_CODE_ENV_VARS
@@ -57,7 +57,7 @@ def test_an_empty_string_is_written_not_removed(tmp_path: Path) -> None:
 
 def test_write_agent_survives_a_non_dict_env_block(tmp_path: Path) -> None:
     # A hand-corrupted settings.json might have "env": "yes". This is a file
-    # remem does not own, and every other touch of it degrades rather than
+    # saddlebag does not own, and every other touch of it degrades rather than
     # raising - setdefault("env", {}) would return the string and crash on
     # the next line, so write_agent must replace a non-dict env with a fresh
     # dict instead of propagating the corruption into a traceback.
@@ -68,16 +68,16 @@ def test_write_agent_survives_a_non_dict_env_block(tmp_path: Path) -> None:
     assert data["env"] == {"BASH_DEFAULT_TIMEOUT_MS": "600000"}
 
 
-def test_a_remem_key_warns_when_an_export_shadows_the_file():
-    # For remem, the environment beats config.toml, so writing the file while
+def test_a_saddlebag_key_warns_when_an_export_shadows_the_file():
+    # For saddlebag, the environment beats config.toml, so writing the file while
     # the variable is exported is a silent no-op.
-    warning = shadow_warning(Target.REMEM, "REMEM_MAX_CHARS", {"REMEM_MAX_CHARS": "1"})
+    warning = shadow_warning(Target.SADDLEBAG, "BAG_MAX_CHARS", {"BAG_MAX_CHARS": "1"})
     assert warning is not None
     assert "will not take effect" in warning
 
 
-def test_a_remem_key_is_quiet_when_nothing_shadows_it():
-    assert shadow_warning(Target.REMEM, "REMEM_MAX_CHARS", {}) is None
+def test_a_saddlebag_key_is_quiet_when_nothing_shadows_it():
+    assert shadow_warning(Target.SADDLEBAG, "BAG_MAX_CHARS", {}) is None
 
 
 def test_an_agent_key_notes_that_it_overrides_the_export():
@@ -103,21 +103,23 @@ def test_list_reports_the_default_when_nothing_is_set(tmp_path: Path) -> None:
 
 
 def test_list_reports_the_file_as_the_source(tmp_path: Path) -> None:
-    remem_path = tmp_path / "config.toml"
-    write_remem(remem_path, "REMEM_MAX_CHARS", "8000")
-    settings = list_settings(remem_path, tmp_path / "settings.json", TABLE, {})
-    row = next(s for s in settings if s.key == "REMEM_MAX_CHARS")
+    saddlebag_path = tmp_path / "config.toml"
+    write_saddlebag(saddlebag_path, "BAG_MAX_CHARS", "8000")
+    settings = list_settings(saddlebag_path, tmp_path / "settings.json", TABLE, {})
+    row = next(s for s in settings if s.key == "BAG_MAX_CHARS")
     assert row.value == "8000"
     assert row.source == "file"
 
 
-def test_list_reports_the_environment_winning_for_a_remem_key(tmp_path: Path) -> None:
-    remem_path = tmp_path / "config.toml"
-    write_remem(remem_path, "REMEM_MAX_CHARS", "8000")
+def test_list_reports_the_environment_winning_for_a_saddlebag_key(
+    tmp_path: Path,
+) -> None:
+    saddlebag_path = tmp_path / "config.toml"
+    write_saddlebag(saddlebag_path, "BAG_MAX_CHARS", "8000")
     settings = list_settings(
-        remem_path, tmp_path / "settings.json", TABLE, {"REMEM_MAX_CHARS": "999"}
+        saddlebag_path, tmp_path / "settings.json", TABLE, {"BAG_MAX_CHARS": "999"}
     )
-    row = next(s for s in settings if s.key == "REMEM_MAX_CHARS")
+    row = next(s for s in settings if s.key == "BAG_MAX_CHARS")
     assert row.value == "999"
     assert row.source == "environment"
 

@@ -4,10 +4,10 @@ from typing import Any
 import psycopg
 import pytest
 
-from remem.backends.postgres.migrate import migrate
-from remem.backends.postgres.store import PostgresStore
-from remem.domain import Kind, Origin, Principal
-from remem.services import handoff
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.store import PostgresStore
+from saddlebag.domain import Kind, Origin, Principal
+from saddlebag.services import handoff
 from tests.conftest import found
 
 pytestmark = pytest.mark.db
@@ -33,14 +33,14 @@ def test_a_handoff_is_a_doc_entry_tagged_with_its_topic(
     entry, superseded = handoff.write(
         store,
         owner.id,
-        project="remem",
+        project="saddlebag",
         topic="gitlab-ci",
         body=BODY,
         today=datetime(2026, 8, 27, tzinfo=UTC).date(),
     )
     assert entry.kind == Kind.DOC
     assert entry.origin == Origin.HANDOFF
-    assert entry.project == "remem"
+    assert entry.project == "saddlebag"
     assert entry.tags == ["topic:gitlab-ci"]
     assert entry.title == "Handoff: gitlab-ci (2026-08-27)"
     assert superseded is None
@@ -49,31 +49,33 @@ def test_a_handoff_is_a_doc_entry_tagged_with_its_topic(
 def test_the_topic_defaults_to_the_project(
     store: PostgresStore, owner: Principal
 ) -> None:
-    entry, _ = handoff.write(store, owner.id, project="remem", body=BODY)
-    assert entry.tags == ["topic:remem"]
+    entry, _ = handoff.write(store, owner.id, project="saddlebag", body=BODY)
+    assert entry.tags == ["topic:saddlebag"]
 
 
 def test_writing_a_handoff_supersedes_the_previous_one_for_that_topic(
     store: PostgresStore, owner: Principal
 ) -> None:
-    first, _ = handoff.write(store, owner.id, project="remem", topic="ci", body=BODY)
+    first, _ = handoff.write(
+        store, owner.id, project="saddlebag", topic="ci", body=BODY
+    )
     second, superseded = handoff.write(
-        store, owner.id, project="remem", topic="ci", body=BODY
+        store, owner.id, project="saddlebag", topic="ci", body=BODY
     )
     assert superseded is not None and superseded.id == first.id
     assert found(store.get_entry(first.id, owner.id)).superseded_by == second.id
     assert (
-        found(handoff.latest(store, owner.id, project="remem", topic="ci")).id
+        found(handoff.latest(store, owner.id, project="saddlebag", topic="ci")).id
         == second.id
     )
 
 
 def test_another_topic_is_left_alone(store: PostgresStore, owner: Principal) -> None:
     other, _ = handoff.write(
-        store, owner.id, project="remem", topic="search", body=BODY
+        store, owner.id, project="saddlebag", topic="search", body=BODY
     )
-    handoff.write(store, owner.id, project="remem", topic="ci", body=BODY)
-    handoff.write(store, owner.id, project="remem", topic="ci", body=BODY)
+    handoff.write(store, owner.id, project="saddlebag", topic="ci", body=BODY)
+    handoff.write(store, owner.id, project="saddlebag", topic="ci", body=BODY)
     assert found(store.get_entry(other.id, owner.id)).superseded_by is None
 
 
@@ -81,24 +83,24 @@ def test_another_project_is_left_alone(store: PostgresStore, owner: Principal) -
     other, _ = handoff.write(
         store, owner.id, project="elsewhere", topic="ci", body=BODY
     )
-    handoff.write(store, owner.id, project="remem", topic="ci", body=BODY)
+    handoff.write(store, owner.id, project="saddlebag", topic="ci", body=BODY)
     assert found(store.get_entry(other.id, owner.id)).superseded_by is None
 
 
 def test_latest_without_a_topic_returns_the_newest_for_the_project(
     store: PostgresStore, owner: Principal
 ) -> None:
-    handoff.write(store, owner.id, project="remem", topic="ci", body=BODY)
+    handoff.write(store, owner.id, project="saddlebag", topic="ci", body=BODY)
     newest, _ = handoff.write(
-        store, owner.id, project="remem", topic="search", body=BODY
+        store, owner.id, project="saddlebag", topic="search", body=BODY
     )
-    assert found(handoff.latest(store, owner.id, project="remem")).id == newest.id
+    assert found(handoff.latest(store, owner.id, project="saddlebag")).id == newest.id
 
 
 def test_latest_is_none_when_nothing_was_handed_off(
     store: PostgresStore, owner: Principal
 ) -> None:
-    assert handoff.latest(store, owner.id, project="remem") is None
+    assert handoff.latest(store, owner.id, project="saddlebag") is None
 
 
 def test_a_handoff_without_a_project_is_rejected(
@@ -110,7 +112,7 @@ def test_a_handoff_without_a_project_is_rejected(
 
 def test_an_empty_body_is_rejected(store: PostgresStore, owner: Principal) -> None:
     with pytest.raises(ValueError):
-        handoff.write(store, owner.id, project="remem", body="   ")
+        handoff.write(store, owner.id, project="saddlebag", body="   ")
 
 
 def test_the_untouched_blank_template_is_rejected(
@@ -120,14 +122,14 @@ def test_the_untouched_blank_template_is_rejected(
     quitting without typing anything must be caught here rather than by the
     `not body.strip()` check, which it defeats."""
     with pytest.raises(ValueError):
-        handoff.write(store, owner.id, project="remem", body=handoff.BLANK_BODY)
+        handoff.write(store, owner.id, project="saddlebag", body=handoff.BLANK_BODY)
 
 
 def test_an_unslugable_topic_is_rejected(
     store: PostgresStore, owner: Principal
 ) -> None:
     with pytest.raises(ValueError):
-        handoff.write(store, owner.id, project="remem", topic="!!!", body=BODY)
+        handoff.write(store, owner.id, project="saddlebag", topic="!!!", body=BODY)
 
 
 def test_rejecting_an_unslugable_topic_leaves_another_topics_handoff_untouched(
@@ -135,18 +137,18 @@ def test_rejecting_an_unslugable_topic_leaves_another_topics_handoff_untouched(
 ) -> None:
     """The test that would have caught the silent-data-loss bug: a rejected
     write for one topic must never fall through to superseding another."""
-    live, _ = handoff.write(store, owner.id, project="remem", topic="ci", body=BODY)
+    live, _ = handoff.write(store, owner.id, project="saddlebag", topic="ci", body=BODY)
     with pytest.raises(ValueError):
-        handoff.write(store, owner.id, project="remem", topic="!!!", body=BODY)
+        handoff.write(store, owner.id, project="saddlebag", topic="!!!", body=BODY)
     assert found(store.get_entry(live.id, owner.id)).superseded_by is None
 
 
 def test_latest_with_an_unslugable_topic_does_not_return_another_topics_handoff(
     store: PostgresStore, owner: Principal
 ) -> None:
-    handoff.write(store, owner.id, project="remem", topic="ci", body=BODY)
+    handoff.write(store, owner.id, project="saddlebag", topic="ci", body=BODY)
     with pytest.raises(ValueError):
-        handoff.latest(store, owner.id, project="remem", topic="!!!")
+        handoff.latest(store, owner.id, project="saddlebag", topic="!!!")
 
 
 def test_slugify_makes_a_tag_safe_topic() -> None:
@@ -155,7 +157,9 @@ def test_slugify_makes_a_tag_safe_topic() -> None:
 
 
 def test_topic_of_reads_the_tag_back(store: PostgresStore, owner: Principal) -> None:
-    entry, _ = handoff.write(store, owner.id, project="remem", topic="ci", body=BODY)
+    entry, _ = handoff.write(
+        store, owner.id, project="saddlebag", topic="ci", body=BODY
+    )
     assert handoff.topic_of(entry) == "ci"
 
 

@@ -5,9 +5,9 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from remem.backends.postgres.migrate import migrate
-from remem.backends.postgres.sqltext import as_sql
-from remem.cli import app
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.sqltext import as_sql
+from saddlebag.cli import app
 from tests.conftest import scalar
 
 pytestmark = pytest.mark.db
@@ -22,9 +22,9 @@ def env(live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> str:
     with psycopg.connect(live_dsn) as c:
         migrate(c)
         c.commit()
-    monkeypatch.setenv("REMEM_DSN", live_dsn)
-    monkeypatch.setenv("REMEM_USER_ID", "brandon")
-    monkeypatch.setenv("REMEM_CONFIG", str(tmp_path / "none.toml"))
+    monkeypatch.setenv("BAG_DSN", live_dsn)
+    monkeypatch.setenv("BAG_USER_ID", "brandon")
+    monkeypatch.setenv("BAG_CONFIG", str(tmp_path / "none.toml"))
     return live_dsn
 
 
@@ -43,7 +43,7 @@ def test_remember_then_search_finds_it(env: str) -> None:
             "--body",
             "raise work_mem",
             "--project",
-            "remem",
+            "saddlebag",
         ],
     )
     assert r.exit_code == 0, r.stdout
@@ -52,7 +52,7 @@ def test_remember_then_search_finds_it(env: str) -> None:
     assert s.exit_code == 0
     payload = json.loads(s.stdout)
     assert payload[0]["title"] == "Postgres tuning"
-    assert payload[0]["project"] == "remem"
+    assert payload[0]["project"] == "saddlebag"
 
 
 def test_remember_reads_the_body_from_stdin(env: str) -> None:
@@ -79,7 +79,7 @@ def test_get_prints_the_full_body(env: str) -> None:
 
 
 def test_get_with_an_unknown_id_exits_nonzero(env: str) -> None:
-    from remem.domain import new_id
+    from saddlebag.domain import new_id
 
     g = runner.invoke(app, ["get", str(new_id())])
     assert g.exit_code != 0
@@ -155,7 +155,7 @@ def test_search_filters_by_kind(env: str) -> None:
 
 
 def test_kb_pin_with_an_unknown_entry_exits_cleanly(env: str) -> None:
-    from remem.domain import new_id
+    from saddlebag.domain import new_id
 
     runner.invoke(app, ["kb", "new", "core", "--title", "Core"])
     r = runner.invoke(app, ["kb", "pin", "core", str(new_id())])
@@ -181,11 +181,14 @@ def test_supersede_with_a_malformed_id_exits_cleanly(env: str) -> None:
 def test_commands_report_an_unreachable_postgres_without_a_traceback(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.setenv("REMEM_DSN", "postgresql://remem@127.0.0.1:1/remem")
-    monkeypatch.setenv("REMEM_CONFIG", str(tmp_path / "none.toml"))
+    monkeypatch.setenv("BAG_DSN", "postgresql://saddlebag@127.0.0.1:1/saddlebag")
+    monkeypatch.setenv("BAG_CONFIG", str(tmp_path / "none.toml"))
     r = runner.invoke(app, ["search", "anything"])
     assert r.exit_code != 0
-    assert "Cannot reach Postgres at postgresql://remem@127.0.0.1:1/remem" in r.stderr
+    assert (
+        "Cannot reach Postgres at postgresql://saddlebag@127.0.0.1:1/saddlebag"
+        in r.stderr
+    )
     assert "docker compose up -d" in r.stderr
     assert "Traceback" not in r.stdout + r.stderr
 
@@ -201,7 +204,7 @@ def unmigrated_dsn() -> Iterator[str]:
 
     if not _server_is_up():
         pytest.skip(SKIP_REASON)
-    name = f"remem_bare_{uuid.uuid4().hex[:12]}"
+    name = f"saddlebag_bare_{uuid.uuid4().hex[:12]}"
     with psycopg.connect(ADMIN_DSN, autocommit=True) as admin:
         admin.execute(as_sql(f'create database "{name}"'))
     try:
@@ -214,8 +217,8 @@ def unmigrated_dsn() -> Iterator[str]:
 def test_db_status_on_an_unmigrated_database_reports_pending(
     unmigrated_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.setenv("REMEM_DSN", unmigrated_dsn)
-    monkeypatch.setenv("REMEM_CONFIG", str(tmp_path / "none.toml"))
+    monkeypatch.setenv("BAG_DSN", unmigrated_dsn)
+    monkeypatch.setenv("BAG_CONFIG", str(tmp_path / "none.toml"))
     r = runner.invoke(app, ["db", "status"])
     assert r.exit_code == 0, r.stdout + r.stderr
     assert "Applied:   none" in r.stdout
@@ -226,8 +229,8 @@ def test_db_status_on_an_unmigrated_database_reports_pending(
 def test_db_migrate_on_an_unmigrated_database_applies_it(
     unmigrated_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.setenv("REMEM_DSN", unmigrated_dsn)
-    monkeypatch.setenv("REMEM_CONFIG", str(tmp_path / "none.toml"))
+    monkeypatch.setenv("BAG_DSN", unmigrated_dsn)
+    monkeypatch.setenv("BAG_CONFIG", str(tmp_path / "none.toml"))
     r = runner.invoke(app, ["db", "migrate"])
     assert r.exit_code == 0, r.stdout + r.stderr
     assert "001_initial" in r.stdout
@@ -255,7 +258,7 @@ def test_install_with_project_scope_exits_nonzero(
 
 
 def test_verify_reruns_the_install_round_trip_without_reinstalling(env: str) -> None:
-    """`remem verify` is the re-runnable half of install's last step - a
+    """`bag verify` is the re-runnable half of install's last step - a
     user who fixed the database, or just wants to check, should not have to
     reinstall to find out whether recording actually works."""
     r = runner.invoke(app, ["verify", "--agent", "claude-code"])
@@ -276,7 +279,7 @@ def test_verify_exits_nonzero_when_it_cannot_prove_anything(
     """Unlike install(), which folds a failed verification into a warning
     and finishes, `verify` is typed by a human asking "does this work?" -
     a report full of warnings must not still say yes."""
-    monkeypatch.setenv("REMEM_DSN", "postgresql://nobody@127.0.0.1:1/none")
+    monkeypatch.setenv("BAG_DSN", "postgresql://nobody@127.0.0.1:1/none")
     r = runner.invoke(app, ["verify", "--agent", "claude-code"])
     assert r.exit_code != 0
     assert "warning" in r.stderr
@@ -445,8 +448,8 @@ def _legacy_rule(dsn: str, title: str) -> str:
     reaches it to read one back."""
     import psycopg
 
-    from remem.backends.postgres.store import PostgresStore
-    from remem.domain import Entry, Kind, Origin, new_id
+    from saddlebag.backends.postgres.store import PostgresStore
+    from saddlebag.domain import Entry, Kind, Origin, new_id
 
     with psycopg.connect(dsn) as c:
         store = PostgresStore(c)
@@ -495,8 +498,8 @@ def test_supersede_a_legacy_rule_with_a_summary_succeeds(env: str) -> None:
 
 
 def test_remember_kind_rule_without_a_summary_names_the_flag(env: str) -> None:
-    """`remem remember --kind rule` used to exit 1 with a bare traceback
-    and nothing on stdout or stderr - `remem rule` (the shorthand) already
+    """`bag remember --kind rule` used to exit 1 with a bare traceback
+    and nothing on stdout or stderr - `bag rule` (the shorthand) already
     caught this and named --summary, so the two commands gave the same
     mistake two different experiences."""
     r = runner.invoke(

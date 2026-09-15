@@ -1,9 +1,9 @@
-"""`remem memory refresh` - the spawned, silent half of `memory sync`.
+"""`bag memory refresh` - the spawned, silent half of `memory sync`.
 
 Nobody types this. It is started detached by a session start, so its whole
 contract is the opposite of `sync`'s: exit 0 on every path, print nothing
-to stdout, and explain itself only to stderr behind REMEM_HOOK_DEBUG. The
-run row it leaves behind, and the advisory `remem record status` raises off
+to stdout, and explain itself only to stderr behind BAG_HOOK_DEBUG. The
+run row it leaves behind, and the advisory `bag record status` raises off
 it, are how a person finds out what happened.
 
 Same bootstrap as tests/test_memory_cli.py - the command opens its own
@@ -20,12 +20,12 @@ import psycopg
 import pytest
 from typer.testing import CliRunner
 
-from remem import memory_file
-from remem.agents.claude_code.memory import slug_for
-from remem.backends.postgres.migrate import migrate
-from remem.backends.postgres.store import PostgresStore
-from remem.cli import app
-from remem.domain import (
+from saddlebag import memory_file
+from saddlebag.agents.claude_code.memory import slug_for
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.store import PostgresStore
+from saddlebag.cli import app
+from saddlebag.domain import (
     CollectionQuery,
     Kind,
     MemoryRun,
@@ -33,16 +33,16 @@ from remem.domain import (
     Origin,
     Principal,
 )
-from remem.project import resolve_project
-from remem.services import kb, memory
-from remem.services.write import remember
+from saddlebag.project import resolve_project
+from saddlebag.services import kb, memory
+from saddlebag.services.write import remember
 from tests.conftest import found
 
 pytestmark = pytest.mark.db
 
 runner = CliRunner()
 
-PROJECT = resolve_project() or "remem"
+PROJECT = resolve_project() or "saddlebag"
 
 
 @pytest.fixture
@@ -51,9 +51,9 @@ def env(live_dsn: str, tmp_path: Path) -> dict[str, str]:
         migrate(c)
         c.commit()
     return {
-        "REMEM_DSN": live_dsn,
-        "REMEM_USER_ID": "brandon",
-        "REMEM_CONFIG": str(tmp_path / "none.toml"),
+        "BAG_DSN": live_dsn,
+        "BAG_USER_ID": "brandon",
+        "BAG_CONFIG": str(tmp_path / "none.toml"),
         "CLAUDE_CONFIG_DIR": str(tmp_path / "claude"),
     }
 
@@ -65,7 +65,7 @@ def _memory_directory(env: dict[str, str]) -> Path:
 def _designate(
     env: dict[str, str],
 ) -> tuple[PostgresStore, psycopg.Connection[Any], Principal]:
-    conn = psycopg.connect(env["REMEM_DSN"])
+    conn = psycopg.connect(env["BAG_DSN"])
     store = PostgresStore(conn)
     owner = store.ensure_principal("brandon")
     kb.create(
@@ -82,7 +82,7 @@ def _designate(
 
 @pytest.fixture
 def designated_with_one_stray(env: dict[str, str]) -> Path:
-    """A designated project holding one file remem has never seen."""
+    """A designated project holding one file saddlebag has never seen."""
     _store, conn, _owner = _designate(env)
     conn.commit()
     conn.close()
@@ -111,7 +111,7 @@ def designated_in_conflict(env: dict[str, str]) -> Path:
         store,
         owner.id,
         title="A fact",
-        body="from remem\n",
+        body="from saddlebag\n",
         kind=Kind.NOTE,
         project=PROJECT,
         tags=["mem:a-fact"],
@@ -137,7 +137,7 @@ def designated_in_conflict(env: dict[str, str]) -> Path:
 
 
 def _latest_run(env: dict[str, str]) -> MemoryRun | None:
-    with psycopg.connect(env["REMEM_DSN"]) as conn:
+    with psycopg.connect(env["BAG_DSN"]) as conn:
         store = PostgresStore(conn)
         owner = store.ensure_principal("brandon")
         return store.latest_memory_run(owner.id, PROJECT)
@@ -193,7 +193,7 @@ def test_an_undesignated_project_is_named_as_such_not_dumped_as_an_error(
     never designated this project".
     """
     result = runner.invoke(
-        app, ["memory", "refresh"], env={**env, "REMEM_HOOK_DEBUG": "1"}
+        app, ["memory", "refresh"], env={**env, "BAG_HOOK_DEBUG": "1"}
     )
     assert result.exit_code == 0
     assert "has no memory collection" in result.stderr
@@ -207,7 +207,7 @@ def test_refresh_stays_silent_and_exits_zero_on_a_conflict(
     result = runner.invoke(app, ["memory", "refresh"], env=env)
     assert result.exit_code == 0
     assert result.stdout == ""
-    assert (designated_in_conflict / "a-fact.remem-conflict.md").exists()
+    assert (designated_in_conflict / "a-fact.saddlebag-conflict.md").exists()
     assert found(_latest_run(env)).conflicts == ["a-fact"]
 
 
@@ -216,7 +216,7 @@ def test_refresh_explains_itself_on_stderr_under_hook_debug(
 ) -> None:
     """Silence is ambiguous, so the opt-in diagnostic is the whole story."""
     result = runner.invoke(
-        app, ["memory", "refresh"], env={**env, "REMEM_HOOK_DEBUG": "1"}
+        app, ["memory", "refresh"], env={**env, "BAG_HOOK_DEBUG": "1"}
     )
     assert result.exit_code == 0
     assert result.stdout == ""
@@ -232,7 +232,7 @@ def test_refresh_exits_zero_when_the_database_is_unreachable(
     result = runner.invoke(
         app,
         ["memory", "refresh"],
-        env={**env, "REMEM_DSN": "postgresql://127.0.0.1:1/nope"},
+        env={**env, "BAG_DSN": "postgresql://127.0.0.1:1/nope"},
     )
     assert result.exit_code == 0
     assert result.stdout == ""
@@ -255,7 +255,7 @@ def test_refresh_exits_zero_even_when_something_calls_sys_exit(
     def boom(*a: Any, **k: Any) -> memory.Report:
         raise SystemExit(3)
 
-    monkeypatch.setattr("remem.services.memory.sync", boom)
+    monkeypatch.setattr("saddlebag.services.memory.sync", boom)
     result = runner.invoke(app, ["memory", "refresh"], env=env)
     assert result.exit_code == 0
     assert result.stdout == ""

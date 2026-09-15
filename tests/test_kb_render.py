@@ -2,8 +2,8 @@ from typing import Any
 
 import pytest
 
-from remem.domain import Collection, Entry, Kind, new_id
-from remem.services.kb import RulesExceedBudget, render
+from saddlebag.domain import Collection, Entry, Kind, new_id
+from saddlebag.services.kb import RulesExceedBudget, render
 
 OWNER = new_id()
 
@@ -69,7 +69,7 @@ def test_omitted_entries_are_announced_with_a_count() -> None:
     entries = [entry(f"Entry {i}", "x" * 200) for i in range(20)]
     out = render(collection(slug="my-kb"), entries, max_chars=600)
     assert "more entries not shown" in out
-    assert "remem kb show my-kb --full" in out
+    assert "bag kb show my-kb --full" in out
 
 
 def test_no_notice_when_everything_fits() -> None:

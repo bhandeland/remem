@@ -1,4 +1,4 @@
-"""CLI tests for `remem import claude-mem`."""
+"""CLI tests for `bag import claude-mem`."""
 
 from __future__ import annotations
 
@@ -10,8 +10,8 @@ import psycopg
 import pytest
 from typer.testing import CliRunner
 
-from remem.backends.postgres.migrate import migrate
-from remem.cli import app
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.cli import app
 
 pytestmark = pytest.mark.db
 
@@ -47,9 +47,9 @@ def env(live_dsn: str, tmp_path: Path) -> dict[str, str]:
         migrate(c)
         c.commit()
     return {
-        "REMEM_DSN": live_dsn,
-        "REMEM_USER_ID": "brandon",
-        "REMEM_CONFIG": str(tmp_path / "none.toml"),
+        "BAG_DSN": live_dsn,
+        "BAG_USER_ID": "brandon",
+        "BAG_CONFIG": str(tmp_path / "none.toml"),
         "CLAUDE_CONFIG_DIR": str(tmp_path / "claude"),
     }
 
@@ -160,9 +160,9 @@ def test_an_unreadable_source_is_checked_before_a_session_opens(tmp_path: Path) 
     junk = tmp_path / "notes.txt"
     junk.write_text("not sqlite")
     env = {
-        "REMEM_DSN": "postgresql://nope:nope@localhost:1/nope",
-        "REMEM_USER_ID": "brandon",
-        "REMEM_CONFIG": str(tmp_path / "none.toml"),
+        "BAG_DSN": "postgresql://nope:nope@localhost:1/nope",
+        "BAG_USER_ID": "brandon",
+        "BAG_CONFIG": str(tmp_path / "none.toml"),
         "CLAUDE_CONFIG_DIR": str(tmp_path / "claude"),
     }
 

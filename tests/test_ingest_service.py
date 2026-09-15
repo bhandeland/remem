@@ -6,10 +6,10 @@ from typing import Any
 import psycopg
 import pytest
 
-from remem.backends.postgres.migrate import migrate
-from remem.backends.postgres.store import PostgresStore
-from remem.domain import Hit, Kind, Origin, Principal, Query
-from remem.services import ingest
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.store import PostgresStore
+from saddlebag.domain import Hit, Kind, Origin, Principal, Query
+from saddlebag.services import ingest
 
 pytestmark = pytest.mark.db
 
@@ -48,20 +48,20 @@ def _live(store: PostgresStore, owner: Principal, path: Path) -> list[Hit]:
 def test_ingest_writes_an_anchor_and_one_entry_per_heading(
     store: PostgresStore, owner: Principal, doc: Path
 ) -> None:
-    report = ingest.ingest_file(store, owner.id, doc, project="remem")
+    report = ingest.ingest_file(store, owner.id, doc, project="saddlebag")
 
     assert report.created == 3
     entries = [h.entry for h in _live(store, owner, doc)]
     assert {e.title for e in entries} == {"Design", "Design § Alpha", "Design § Beta"}
     assert all(e.kind is Kind.DOC for e in entries)
     assert all(e.origin is Origin.INGESTED for e in entries)
-    assert all(e.project == "remem" for e in entries)
+    assert all(e.project == "saddlebag" for e in entries)
 
 
 def test_every_chunk_carries_its_src_and_sec_tags(
     store: PostgresStore, owner: Principal, doc: Path
 ) -> None:
-    ingest.ingest_file(store, owner.id, doc, project="remem")
+    ingest.ingest_file(store, owner.id, doc, project="saddlebag")
 
     entries = {h.entry.title: h.entry for h in _live(store, owner, doc)}
     alpha = entries["Design § Alpha"]
@@ -75,7 +75,7 @@ def test_every_chunk_carries_its_src_and_sec_tags(
 def test_archive_writes_the_archived_origin(
     store: PostgresStore, owner: Principal, doc: Path
 ) -> None:
-    ingest.ingest_file(store, owner.id, doc, project="remem", archive=True)
+    ingest.ingest_file(store, owner.id, doc, project="saddlebag", archive=True)
 
     assert all(h.entry.origin is Origin.ARCHIVED for h in _live(store, owner, doc))
 
@@ -83,10 +83,10 @@ def test_archive_writes_the_archived_origin(
 def test_re_ingesting_an_unchanged_file_writes_nothing(
     store: PostgresStore, owner: Principal, doc: Path
 ) -> None:
-    ingest.ingest_file(store, owner.id, doc, project="remem")
+    ingest.ingest_file(store, owner.id, doc, project="saddlebag")
     before = {h.entry.id: h.entry.updated_at for h in _live(store, owner, doc)}
 
-    report = ingest.ingest_file(store, owner.id, doc, project="remem")
+    report = ingest.ingest_file(store, owner.id, doc, project="saddlebag")
 
     assert (report.created, report.changed, report.unchanged) == (0, 0, 3)
     after = {h.entry.id: h.entry.updated_at for h in _live(store, owner, doc)}
@@ -96,10 +96,10 @@ def test_re_ingesting_an_unchanged_file_writes_nothing(
 def test_an_edited_section_supersedes_only_itself(
     store: PostgresStore, owner: Principal, doc: Path
 ) -> None:
-    ingest.ingest_file(store, owner.id, doc, project="remem")
+    ingest.ingest_file(store, owner.id, doc, project="saddlebag")
     doc.write_text(DOC.replace("body a", "body a, revised"))
 
-    report = ingest.ingest_file(store, owner.id, doc, project="remem")
+    report = ingest.ingest_file(store, owner.id, doc, project="saddlebag")
 
     assert (report.created, report.changed, report.unchanged) == (0, 1, 2)
     bodies = {h.entry.title: h.entry.body for h in _live(store, owner, doc)}
@@ -120,10 +120,10 @@ def test_an_edited_section_supersedes_only_itself(
 def test_a_new_section_is_created_without_touching_its_neighbours(
     store: PostgresStore, owner: Principal, doc: Path
 ) -> None:
-    ingest.ingest_file(store, owner.id, doc, project="remem")
+    ingest.ingest_file(store, owner.id, doc, project="saddlebag")
     doc.write_text(DOC + "\n## Gamma\n\nbody g\n")
 
-    report = ingest.ingest_file(store, owner.id, doc, project="remem")
+    report = ingest.ingest_file(store, owner.id, doc, project="saddlebag")
 
     assert (report.created, report.changed, report.unchanged) == (1, 0, 3)
 
@@ -131,7 +131,7 @@ def test_a_new_section_is_created_without_touching_its_neighbours(
 def test_dry_run_reports_the_plan_and_writes_nothing(
     store: PostgresStore, owner: Principal, doc: Path
 ) -> None:
-    report = ingest.ingest_file(store, owner.id, doc, project="remem", dry_run=True)
+    report = ingest.ingest_file(store, owner.id, doc, project="saddlebag", dry_run=True)
 
     assert report.created == 3
     assert _live(store, owner, doc) == []
@@ -150,7 +150,7 @@ def test_too_many_chunks_raises_rather_than_truncating(
     )
 
     with pytest.raises(ingest.TooManyChunks):
-        ingest.ingest_file(store, owner.id, path, project="remem")
+        ingest.ingest_file(store, owner.id, path, project="saddlebag")
 
 
 def test_a_retitled_document_supersedes_every_chunk_that_carries_the_title(
@@ -160,10 +160,10 @@ def test_a_retitled_document_supersedes_every_chunk_that_carries_the_title(
     # so a chunk whose title moved is genuinely found differently and has to
     # supersede. Bodies alone would leave the old titles standing forever:
     # identity is (src, sec), which the h1 does not touch.
-    ingest.ingest_file(store, owner.id, doc, project="remem")
+    ingest.ingest_file(store, owner.id, doc, project="saddlebag")
     doc.write_text(DOC.replace("# Design", "# Ingest design"))
 
-    report = ingest.ingest_file(store, owner.id, doc, project="remem")
+    report = ingest.ingest_file(store, owner.id, doc, project="saddlebag")
 
     assert (report.created, report.changed, report.unchanged) == (0, 3, 0)
     titles = {h.entry.title for h in _live(store, owner, doc)}
@@ -176,7 +176,7 @@ def test_a_section_title_is_taken_from_the_h1_not_the_filename(
     path = tmp_path / "2026-09-01-doc-ingest-design.md"
     path.write_text(DOC)
 
-    ingest.ingest_file(store, owner.id, path, project="remem")
+    ingest.ingest_file(store, owner.id, path, project="saddlebag")
 
     titles = {h.entry.title for h in _live(store, owner, path)}
     assert titles == {"Design", "Design § Alpha", "Design § Beta"}

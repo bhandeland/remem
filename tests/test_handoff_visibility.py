@@ -3,11 +3,11 @@ from typing import Any
 import psycopg
 import pytest
 
-from remem.backends.postgres.migrate import migrate
-from remem.backends.postgres.store import PostgresStore
-from remem.domain import CollectionQuery, Origin, Principal, Query
-from remem.services import handoff, kb, write
-from remem.services.search import find
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.store import PostgresStore
+from saddlebag.domain import CollectionQuery, Origin, Principal, Query
+from saddlebag.services import handoff, kb, write
+from saddlebag.services.search import find
 
 pytestmark = pytest.mark.db
 
@@ -30,13 +30,13 @@ def owner(store: PostgresStore) -> Principal:
 def test_handoffs_are_absent_from_search_by_default(
     store: PostgresStore, owner: Principal
 ) -> None:
-    handoff.write(store, owner.id, project="remem", topic="ci", body=BODY)
+    handoff.write(store, owner.id, project="saddlebag", topic="ci", body=BODY)
     hits = find(store, owner.id, Query(text="pipeline"))
     assert hits == []
 
 
 def test_handoffs_appear_when_asked_for(store: PostgresStore, owner: Principal) -> None:
-    handoff.write(store, owner.id, project="remem", topic="ci", body=BODY)
+    handoff.write(store, owner.id, project="saddlebag", topic="ci", body=BODY)
     hits = find(store, owner.id, Query(text="pipeline"), include_handoffs=True)
     assert [h.entry.origin for h in hits] == [Origin.HANDOFF]
 
@@ -44,7 +44,7 @@ def test_handoffs_appear_when_asked_for(store: PostgresStore, owner: Principal) 
 def test_an_explicit_origin_filter_is_never_overridden(
     store: PostgresStore, owner: Principal
 ) -> None:
-    handoff.write(store, owner.id, project="remem", topic="ci", body=BODY)
+    handoff.write(store, owner.id, project="saddlebag", topic="ci", body=BODY)
     hits = find(store, owner.id, Query(text="pipeline", origins=[Origin.HANDOFF]))
     assert len(hits) == 1
 
@@ -57,7 +57,7 @@ def test_ordinary_entries_are_still_found(
         owner.id,
         title="Pipeline caching",
         body="use the runner cache",
-        project="remem",
+        project="saddlebag",
     )
     assert len(find(store, owner.id, Query(text="pipeline"))) == 1
 
@@ -68,11 +68,13 @@ def test_handoffs_never_reach_a_context_block(
     kb.create(
         store,
         owner.id,
-        slug="remem",
-        title="remem",
-        query=CollectionQuery(project="remem"),
+        slug="saddlebag",
+        title="saddlebag",
+        query=CollectionQuery(project="saddlebag"),
     )
-    handoff.write(store, owner.id, project="remem", topic="ci", body=BODY)
-    write.remember(store, owner.id, title="Real note", body="keep me", project="remem")
-    titles = [e.title for e in kb.resolve(store, owner.id, "remem")]
+    handoff.write(store, owner.id, project="saddlebag", topic="ci", body=BODY)
+    write.remember(
+        store, owner.id, title="Real note", body="keep me", project="saddlebag"
+    )
+    titles = [e.title for e in kb.resolve(store, owner.id, "saddlebag")]
     assert titles == ["Real note"]

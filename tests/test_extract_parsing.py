@@ -1,7 +1,7 @@
 import pytest
 
-from remem.domain import Kind
-from remem.extract.base import (
+from saddlebag.domain import Kind
+from saddlebag.extract.base import (
     MAX_BODY,
     MAX_ENTRIES,
     MAX_TITLE,

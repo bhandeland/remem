@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from remem import jsonfile
+from saddlebag import jsonfile
 
 
 def test_read_json_returns_empty_for_a_missing_file(tmp_path: Path) -> None:
@@ -67,7 +67,7 @@ def test_backup_once_returns_none_when_there_was_nothing_to_back_up(
 def test_read_document_never_leaves_a_backup_behind(tmp_path: Path) -> None:
     """The reason this exists separately from read_json. A diagnostic that
     litters .bak files beside a user's config is one people stop running,
-    and `remem doctor` reads config files it must not touch."""
+    and `bag doctor` reads config files it must not touch."""
     path = tmp_path / "settings.json"
     path.write_text("{ not json at all")
     assert jsonfile.read_document(path) == {}

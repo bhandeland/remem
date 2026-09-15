@@ -2,7 +2,7 @@
 
 Every injection path is fail-soft: `kb.RulesExceedBudget` escapes into a
 hook that exits 0 and prints nothing, so a knowledge base whose rules have
-outgrown `REMEM_MAX_CHARS` stops being injected on every harness with no
+outgrown `BAG_MAX_CHARS` stops being injected on every harness with no
 output anywhere. These tests pin the advisory that says so, and - the point
 of the file - pin the *quantity* it measures.
 """
@@ -16,11 +16,11 @@ from uuid import UUID
 import psycopg
 import pytest
 
-from remem.backends.postgres.migrate import migrate
-from remem.backends.postgres.store import PostgresStore
-from remem.domain import Collection, CollectionQuery, Entry, Kind, new_id
-from remem.services import kb
-from remem.services.write import remember
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.store import PostgresStore
+from saddlebag.domain import Collection, CollectionQuery, Entry, Kind, new_id
+from saddlebag.services import kb
+from saddlebag.services.write import remember
 
 OWNER = new_id()
 
@@ -169,7 +169,7 @@ def test_rules_over_the_budget_are_reported_as_injection_being_dead(
     assert len(lines) == 1
     assert "fat" in lines[0]
     assert "not being injected" in lines[0]
-    assert "remem kb show fat" in lines[0]
+    assert "bag kb show fat" in lines[0]
 
 
 @pytest.mark.db

@@ -9,9 +9,9 @@ from __future__ import annotations
 import psycopg
 import pytest
 
-from remem.backends.postgres.migrate import migrate
-from remem.backends.postgres.store import PostgresStore
-from remem.domain import MemoryTrigger
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.store import PostgresStore
+from saddlebag.domain import MemoryTrigger
 
 pytestmark = pytest.mark.db
 

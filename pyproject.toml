@@ -1,5 +1,5 @@
 [project]
-name = "remem"
+name = "saddlebag"
 version = "0.1.0"
 description = "Knowledge and memory store for AI coding agents"
 readme = "README.md"
@@ -30,7 +30,7 @@ dependencies = [
 # packages (onnxruntime, huggingface-hub, tokenizers, numpy, pillow, protobuf
 # and friends) for about 216MB of venv, and then downloads ~130MB of model
 # weights from HuggingFace on first use - and a user who only writes and reads
-# entries never needs any of it. `remem embed` says how to install it when it
+# entries never needs any of it. `bag embed` says how to install it when it
 # is missing; search degrades to two tiers.
 [project.optional-dependencies]
 embed = ["fastembed>=0.7.0"]
@@ -41,12 +41,12 @@ Repository = "https://gitlab.com/nighthawk-oss/remem"
 Issues = "https://gitlab.com/nighthawk-oss/remem/-/issues"
 
 [project.scripts]
-remem = "remem.cli:app"
+bag = "saddlebag.cli:app"
 
-[project.entry-points."remem.agents"]
-claude-code = "remem.agents.claude_code.adapter:ClaudeCodeAdapter"
-opencode = "remem.agents.opencode.adapter:OpenCodeAdapter"
-cursor = "remem.agents.cursor.adapter:CursorAdapter"
+[project.entry-points."saddlebag.agents"]
+claude-code = "saddlebag.agents.claude_code.adapter:ClaudeCodeAdapter"
+opencode = "saddlebag.agents.opencode.adapter:OpenCodeAdapter"
+cursor = "saddlebag.agents.cursor.adapter:CursorAdapter"
 
 [dependency-groups]
 dev = [
@@ -61,12 +61,12 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 # hatchling's "packages" already ships every VCS-tracked file under
-# src/remem in the wheel, not just .py files - migrations/*.sql and
+# src/saddlebag in the wheel, not just .py files - migrations/*.sql and
 # skills/**/SKILL.md are included with no extra config. A force-include
 # entry for either path duplicates that and hatchling refuses to build
 # ("second file is being added to the wheel archive at the same path").
 [tool.hatch.build.targets.wheel]
-packages = ["src/remem"]
+packages = ["src/saddlebag"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -118,7 +118,7 @@ search-path = ["."]
 # diagnostics nowhere at all - not in `--output-format=json`, not under
 # `-v` - so learning what those nine were took promoting all 137 rules to
 # errors and tallying. A permanently-nonzero number that costs an
-# afternoon to read is the same failure `remem doctor` exists to avoid.
+# afternoon to read is the same failure `bag doctor` exists to avoid.
 #
 # All nine were `unnecessary-type-conversion`, and none was a defect: four
 # defensive coercions at a boundary where the value is TYPED as the target
@@ -145,4 +145,4 @@ output-format = "concise"
 select = ["E", "F", "W", "I", "T20"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["remem"]
+known-first-party = ["saddlebag"]

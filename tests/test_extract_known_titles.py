@@ -13,15 +13,15 @@ from typing import Any
 
 import pytest
 
-from remem.domain import Event, EventKind, new_id
-from remem.extract.claude_cli import ClaudeCliExtractor, build_prompt
+from saddlebag.domain import Event, EventKind, new_id
+from saddlebag.extract.claude_cli import ClaudeCliExtractor, build_prompt
 
 
 def an_event(payload: dict[str, Any] | None = None):
     return Event(
         id=new_id(),
         owner_id=new_id(),
-        project="remem",
+        project="saddlebag",
         harness="claude-code",
         session_id="s1",
         kind=EventKind.TOOL_CALL,
@@ -52,7 +52,7 @@ def test_the_prompt_is_unchanged_when_nothing_is_recorded_yet() -> None:
 def test_known_titles_are_bounded() -> None:
     """A project with hundreds of entries must not push the session's own
     events out of the context window with its titles."""
-    from remem.extract.claude_cli import MAX_KNOWN_TITLES
+    from saddlebag.extract.claude_cli import MAX_KNOWN_TITLES
 
     prompt = build_prompt([f"Title number {i}" for i in range(MAX_KNOWN_TITLES * 3)])
     assert prompt.count("Title number") <= MAX_KNOWN_TITLES
@@ -69,7 +69,7 @@ def test_the_extractor_passes_known_titles_into_the_prompt(
 
     monkeypatch.setattr(subprocess, "run", fake_run)
     ClaudeCliExtractor().extract(
-        [an_event()], "remem", known_titles=["An existing rule"]
+        [an_event()], "saddlebag", known_titles=["An existing rule"]
     )
     assert any("An existing rule" in part for part in seen["cmd"])
 
@@ -81,4 +81,4 @@ def test_known_titles_are_optional(monkeypatch: pytest.MonkeyPatch) -> None:
         return subprocess.CompletedProcess(cmd, 0, stdout="[]", stderr="")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
-    assert ClaudeCliExtractor().extract([an_event()], "remem") == []
+    assert ClaudeCliExtractor().extract([an_event()], "saddlebag") == []

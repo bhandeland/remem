@@ -14,7 +14,7 @@ from typing import Any
 import psycopg
 import pytest
 
-from remem.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.migrate import migrate
 from tests.conftest import one, scalar
 
 pytestmark = pytest.mark.db
@@ -80,9 +80,9 @@ def test_event_key_is_null_when_the_harness_supplies_no_id(
     """The partial index has to stay partial.
 
     claude-code's SessionEnd payload carries no per-event id and neither
-    does opencode's message, so most of what remem records cannot be
+    does opencode's message, so most of what saddlebag records cannot be
     deduplicated at all. A key that invented something for those rows
-    would be a constraint over a value remem made up - which is how a
+    would be a constraint over a value saddlebag made up - which is how a
     legitimate repeat gets dropped.
     """
     row = one(

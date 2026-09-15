@@ -4,9 +4,9 @@ from typing import Any
 import psycopg
 import pytest
 
-from remem.backends.postgres.migrate import migrate
-from remem.backends.postgres.store import PostgresStore
-from remem.domain import Entry, Kind, Principal, Query, new_id
+from saddlebag.backends.postgres.migrate import migrate
+from saddlebag.backends.postgres.store import PostgresStore
+from saddlebag.domain import Entry, Kind, Principal, Query, new_id
 
 pytestmark = pytest.mark.db
 
@@ -98,9 +98,9 @@ def test_filters_by_kind(store: PostgresStore, owner: Principal) -> None:
 
 
 def test_filters_by_project(store: PostgresStore, owner: Principal) -> None:
-    add(store, owner, "In project", "shared word", project="remem")
+    add(store, owner, "In project", "shared word", project="saddlebag")
     add(store, owner, "Elsewhere", "shared word", project="other")
-    hits = store.search(Query(text="shared", project="remem"), owner.id)
+    hits = store.search(Query(text="shared", project="saddlebag"), owner.id)
     assert [h.entry.title for h in hits] == ["In project"]
 
 

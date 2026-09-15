@@ -4,7 +4,7 @@ been bitten by markers that hid a test on CI."""
 
 from __future__ import annotations
 
-from remem.markdown import MAX_BODY, Chunk, slugify, split
+from saddlebag.markdown import MAX_BODY, Chunk, slugify, split
 
 
 def test_slugify_lowercases_and_hyphenates():
@@ -19,7 +19,7 @@ def test_slugify_lowercases_and_hyphenates():
 def test_the_first_chunk_is_the_anchor_and_carries_the_lead_paragraph():
     text = (
         "# Ingest design\n\nDesign, 2026-09-01.\n\n"
-        "## Problem\n\nnone of it is in remem\n"
+        "## Problem\n\nnone of it is in saddlebag\n"
     )
     chunks = split(text, doc_name="ingest design")
 
@@ -27,7 +27,7 @@ def test_the_first_chunk_is_the_anchor_and_carries_the_lead_paragraph():
     assert chunks[0].slug == ""
     assert chunks[0].title == "Ingest design"
     assert "Design, 2026-09-01." in chunks[0].body
-    assert "none of it is in remem" not in chunks[0].body
+    assert "none of it is in saddlebag" not in chunks[0].body
 
 
 def test_one_chunk_per_heading_titled_with_the_document():

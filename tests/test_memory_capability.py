@@ -2,27 +2,27 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from remem.agents.claude_code import memory as cc_memory
-from remem.agents.registry import get
+from saddlebag.agents.claude_code import memory as cc_memory
+from saddlebag.agents.registry import get
 
 
 def test_the_slug_is_the_absolute_path_with_separators_replaced() -> None:
-    assert cc_memory.slug_for(Path("/Users/brandon/llmworkspace/remem")) == (
-        "-Users-brandon-llmworkspace-remem"
+    assert cc_memory.slug_for(Path("/Users/brandon/llmworkspace/saddlebag")) == (
+        "-Users-brandon-llmworkspace-saddlebag"
     )
 
 
 def test_two_checkouts_of_one_repo_share_a_project_name_but_not_a_slug() -> None:
-    # remem resolves a project through --git-common-dir, so both of these
-    # are project "remem". Claude Code keys its directory on the whole path,
+    # saddlebag resolves a project through --git-common-dir, so both of these
+    # are project "saddlebag". Claude Code keys its directory on the whole path,
     # so the slugs must differ - which is the entire reason memory_dir takes
     # a path and not a project name. A slug built from the directory's name
     # would collide here and silently hand two checkouts one memory store.
-    a = cc_memory.slug_for(Path("/Users/b/work/remem"))
-    b = cc_memory.slug_for(Path("/Users/b/other/remem"))
+    a = cc_memory.slug_for(Path("/Users/b/work/saddlebag"))
+    b = cc_memory.slug_for(Path("/Users/b/other/saddlebag"))
     assert a != b
-    assert a.endswith("-work-remem")
-    assert b.endswith("-other-remem")
+    assert a.endswith("-work-saddlebag")
+    assert b.endswith("-other-saddlebag")
 
 
 def test_memory_dir_sits_under_the_claude_home() -> None:

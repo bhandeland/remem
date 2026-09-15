@@ -1,0 +1,559 @@
+"""Reads and writes saddlebag's own settings and an agent's environment block.
+
+Every policy decision for `bag config` lives here: which file a key belongs
+to, whether a value is legal, and whether a write will actually take effect.
+The adapter supplies the table of what exists; this module decides what may
+be done with it.
+
+The one service that touches no store - `bag config` must work with
+Postgres down.
+"""
+
+from __future__ import annotations
+
+import re
+import tomllib
+import warnings
+from dataclasses import dataclass
+from enum import StrEnum
+from pathlib import Path
+from typing import Any, Mapping
+
+import tomli_w
+
+from saddlebag import config as saddlebag_config
+from saddlebag import jsonfile
+from saddlebag.agents.base import EnvVar, Kind
+
+
+class InvalidValue(ValueError):
+    """The value is not legal for this setting. Nothing has been written."""
+
+
+_DURATION = re.compile(r"^(\d+)(ms|s|m)$")
+_MULTIPLIER = {"ms": 1, "s": 1000, "m": 60000}
+
+# "0"/"false" on a Kind.BOOL key is meaningful; on a Kind.PRESENCE key it is
+# a trap, because Claude Code enables those on any non-empty value.
+_FALSEY = {"0", "false", "no", "off"}
+_TRUTHY = {"1", "true", "yes", "on"}
+
+
+def parse_duration(raw: str) -> int:
+    """Milliseconds from 10m / 30s / 500ms, or from a plain integer."""
+    # Strip before the fast path, not just before the regex: CLI input can
+    # carry incidental whitespace (a copy-pasted value, a quoted shell
+    # argument) that `str.isdigit()` treats as non-digit, sending a plain
+    # " 600000 " into the suffix regex below, where it is rejected outright.
+    raw = raw.strip()
+    if raw.isdigit():
+        return int(raw)
+    match = _DURATION.match(raw.lower())
+    if not match:
+        raise InvalidValue(
+            f"{raw!r} is not a duration. Use milliseconds, or a suffix: "
+            "500ms, 30s, 10m."
+        )
+    return int(match.group(1)) * _MULTIPLIER[match.group(2)]
+
+
+def _float_range_error(var: EnvVar, number: float) -> str:
+    """The refusal message for a float outside its bounds.
+
+    States the whole constraint rather than the half that was crossed - the
+    caller learns the legal range from one error instead of having to trip
+    the other one to find the far end.
+    """
+    parts = []
+    if var.minimum is not None:
+        gate = "greater than" if var.exclusive_minimum else "at least"
+        parts.append(f"{gate} {var.minimum}")
+    if var.maximum is not None:
+        parts.append(f"at most {var.maximum}")
+    return f"{var.name} must be {' and '.join(parts)}; got {number}."
+
+
+def coerce(var: EnvVar, raw: str, target: Target) -> str:
+    """Validate raw against var and return the string to write.
+
+    Raises InvalidValue rather than writing something approximate. Callers
+    must call this before touching a file, so that a rejected value leaves
+    the file byte-identical.
+
+    `target` is needed only for the empty-string rule below: the two files
+    give an empty value opposite meanings, and the value alone cannot say
+    which one is being written.
+    """
+    # An empty string is not a type error in an agent's settings file: it is
+    # Claude Code's documented way to override a shell variable the user
+    # cannot otherwise control, and `unset` is the separate operation that
+    # removes the key.
+    #
+    # saddlebag's own file resolves the other way - the environment already beats
+    # config.toml - so an empty value there neutralises nothing. On a numeric
+    # key it is worse than useless: `max_chars = ""` is accepted here and
+    # then thrown away by config.load()'s int(), which is the accepted-then-
+    # ignored write this whole command exists to prevent. Refuse it and name
+    # the operation the user actually wanted. Free-form saddlebag keys (the DSN,
+    # the extract model) keep the permissive behaviour: blanking a file value
+    # there is meaningful and config.load() has its own fallback for it.
+    if raw == "":
+        if target is Target.SADDLEBAG and var.kind in (Kind.INT, Kind.FLOAT):
+            raise InvalidValue(
+                f"{var.name} takes a number, so an empty value would be "
+                f"ignored. Use `bag config unset {var.name}` instead."
+            )
+        return ""
+
+    if var.kind is Kind.PRESENCE:
+        if raw.strip().lower() in _FALSEY:
+            raise InvalidValue(
+                f"{var.name} is enabled by presence, so {raw!r} would still "
+                f"enable it. Use `bag config unset {var.name}` instead."
+            )
+        return raw
+
+    if var.kind is Kind.BOOL:
+        value = raw.strip().lower()
+        if value in _TRUTHY:
+            return "1"
+        if value in _FALSEY:
+            return "0"
+        raise InvalidValue(f"{var.name} takes a boolean, not {raw!r}.")
+
+    if var.kind is Kind.INT:
+        if var.duration:
+            number = parse_duration(raw)
+        elif raw.strip().isdigit():
+            # Same whitespace tolerance as parse_duration, and for the same
+            # reason: CLI input can carry incidental whitespace that a bare
+            # isdigit() treats as non-numeric. Without this, a duration key
+            # and a plain-integer key would disagree on an identical-looking
+            # padded value, which is worse than rejecting both.
+            number = int(raw.strip())
+        else:
+            raise InvalidValue(f"{var.name} takes a whole number, not {raw!r}.")
+        # Both bounds are reported on every violation, not just the one that
+        # was crossed - the caller sees the full legal range in one message
+        # instead of having to trigger the other error to learn it.
+        if var.minimum is not None and number < var.minimum:
+            raise InvalidValue(
+                f"{var.name} must be between {var.minimum} and "
+                f"{var.maximum if var.maximum is not None else 'unbounded'}; "
+                f"got {number}."
+            )
+        if var.maximum is not None and number > var.maximum:
+            raise InvalidValue(
+                f"{var.name} must be between "
+                f"{var.minimum if var.minimum is not None else 'unbounded'} "
+                f"and {var.maximum}; got {number}."
+            )
+        return str(number)
+
+    if var.kind is Kind.FLOAT:
+        try:
+            number = float(raw.strip())
+        except ValueError:
+            raise InvalidValue(f"{var.name} takes a number, not {raw!r}.") from None
+        if var.minimum is not None:
+            below = (
+                number <= var.minimum if var.exclusive_minimum else number < var.minimum
+            )
+            if below:
+                raise InvalidValue(_float_range_error(var, number))
+        if var.maximum is not None and number > var.maximum:
+            raise InvalidValue(_float_range_error(var, number))
+        # Normalised rather than echoed back, so that "1" and ".5" reach the
+        # file in the same spelling a human would have written, and so that
+        # write_saddlebag's float() call cannot fail on something coerce accepted.
+        return str(number)
+
+    return raw
+
+
+class UnknownSetting(KeyError):
+    """No such setting in either table."""
+
+
+class NotSettable(ValueError):
+    """A real variable that must not be written into a settings file."""
+
+
+class Target(StrEnum):
+    SADDLEBAG = "saddlebag"
+    AGENT = "agent"
+
+
+# Each of these names the file that would store it, so writing one inside
+# that file is a chicken-and-egg that reads as broken. The Claude Code docs
+# say the same about CLAUDE_CONFIG_DIR: set it in the shell.
+BOOTSTRAP_VARS = {"BAG_CONFIG", "CLAUDE_CONFIG_DIR"}
+
+#: saddlebag's own settings, keyed by env-var spelling. Derived from config.py so
+#: that a new setting there shows up in `bag config list` without a second
+#: edit here; only the help text lives in this table.
+BAG_VARS: Mapping[str, EnvVar] = {
+    "BAG_DSN": EnvVar(
+        "BAG_DSN",
+        Kind.STR,
+        "Postgres connection string.",
+        default=saddlebag_config.DEFAULT_DSN,
+    ),
+    "BAG_USER_ID": EnvVar(
+        "BAG_USER_ID",
+        Kind.STR,
+        "Handle entries are attributed to.",
+        default=saddlebag_config.DEFAULT_HANDLE,
+    ),
+    "BAG_MAX_CHARS": EnvVar(
+        "BAG_MAX_CHARS",
+        Kind.INT,
+        "Cap on a rendered context block.",
+        minimum=1,
+        default=str(saddlebag_config.DEFAULT_MAX_CHARS),
+    ),
+    # The bounds mirror config.load()'s own guard exactly. Below or at 0 the
+    # fuzzy fallback matches everything and above 1 it matches nothing, so
+    # config.load() discards anything outside the range - which, while this
+    # was a free-form Kind.STR, made `set` a reliable no-op for a bad value.
+    "BAG_FUZZY_THRESHOLD": EnvVar(
+        "BAG_FUZZY_THRESHOLD",
+        Kind.FLOAT,
+        "Trigram similarity floor for the fuzzy fallback (0 < t <= 1).",
+        minimum=0.0,
+        maximum=1.0,
+        exclusive_minimum=True,
+        default=str(saddlebag_config.DEFAULT_FUZZY_THRESHOLD),
+    ),
+    "BAG_EXTRACT_MODEL": EnvVar(
+        "BAG_EXTRACT_MODEL",
+        Kind.STR,
+        "Model used to extract entries from recorded events.",
+        default=saddlebag_config.DEFAULT_EXTRACT_MODEL,
+    ),
+    "BAG_IDLE_MINUTES": EnvVar(
+        "BAG_IDLE_MINUTES",
+        Kind.INT,
+        "Minutes a session must be quiet before extraction reads it.",
+        minimum=1,
+        default=str(saddlebag_config.DEFAULT_IDLE_MINUTES),
+    ),
+    "BAG_EMBED_MODEL": EnvVar(
+        "BAG_EMBED_MODEL",
+        Kind.STR,
+        "Embedding model recorded in entry_vectors.model.",
+        default=saddlebag_config.DEFAULT_EMBED_MODEL,
+    ),
+    # The bounds mirror config.load()'s own guard exactly, for the same
+    # reason as BAG_FUZZY_THRESHOLD above: below or at 0 the semantic tier
+    # is meaningless and above 1 it matches nothing, so config.load()
+    # discards anything outside the range.
+    "BAG_SEMANTIC_THRESHOLD": EnvVar(
+        "BAG_SEMANTIC_THRESHOLD",
+        Kind.FLOAT,
+        "Cosine similarity floor for the semantic tier (0 < t <= 1).",
+        minimum=0.0,
+        maximum=1.0,
+        exclusive_minimum=True,
+        default=str(saddlebag_config.DEFAULT_SEMANTIC_THRESHOLD),
+    ),
+    "BAG_TURN_WARN_AT": EnvVar(
+        "BAG_TURN_WARN_AT",
+        Kind.INT,
+        "Turn count at which the handoff reminder first fires.",
+        minimum=1,
+        default=str(saddlebag_config.DEFAULT_TURN_WARN_AT),
+    ),
+    "BAG_TURN_WARN_EVERY": EnvVar(
+        "BAG_TURN_WARN_EVERY",
+        Kind.INT,
+        "Turns between repeat handoff reminders.",
+        minimum=1,
+        default=str(saddlebag_config.DEFAULT_TURN_WARN_EVERY),
+    ),
+}
+
+#: config.toml uses unprefixed keys; user_handle is the one that is not just
+#: the lowercased suffix.
+_FILE_KEYS = {name: name.removeprefix("BAG_").lower() for name in BAG_VARS}
+_FILE_KEYS["BAG_USER_ID"] = "user_handle"
+_BY_FILE_KEY = {v: k for k, v in _FILE_KEYS.items()}
+
+
+def file_key(key: str) -> str:
+    """The config.toml spelling of a saddlebag setting, from either input form."""
+    if key in _FILE_KEYS:
+        return _FILE_KEYS[key]
+    if key in _BY_FILE_KEY:
+        return key
+    raise UnknownSetting(key)
+
+
+def route(key: str, table: Mapping[str, EnvVar]) -> tuple[Target, EnvVar]:
+    """Which file this key belongs to, and its definition.
+
+    Refuses rather than guessing: an unrecognised key is far more often a
+    typo than a variable saddlebag has not heard of, and silently writing it
+    would leave a dead entry that looks like a working setting.
+    """
+    if key in BOOTSTRAP_VARS:
+        raise NotSettable(
+            f"{key} names the file that would store it, so it cannot be set "
+            "there. Export it from your shell instead."
+        )
+    if key in BAG_VARS:
+        return Target.SADDLEBAG, BAG_VARS[key]
+    if key in _BY_FILE_KEY:
+        return Target.SADDLEBAG, BAG_VARS[_BY_FILE_KEY[key]]
+    if key in table:
+        return Target.AGENT, table[key]
+    supported = ", ".join(sorted(set(BAG_VARS) | set(table)))
+    raise UnknownSetting(f"unknown setting '{key}'. Supported: {supported}")
+
+
+def _read_toml(path: Path) -> dict[str, Any]:
+    """saddlebag's config.toml, or an empty dict if it is missing or broken.
+
+    Same posture as config.load(): a file saddlebag cannot parse must not be a
+    dead end. Both readers below need it, and two copies of a three-line
+    try/except is how they drift apart.
+    """
+    if not path.exists():
+        return {}
+    try:
+        return tomllib.loads(path.read_text())
+    except tomllib.TOMLDecodeError:
+        return {}
+
+
+def _typed(var: EnvVar, value: str) -> object:
+    """The value as the TOML type its kind implies.
+
+    coerce() has already normalised the string, so int()/float() here cannot
+    fail on anything that reached this point; an empty value on a numeric
+    saddlebag key is refused there rather than written as a string.
+    """
+    if not value:
+        return value
+    if var.kind is Kind.INT:
+        return int(value)
+    if var.kind is Kind.FLOAT:
+        return float(value)
+    return value
+
+
+def write_saddlebag(path: Path, key: str, value: str | None) -> Path | None:
+    """Set or unset one key in saddlebag's config.toml.
+
+    Rewriting the file loses comments and formatting, which is why it is
+    backed up first, and why the backup's path is returned for the caller to
+    report. tomli-w rather than a hand-rolled writer because the DSN can hold
+    a password containing quotes or backslashes, and TOML escaping is the
+    wrong thing to be clever about.
+    """
+    data = _read_toml(path)
+    backed_up: Path | None = None
+    if path.exists():
+        # A broken file is read as empty and then replaced, which is exactly
+        # why this backup matters.
+        #
+        # A fresh de-duplication set rather than a shared one: this function
+        # reads the file itself instead of going through read_json, and
+        # writes once per process, so there is exactly one backup per
+        # invocation and nothing for a set carried in from outside to
+        # suppress.
+        backed_up = jsonfile.backup_once(path, set())
+
+    name = file_key(key)
+    if value is None:
+        data.pop(name, None)
+    else:
+        env_key = _BY_FILE_KEY.get(name, name)
+        var = BAG_VARS[env_key]
+        # Write the natural TOML type so the file reads the way a human
+        # would have written it, and `get` round-trips what was set. A
+        # quoted number would be as good as no write at all: config.load()
+        # coerces with int()/float() and falls back to the default on
+        # anything it cannot parse.
+        data[name] = _typed(var, value)
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(tomli_w.dumps(data))
+    return backed_up
+
+
+@dataclass(frozen=True, slots=True)
+class Setting:
+    key: str
+    value: str | None
+    #: "environment", "file", or "default" - the whole point of `list`.
+    source: str
+    var: EnvVar
+    target: Target
+
+
+def write_agent(path: Path, key: str, value: str | None) -> Path | None:
+    """Set or unset one key in the env block of an agent's settings.json.
+
+    Returns where the file was backed up, for the caller to report.
+    """
+    # Back up before reading rather than letting write_json do it at the end.
+    # read_json snapshots the file itself when it turns out to be corrupt, and
+    # that copy is the one that matters - taking it here means one backup per
+    # invocation either way, with a path this function can return.
+    backed_up: set[Path] = set()
+    made = jsonfile.backup_once(path, backed_up)
+    data, _ = jsonfile.read_json(path, backed_up)
+    env_block: dict[str, Any]
+    found = data.get("env")
+    if isinstance(found, dict):
+        env_block = found
+    else:
+        # settings.json is a file saddlebag does not own, and every other touch
+        # of it degrades rather than raising. A hand-corrupted file can have
+        # "env" set to something other than a dict (e.g. "env": "yes"); a
+        # bare setdefault would hand back that non-dict value and crash on
+        # the next line. Replace it with a fresh dict instead - the same
+        # posture as write_saddlebag's "broken file must not be a dead end".
+        env_block = {}
+        data["env"] = env_block
+    if value is None:
+        env_block.pop(key, None)
+    else:
+        env_block[key] = value
+    jsonfile.write_json(path, data, backed_up)
+    return made
+
+
+def shadow_warning(target: Target, key: str, env: Mapping[str, str]) -> str | None:
+    """Whether the value just written will actually be the one in effect.
+
+    The two targets resolve in opposite directions, which is the single most
+    confusing thing about this command:
+
+        saddlebag        environment beats config.toml
+        Claude Code  settings.json beats the environment
+
+    So the same situation - the key is also exported - is a silent no-op on
+    one side and the intended behaviour on the other. Saying nothing would
+    leave the user staring at a correctly written file that changed nothing.
+    """
+    if key not in env:
+        return None
+    if target is Target.SADDLEBAG:
+        return (
+            f"{key} is set in your environment, which takes precedence over "
+            f"the config file, so this change will not take effect until you "
+            f"unset it."
+        )
+    return (
+        f"{key} is also set in your environment. The settings file overrides "
+        f"it, so the value just written is the one that will be used."
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class Targets:
+    """The files one `bag config` invocation reads and writes.
+
+    agent_path is None when the resolved adapter has no env block saddlebag can
+    write, in which case table is empty too - the two always travel together.
+    """
+
+    saddlebag_path: Path
+    agent_path: Path | None
+    table: Mapping[str, EnvVar]
+
+
+def resolve_targets(adapter: object, home: Path, env: Mapping[str, str]) -> Targets:
+    """Which files this agent's settings live in, and what it lets us set.
+
+    Policy, not parsing, which is why it is here and not in the frontend:
+    choosing the file an agent's env block lives in is the difference between
+    configuring that agent and quietly corrupting another one's config. The
+    frontend resolves the adapter by name and hands it over; everything after
+    that is this module's decision.
+
+    `env_settings` and `settings_path` are both *optional* capabilities,
+    probed with getattr - see the rationale on AgentAdapter in agents/base.py.
+    An adapter missing either one is reported as having no settable
+    environment variables, which is the spec's documented outcome and is why
+    the probe cannot simply be deleted as unreachable: claude-code is the only
+    adapter in-tree that has them.
+    """
+    saddlebag_path = Path(env.get("BAG_CONFIG", saddlebag_config.default_config_path()))
+    table_of = getattr(adapter, "env_settings", None)
+    path_of = getattr(adapter, "settings_path", None)
+    if table_of is None or path_of is None:
+        return Targets(saddlebag_path, None, {})
+    try:
+        return Targets(saddlebag_path, path_of(home, env), table_of())
+    except Exception:
+        # A capability that *raises* has to land where a missing capability
+        # lands. This repo's registry contract is that a broken third-party
+        # adapter warns rather than breaking saddlebag - agents/registry.discover
+        # already swallows a failed entry point load for the same reason - and
+        # an adapter is exactly the kind of code that fails here: settings_path
+        # is where it reads its own environment, so `Path(env["MY_CONFIG_DIR"])`
+        # with the variable unexported is the obvious way to blow up.
+        #
+        # Degrading rather than raising costs the user only the agent half.
+        # saddlebag's own settings do not come from the adapter, so `bag config`
+        # keeps working for them.
+        warnings.warn(
+            f"agent adapter {getattr(adapter, 'name', adapter)!r} failed to "
+            "report its settings; its environment variables are not available",
+            stacklevel=2,
+        )
+        return Targets(saddlebag_path, None, {})
+
+
+def _agent_env(path: Path | None) -> dict[str, Any]:
+    if path is None:
+        return {}
+    data, _ = jsonfile.read_json(path, set())
+    block = data.get("env")
+    return block if isinstance(block, dict) else {}
+
+
+def list_settings(
+    saddlebag_path: Path,
+    agent_path: Path | None,
+    table: Mapping[str, EnvVar],
+    env: Mapping[str, str],
+) -> list[Setting]:
+    """Every settable key, its effective value, and where that value came from.
+
+    This is the feature that justifies the command existing alongside
+    Claude Code's own /config: one view over both tools, with each side's
+    precedence rule already applied.
+    """
+    rows: list[Setting] = []
+
+    file_data = _read_toml(saddlebag_path)
+
+    for key, var in BAG_VARS.items():
+        # Environment first: config.load() picks the env var over the file.
+        if key in env:
+            rows.append(Setting(key, env[key], "environment", var, Target.SADDLEBAG))
+            continue
+        name = _FILE_KEYS[key]
+        if name in file_data:
+            rows.append(
+                Setting(key, str(file_data[name]), "file", var, Target.SADDLEBAG)
+            )
+            continue
+        rows.append(Setting(key, var.default, "default", var, Target.SADDLEBAG))
+
+    agent_block = _agent_env(agent_path)
+    for key, var in table.items():
+        # File first: for Claude Code the settings file beats the export.
+        if key in agent_block:
+            rows.append(Setting(key, agent_block[key], "file", var, Target.AGENT))
+            continue
+        if key in env:
+            rows.append(Setting(key, env[key], "environment", var, Target.AGENT))
+            continue
+        rows.append(Setting(key, var.default, "default", var, Target.AGENT))
+
+    return rows
