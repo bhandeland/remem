@@ -2459,7 +2459,8 @@ def transcripts_discover(
         return
     for c in found:
         claimed = f" - claimed by {c.claimed_by}" if c.claimed_by else ""
-        typer.echo(f"{c.path}  {c.matched} of {c.total} sessions match{claimed}")
+        extra = f", plus {c.subagents} subagent files" if c.subagents else ""
+        typer.echo(f"{c.path}  {c.matched} of {c.total} sessions match{extra}{claimed}")
 
 
 @transcripts_app.command("designate")
@@ -2490,10 +2491,15 @@ def transcripts_designate(
             # The CLI does not reformat, re-derive or swallow it.
             typer.echo(str(exc))
             raise typer.Exit(1)
-    count = len(list(Path(absolute).glob("*.jsonl")))
+    # Through the service's layout function, not a glob: a hand-written
+    # `*.jsonl` here is exactly the blind spot that under-reported what a
+    # claim brings in.
+    files = transcripts_service.transcript_files(Path(absolute))
+    subagents = sum(1 for f in files if f.agent_id is not None)
     typer.echo(
-        f"{resolved} claims {absolute} ({count} files). Nothing has been "
-        f"imported yet - run `bag transcripts import` to read them."
+        f"{resolved} claims {absolute} ({len(files) - subagents} sessions, "
+        f"{subagents} subagent files). Nothing has been imported yet - run "
+        f"`bag transcripts import` to read them."
     )
 
 
@@ -2596,9 +2602,15 @@ def transcripts_status(
     if not got.paths:
         typer.echo("  no directory claimed")
     for p in got.paths:
-        state = f"{p.on_disk} files" if p.present else "missing"
+        state = (
+            f"{p.on_disk} sessions, {p.subagents} subagent files"
+            if p.present
+            else "missing"
+        )
         typer.echo(f"  {p.path}: {state}")
-    typer.echo(f"  backlog: {got.backlog}")
+    typer.echo(
+        f"  backlog: {got.backlog} sessions, {got.subagent_backlog} subagent files"
+    )
     typer.echo(f"  irrecoverable: {got.irrecoverable}")
 
 

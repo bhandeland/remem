@@ -14,6 +14,7 @@ from saddlebag.backends.postgres.migrate import migrate
 from saddlebag.backends.postgres.store import PostgresStore
 from saddlebag.domain import Event, EventKind, Principal, new_id
 from saddlebag.services import transcripts
+from tests.transcript_tree import write_subagent
 
 pytestmark = pytest.mark.db
 
@@ -118,3 +119,20 @@ def test_discover_cannot_see_a_directory_with_no_recorded_sessions(
     """
     _transcript(tmp_path / "-worktree", "unrecorded-1")
     assert transcripts.discover(store, owner.id, "p", tmp_path) == []
+
+
+def test_discover_proves_by_sessions_and_names_the_subagents_a_claim_brings(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
+    """Subagent files add no evidence of ownership - they carry their
+    parent's session id - but a claim imports them, so they are counted."""
+    old = tmp_path / "-dir"
+    _transcript(old, "sess-1")
+    _transcript(old, "never-recorded")
+    for agent in ("a1", "a2", "a3"):
+        write_subagent(old, "sess-1", agent)
+    record_event_for(store, owner, project="p", session_id="sess-1")
+
+    found = transcripts.discover(store, owner.id, "p", tmp_path)
+
+    assert (found[0].matched, found[0].total, found[0].subagents) == (1, 2, 3)

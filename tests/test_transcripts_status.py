@@ -58,7 +58,14 @@ def test_status_of_an_unclaimed_project_is_a_full_document(
     """Same keys in every state, so a consumer checks a field for null
     rather than branching on which keys arrived."""
     got = transcripts.status_to_dict(transcripts.status(store, owner.id, "p", tmp_path))
-    assert set(got) == {"project", "paths", "run", "backlog", "irrecoverable"}
+    assert set(got) == {
+        "project",
+        "paths",
+        "run",
+        "backlog",
+        "subagent_backlog",
+        "irrecoverable",
+    }
     assert got["run"] is None
     assert got["paths"] == []
 
@@ -144,3 +151,43 @@ def test_advisories_count_a_conflicting_session_once(
 
     assert len(lines) == 1
     assert "1 session(s) recorded under another project" in lines[0]
+
+
+def test_status_counts_subagent_files_apart_from_sessions(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
+    """ "Clean, backlog 0" while half the bytes sat on disk is how this gap
+    hid. Subagent files get their own figures so it cannot hide again."""
+    claimed = tmp_path / "claimed"
+    write_session(claimed, "s1")
+    write_subagent(claimed, "s1", "a1")
+    write_subagent(claimed, "s1", "a2")
+    transcripts.designate(store, owner.id, "p", claimed)
+
+    before = transcripts.status(store, owner.id, "p", tmp_path)
+    assert (before.paths[0].on_disk, before.paths[0].subagents) == (1, 2)
+    assert (before.backlog, before.subagent_backlog) == (1, 2)
+
+    transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
+
+    after = transcripts.status(store, owner.id, "p", tmp_path)
+    assert (after.backlog, after.subagent_backlog) == (0, 0)
+    doc = transcripts.status_to_dict(after)
+    assert doc["subagent_backlog"] == 0
+    assert doc["paths"][0]["subagents"] == 2
+
+
+def test_a_stored_subagent_does_not_make_its_lost_session_recoverable(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
+    """The session's own transcript is gone from disk and was never stored.
+    Its subagent being stored changes nothing about that."""
+    record_event_for(store, owner, project="p", session_id="s1")
+    claimed = tmp_path / "claimed"
+    write_subagent(claimed, "s1", "a1")
+    transcripts.designate(store, owner.id, "p", claimed)
+    transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
+
+    got = transcripts.status(store, owner.id, "p", tmp_path)
+
+    assert got.irrecoverable == 1

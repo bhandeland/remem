@@ -57,7 +57,9 @@ def cli_env(live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> N
     for `PROJECT` - the third is what keeps `matched` and `total` from being
     the same number, which is the entire point of the discover test: the
     directory's total file count is what a claim commits someone to reading,
-    not the smaller count that merely proves ownership.
+    not the smaller count that merely proves ownership. One subagent file is
+    also seeded, so every command that describes this directory has to say
+    something about the files a claim brings beyond sessions.
     """
     monkeypatch.setenv("BAG_DSN", live_dsn)
     monkeypatch.setenv("BAG_USER_ID", "brandon")
@@ -100,6 +102,12 @@ def cli_env(live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> N
             json.dumps({"type": "user"}).encode() + b"\n"
         )
 
+    # One subagent file, so every command that describes this directory
+    # has to say something about the files a claim brings beyond sessions.
+    subagent = directory / "sess-1" / "subagents" / "agent-a1.jsonl"
+    subagent.parent.mkdir(parents=True)
+    subagent.write_bytes(json.dumps({"type": "user"}).encode() + b"\n")
+
 
 def test_discover_prints_its_evidence_and_writes_nothing(
     cli_env: None, tmp_path: Path
@@ -108,6 +116,7 @@ def test_discover_prints_its_evidence_and_writes_nothing(
     result = runner.invoke(app, ["transcripts", "discover"])
     assert result.exit_code == 0
     assert "2 of 3" in result.stdout
+    assert "plus 1 subagent files" in result.stdout
 
 
 def test_discover_looks_under_claude_config_dir_when_it_is_set(
@@ -146,9 +155,11 @@ def test_designate_echoes_the_backfill_command_and_its_cost(
     The command records a claim and imports nothing, so the output has to
     name what comes next and roughly what it will cost.
     """
-    result = runner.invoke(app, ["transcripts", "designate", str(tmp_path)])
+    directory = tmp_path / ".claude" / "projects" / "-old-dirname"
+    result = runner.invoke(app, ["transcripts", "designate", str(directory)])
     assert result.exit_code == 0
     assert "bag transcripts import" in result.stdout
+    assert "3 sessions, 1 subagent files" in result.stdout
 
 
 def test_undesignate_releases_a_claim_and_keeps_what_was_imported(
@@ -301,5 +312,25 @@ def test_status_json_has_the_same_keys_when_nothing_is_claimed(cli_env: None) ->
     result = runner.invoke(app, ["transcripts", "status", "--json"])
     assert result.exit_code == 0
     got = json.loads(result.stdout)
-    assert set(got) == {"project", "paths", "run", "backlog", "irrecoverable"}
+    assert set(got) == {
+        "project",
+        "paths",
+        "run",
+        "backlog",
+        "subagent_backlog",
+        "irrecoverable",
+    }
     assert got["run"] is None
+
+
+def test_status_prints_subagent_figures_beside_session_ones(
+    cli_env: None, tmp_path: Path
+) -> None:
+    directory = tmp_path / ".claude" / "projects" / "-old-dirname"
+    assert (
+        runner.invoke(app, ["transcripts", "designate", str(directory)]).exit_code == 0
+    )
+    result = runner.invoke(app, ["transcripts", "status"])
+    assert result.exit_code == 0
+    assert "3 sessions, 1 subagent files" in result.stdout
+    assert "backlog: 3 sessions, 1 subagent files" in result.stdout

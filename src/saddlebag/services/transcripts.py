@@ -142,6 +142,11 @@ class Candidate:
     #: from before recording existed, which can outnumber the matched ones
     #: several times over.
     total: int
+    #: Subagent files under this directory's sessions. Not evidence - they
+    #: carry their parent's session id, so they prove nothing `matched` has
+    #: not - but a claim imports them, and `total` exists to say what a
+    #: claim commits someone to reading.
+    subagents: int
     claimed_by: str | None
 
 
@@ -167,17 +172,19 @@ def discover(store: Store, owner_id: UUID, project: str, root: Path) -> list[Can
     for directory in sorted(root.iterdir()):
         if not directory.is_dir():
             continue
-        files = sorted(directory.glob("*.jsonl"))
-        if not files:
+        files = transcript_files(directory)
+        sessions = [f for f in files if f.agent_id is None]
+        if not sessions:
             continue
-        matched = sum(1 for f in files if f.stem in recorded)
+        matched = sum(1 for f in sessions if f.session_id in recorded)
         if matched == 0:
             continue
         found.append(
             Candidate(
                 path=str(directory),
                 matched=matched,
-                total=len(files),
+                total=len(sessions),
+                subagents=len(files) - len(sessions),
                 claimed_by=claims.get(str(directory)),
             )
         )
@@ -601,6 +608,9 @@ class PathStatus:
     path: str
     present: bool
     on_disk: int
+    #: Subagent files, counted apart from `on_disk` (sessions) - folding
+    #: them together is how a status that read "clean" once hid them.
+    subagents: int
 
 
 @dataclass
@@ -616,6 +626,7 @@ class TranscriptStatus:
     paths: list[PathStatus]
     run: TranscriptRun | None
     backlog: int
+    subagent_backlog: int
     irrecoverable: int
 
 
@@ -623,29 +634,44 @@ def status(store: Store, owner_id: UUID, project: str, root: Path) -> Transcript
     """The current state of transcript capture for one project."""
     claims = store.transcript_paths(owner_id, project)
     paths: list[PathStatus] = []
-    on_disk_ids: set[str] = set()
+    on_disk: set[tuple[str, str | None]] = set()
     for claim in claims:
         directory = Path(claim.path)
         present = directory.is_dir()
-        files: list[Path] = sorted(directory.glob("*.jsonl")) if present else []
-        on_disk_ids.update(f.stem for f in files)
-        paths.append(PathStatus(path=claim.path, present=present, on_disk=len(files)))
+        files: list[TranscriptFile] = transcript_files(directory) if present else []
+        on_disk.update((f.session_id, f.agent_id) for f in files)
+        subagents = sum(1 for f in files if f.agent_id is not None)
+        paths.append(
+            PathStatus(
+                path=claim.path,
+                present=present,
+                on_disk=len(files) - subagents,
+                subagents=subagents,
+            )
+        )
 
-    stored = {t.session_id for t in store.stored_transcripts(owner_id, project)}
+    stored = {
+        (t.session_id, t.agent_id) for t in store.stored_transcripts(owner_id, project)
+    }
+    # Sessions whose OWN transcript is stored. A stored subagent does not
+    # make its lost parent recoverable, and `recorded` is a set of sessions.
+    stored_sessions = {session for session, agent in stored if agent is None}
     recorded = set(store.event_session_ids(owner_id, project))
 
     # "Anywhere" means anywhere under the transcript root, not only under a
     # claimed directory: a session whose file sits in an unclaimed directory
     # is recoverable by claiming it, and calling that irrecoverable would
-    # overstate the loss.
+    # overstate the loss. Session files only, for the same reason as above.
     everywhere = {f.stem for f in root.glob("*/*.jsonl")} if root.is_dir() else set()
 
+    missing = on_disk - stored
     return TranscriptStatus(
         project=project,
         paths=paths,
         run=store.latest_transcript_run(owner_id, project),
-        backlog=len(on_disk_ids - stored),
-        irrecoverable=len(recorded - stored - everywhere),
+        backlog=sum(1 for _, agent in missing if agent is None),
+        subagent_backlog=sum(1 for _, agent in missing if agent is not None),
+        irrecoverable=len(recorded - stored_sessions - everywhere),
     )
 
 
@@ -660,11 +686,17 @@ def status_to_dict(got: TranscriptStatus) -> dict[str, Any]:
     return {
         "project": got.project,
         "paths": [
-            {"path": p.path, "present": p.present, "on_disk": p.on_disk}
+            {
+                "path": p.path,
+                "present": p.present,
+                "on_disk": p.on_disk,
+                "subagents": p.subagents,
+            }
             for p in got.paths
         ],
         "run": None if got.run is None else _run_to_dict(got.run),
         "backlog": got.backlog,
+        "subagent_backlog": got.subagent_backlog,
         "irrecoverable": got.irrecoverable,
     }
 
