@@ -642,6 +642,16 @@ def _run_variant(
         ids, tier = exact_ids(), "exact"
     elif variant == "semantic":
         ids, tier = semantic_ids(), "semantic"
+    elif variant == "fuzzy":
+        # The trigram tier, forced. In the cascade it runs only when exact
+        # AND semantic both returned nothing, which on this instrument is
+        # never - `answered_by_tier` has reported zero fuzzy answers in
+        # every run - so its standalone quality was pure assumption until
+        # something measured it. That is the whole point of the variant:
+        # not to propose reordering the chain, but to know what the
+        # bottom of it is actually worth when it does fire.
+        ids = _ids(store.fuzzy_search(base, owner_id, cfg.fuzzy_threshold))
+        tier = "fuzzy"
     elif variant == "blended":
         ids, tier = _rrf(exact_ids(), semantic_ids())[:K], "blended"
     else:
@@ -667,7 +677,11 @@ def _run_variant(
     )
 
 
-VARIANTS = ["cascade", "exact", "semantic", "blended"]
+#: Order matters only for presentation: the cascade first as the shipped
+#: behaviour, then each tier alone, then the fusion. `--variant` builds its
+#: argparse choices from this list, so a new variant reaches the CLI by
+#: being added here and nowhere else.
+VARIANTS = ["cascade", "exact", "semantic", "fuzzy", "blended"]
 
 
 def cmd_run(args: argparse.Namespace) -> int:
