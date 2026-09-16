@@ -224,21 +224,26 @@ def test_a_missing_claimed_directory_is_a_failure_not_a_crash(
     assert len(report.failures) == 1
 
 
-def test_a_body_exception_still_finishes_the_run_row(
+def test_a_body_exception_records_the_failure_and_finishes_the_row(
     store, owner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The wrapper's finally must run even when the body raises.
+    """`run()`'s wrapper records a partial run and re-raises.
 
-    `run()`'s docstring requires its `store` be opened with
-    `autocommit=True`, exactly the rule `bag reingest run` and `bag memory
-    sync` already follow - without it, a real psycopg error leaves the
-    connection in a failed transaction, and the `finish_transcript_run` call
-    in the `finally` below would itself raise `InFailedSqlTransaction`
-    instead of running, silently swallowing the original exception and
-    recording nothing. This test's stub raises a plain exception rather than
-    a real psycopg one, which is enough to prove the wrapper's own
-    try/finally structure does what it claims - that a raise partway still
-    leaves a finished row carrying the failure - independent of what raised.
+    A body that dies partway still leaves a finished row carrying the
+    `{"path": "*"}` failure - this proves that much, with a stub that raises
+    a plain `RuntimeError` before any DB write happens.
+
+    What this does NOT cover: a real psycopg error leaves the connection in
+    a failed transaction, and there the `finish_transcript_run` call in the
+    `finally` would itself raise `InFailedSqlTransaction`, silently
+    replacing the original exception and recording nothing. A bare Python
+    exception never poisons a connection, so this test cannot exercise that
+    failure mode - and the per-test `conn` fixture, already inside a
+    transaction that gets rolled back at test end, cannot be made to either.
+    Guarding against it is the caller's job: `run()`'s docstring states the
+    `autocommit=True` requirement that makes the finish succeed even after a
+    failed statement, and that contract is established end to end by the
+    CLI's own test, not by this one.
     """
     transcripts.designate(store, owner.id, "p", tmp_path)
 
