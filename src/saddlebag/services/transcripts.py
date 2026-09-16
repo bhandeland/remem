@@ -172,6 +172,15 @@ def run(
     `Report` it mutates, so a run that raises partway is still recorded with
     what it had done. A Python exception is recorded as a failure with path
     `*` and re-raised.
+
+    The caller MUST open its `store` with `autocommit=True`, the same rule
+    `bag reingest run` and `bag memory sync` already follow. `start_transcript_run`
+    has to be committed before any file is read - otherwise a raise from deep
+    in `_run_body` (a psycopg error, most likely) leaves the connection in a
+    failed transaction, and the `finish_transcript_run` call below raises
+    `InFailedSqlTransaction` instead of running, silently replacing the real
+    exception and recording nothing. Stated here so it is inherited rather
+    than rediscovered by every future caller.
     """
     report = Report()
     started = store.start_transcript_run(owner_id, project, trigger)

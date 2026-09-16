@@ -46,12 +46,25 @@ def test_import_stores_content_and_lines(store, owner, tmp_path: Path) -> None:
 
 
 def test_a_second_run_over_an_unchanged_file_reads_nothing(
-    store, owner, tmp_path: Path
+    store, owner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The common case at every session start: one stat, no read."""
+    """The common case at every session start: one stat, no read.
+
+    Asserting counters alone lets an implementation that reads the whole
+    file and compares hashes pass this test too - the counters end up right
+    either way. Making `Path.open` and `Path.read_bytes` raise for the
+    second run turns "did not read" from an inference into something that
+    fails loudly the moment it is violated.
+    """
     _write(tmp_path, "s1", [{"type": "user"}])
     transcripts.designate(store, owner.id, "p", tmp_path)
     transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
+
+    def _must_not_read(*args: object, **kwargs: object) -> None:
+        raise AssertionError("an unchanged file must not be read")
+
+    monkeypatch.setattr(Path, "open", _must_not_read)
+    monkeypatch.setattr(Path, "read_bytes", _must_not_read)
 
     report = transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
 
@@ -158,20 +171,41 @@ def test_an_unparseable_line_is_named_not_dropped(store, owner, tmp_path: Path) 
     )
 
 
-def test_the_cap_bounds_a_refresh_before_it_reads(store, owner, tmp_path: Path) -> None:
+def test_the_cap_bounds_a_refresh_before_it_reads(
+    store, owner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """A session-start hook must never read 179MB.
 
-    Enforced before reading, not after, which is the whole point.
+    Enforced before reading, not after, which is the whole point. Asserting
+    `files_new == 2` alone is satisfied just as well by a check-after-read
+    loop that processes all 5 files and only afterward reports 2 of them -
+    the counter looks right either way. Counting real `Path.stat` calls on
+    the candidate files is what tells the two implementations apart: the
+    cap must stop the loop before it ever touches files 3 through 5, not
+    merely before it counts them.
     """
     for i in range(5):
         _write(tmp_path, f"s{i}", [{"type": "user"}])
     transcripts.designate(store, owner.id, "p", tmp_path)
+
+    stat_calls = 0
+    real_stat = Path.stat
+
+    def _counting_stat(self: Path, *args: object, **kwargs: object) -> object:
+        nonlocal stat_calls
+        if self.suffix == ".jsonl":
+            stat_calls += 1
+        return real_stat(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", _counting_stat)
 
     report = transcripts.run(
         store, owner.id, "p", trigger=TranscriptTrigger.AUTO, cap=2
     )
 
     assert report.files_new == 2
+    assert report.files_seen == 2
+    assert stat_calls == 2
 
 
 def test_an_unclaimed_project_does_nothing(store, owner, tmp_path: Path) -> None:
@@ -188,6 +222,37 @@ def test_a_missing_claimed_directory_is_a_failure_not_a_crash(
     tmp_path.rmdir()
     report = transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
     assert len(report.failures) == 1
+
+
+def test_a_body_exception_still_finishes_the_run_row(
+    store, owner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The wrapper's finally must run even when the body raises.
+
+    `run()`'s docstring requires its `store` be opened with
+    `autocommit=True`, exactly the rule `bag reingest run` and `bag memory
+    sync` already follow - without it, a real psycopg error leaves the
+    connection in a failed transaction, and the `finish_transcript_run` call
+    in the `finally` below would itself raise `InFailedSqlTransaction`
+    instead of running, silently swallowing the original exception and
+    recording nothing. This test's stub raises a plain exception rather than
+    a real psycopg one, which is enough to prove the wrapper's own
+    try/finally structure does what it claims - that a raise partway still
+    leaves a finished row carrying the failure - independent of what raised.
+    """
+    transcripts.designate(store, owner.id, "p", tmp_path)
+
+    def _boom(*args: object, **kwargs: object) -> list[object]:
+        raise RuntimeError("simulated failure")
+
+    monkeypatch.setattr(store, "transcript_paths", _boom)
+
+    with pytest.raises(RuntimeError, match="simulated failure"):
+        transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
+
+    run = store.latest_transcript_run(owner.id, "p")
+    assert run.finished_at is not None
+    assert any(f.get("path") == "*" for f in run.failures)
 
 
 def test_the_run_is_recorded_with_its_trigger(store, owner, tmp_path: Path) -> None:
