@@ -9,6 +9,7 @@ from saddlebag.backends.postgres.migrate import (
     migrate,
     pending_versions,
 )
+from saddlebag.backends.postgres.sqltext import as_sql
 from tests.conftest import one, scalar
 
 pytestmark = pytest.mark.db
@@ -69,7 +70,10 @@ def test_transcript_tables_exist_after_migrate(conn: psycopg.Connection[Any]) ->
         "transcript_paths",
         "transcript_runs",
     ):
-        assert scalar(conn.execute(f"select to_regclass('public.{table}')")) is not None
+        assert (
+            scalar(conn.execute(as_sql(f"select to_regclass('public.{table}')")))
+            is not None
+        )
 
 
 def test_transcript_lines_cascade_when_their_transcript_goes(
