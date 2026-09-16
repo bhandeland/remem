@@ -1270,22 +1270,32 @@ Expected: FAIL - `AttributeError: ... has no attribute 'add_transcript_path'`.
         later as a session filed under the wrong project.
         """
         with self._cur() as cur:
+            # One statement, not a select-then-insert. Two concurrent claims
+            # of the same path would both pass a "does it exist yet" check and
+            # the loser would hit UniqueViolation from
+            # transcript_paths_one_owner_idx - an unhandled crash in place of
+            # the conflicting project name this method exists to return.
+            #
+            # `do update set project = transcript_paths.project` is a
+            # deliberate no-op write. Its only job is to make the conflicting
+            # row's project come back through `returning`; `do nothing`
+            # returns no row at all, which would force the second round trip
+            # this form is eliminating. Do not "tidy" the self-assignment
+            # away - it is load-bearing.
             cur.execute(
-                "select project from transcript_paths"
-                " where owner_id = %s and path = %s",
-                (owner_id, path),
-            )
-            row = cur.fetchone()
-            if row is not None:
-                # This module's cursor uses `dict_row`, so rows are read by
-                # column name, never by position.
-                return None if row["project"] == project else str(row["project"])
-            cur.execute(
-                "insert into transcript_paths (owner_id, project, path)"
-                " values (%s, %s, %s)",
+                """
+                insert into transcript_paths (owner_id, project, path)
+                values (%s, %s, %s)
+                on conflict (owner_id, path)
+                  do update set project = transcript_paths.project
+                returning project
+                """,
                 (owner_id, project, path),
             )
-            return None
+            # This module's cursor uses `dict_row`, so rows are read by column
+            # name, never by position.
+            holder = str(_one(cur)["project"])
+            return None if holder == project else holder
 
     def remove_transcript_path(
         self, owner_id: UUID, project: str, path: str
