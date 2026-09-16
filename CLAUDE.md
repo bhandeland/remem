@@ -142,6 +142,23 @@ embedder per model name, and is called **from inside the semantic tier**: constr
 search the exact tier answers must never pay for any of it. Frontends pass `embed_model`,
 never an embedder.
 
+Queries and entries are embedded **asymmetrically**. `embed.QUERY_PREFIXES` gives a
+query the retrieval instruction its model was trained with; entries are always embedded
+bare, so adding a model to that table never makes a stored vector stale. Anything that
+embeds a search query - the semantic tier, `scripts-eval-retrieval.py` - goes through
+`embed.query_text`, or it measures a convention search does not use.
+
+The default stays `bge-small`, and that was decided on measurement (2026-09-16, the
+165-question instrument, paired through `find`). The prefix alone took hit@1 from 58.8%
+to 61.2%. `bge-base` reached 64.2% and `bge-large` 66.7% - the only one significantly
+ahead of the unprefixed baseline (17-4, p=0.007), but 9-5 against `bge-base` and 14-5
+against prefixed `bge-small`, neither significant - while a semantic-tier search went
+from 0.36s to 0.41s and 0.79s, and the download from 0.067GB to 0.21GB and 1.2GB. hit@5
+was flat across all of them: bigger models reorder the top of the list, they do not find
+more. `BAG_EMBED_MODEL` switches models per machine; the 0.55 floor needed no retune for
+either. Chunking long bodies and title-only vectors were tried and did not help, so the
+paraphrase gap is the model's, not the entry text's.
+
 ### Deduplication
 
 `bag dedupe report` names entries that say the same thing twice. Two
