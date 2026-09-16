@@ -267,6 +267,16 @@ def _run_body(
     claims: list[TranscriptPath],
     report: Report,
 ) -> None:
+    # Built ONCE per run, not once per file: a directory can hold hundreds
+    # of transcripts and the recorded projects are one query for all of
+    # them. This is the same (session id -> project) fact `discover` proves
+    # ownership with, asked without pinning the project - because the whole
+    # question below is whether the recorded project and the claiming one
+    # disagree.
+    recorded: dict[str, set[str]] = {}
+    for session_id, recorded_project in store.event_session_projects(owner_id):
+        recorded.setdefault(session_id, set()).add(recorded_project)
+
     budget = cap
     for claim in claims:
         directory = Path(claim.path)
@@ -282,7 +292,7 @@ def _run_body(
             if budget is not None and budget <= 0:
                 return
             report.files_seen += 1
-            did_work = _import_one(store, owner_id, project, path, report)
+            did_work = _import_one(store, owner_id, project, path, report, recorded)
             if did_work and budget is not None:
                 budget -= 1
 
@@ -293,6 +303,7 @@ def _import_one(
     project: str,
     path: Path,
     report: Report,
+    recorded: dict[str, set[str]],
 ) -> bool:
     """Import or update one transcript. True when it did any reading.
 
@@ -308,6 +319,8 @@ def _import_one(
     except OSError as exc:
         report.failures.append({"path": str(path), "reason": str(exc)})
         return False
+
+    _check_project_agreement(project, path, report, recorded)
 
     if existing is None:
         return _store_whole(store, owner_id, project, path, report, new=True)
@@ -346,6 +359,55 @@ def _import_one(
     return _append(store, owner_id, existing, path, report)
 
 
+#: Why an entry is in `Report.anomalies`. The list carries more than one
+#: shape now, so every entry says which it is rather than leaving a reader
+#: to infer it from which keys arrived.
+SHRANK = "shrank"
+PROJECT_CONFLICT = "project-conflict"
+
+
+def _check_project_agreement(
+    project: str,
+    path: Path,
+    report: Report,
+    recorded: dict[str, set[str]],
+) -> None:
+    """Report, but do not act on, a session recorded under another project.
+
+    The spec requires this: a directory can hold sessions from more than one
+    project if the working directory moved, and filing a trace under the
+    wrong project silently is exactly the guess it forbids. Without it the
+    move was invisible from both sides - `stored_transcripts`, `backlog` and
+    `status` are all project-scoped, so the losing project's counts simply
+    dropped.
+
+    The file is stored ANYWAY and the anomaly stands. The bytes are the
+    scarce thing here - a session Claude Code has since deleted cannot be
+    fetched again - and refusing to store them to protect a label would
+    trade the irreplaceable half for the repairable one. The label is made
+    stable instead: `put_transcript` no longer overwrites `project` on
+    conflict, so a transcript keeps the project it was first filed under and
+    a human decides.
+
+    A session with no recorded events says nothing at all - most claimed
+    directories hold sessions from before recording existed - so only a
+    recorded project that DISAGREES is an anomaly. Multiple recorded
+    projects for one session are reported as they are found rather than
+    resolved: picking one would be the guess.
+    """
+    known = recorded.get(path.stem)
+    if not known or project in known:
+        return
+    report.anomalies.append(
+        {
+            "reason": PROJECT_CONFLICT,
+            "path": str(path),
+            "claiming": project,
+            "recorded": sorted(known),
+        }
+    )
+
+
 def _plan_for(
     existing: Transcript, path: Path, disk_size: int, report: Report
 ) -> ReadPlan:
@@ -365,7 +427,12 @@ def _plan_for(
         # what is on disk, and the purpose of the source row is that a
         # rotating file does not destroy the session.
         report.anomalies.append(
-            {"path": str(path), "stored": existing.bytes, "on_disk": disk_size}
+            {
+                "reason": SHRANK,
+                "path": str(path),
+                "stored": existing.bytes,
+                "on_disk": disk_size,
+            }
         )
     return plan
 
@@ -599,9 +666,26 @@ def advisories(store: Store, owner_id: UUID) -> list[str]:
                 f"the last import ({run.trigger}) - run `bag transcripts status`"
             )
         elif run.anomalies:
+            # Counted by reason rather than lumped together: "shrank on
+            # disk" and "recorded under another project" are different
+            # things to go and look at, and one advisory naming only the
+            # first would send a reader to the wrong screen. A row written
+            # before anomalies carried a `reason` falls into `other` and is
+            # counted rather than dropped.
+            shrank = sum(1 for a in run.anomalies if a.get("reason") == SHRANK)
+            conflicts = sum(
+                1 for a in run.anomalies if a.get("reason") == PROJECT_CONFLICT
+            )
+            parts = []
+            if shrank:
+                parts.append(f"{shrank} transcript(s) shrank on disk")
+            if conflicts:
+                parts.append(f"{conflicts} recorded under another project")
+            other = len(run.anomalies) - shrank - conflicts
+            if other:
+                parts.append(f"{other} anomaly(ies)")
             lines.append(
-                f"transcripts '{project}': {len(run.anomalies)} transcript(s) "
-                f"shrank on disk and were not followed - "
+                f"transcripts '{project}': {', '.join(parts)} - "
                 f"run `bag transcripts status`"
             )
     return lines

@@ -2586,11 +2586,23 @@ def transcripts_import(
         f"{report.lines_written} lines, {report.bytes_written} bytes"
     )
     for a in report.anomalies:
-        typer.echo(
-            f"anomaly: {a['path']} shrank on disk (stored {a['stored']}, "
-            f"on disk {a['on_disk']}) - the stored copy is kept",
-            err=True,
-        )
+        # Two shapes now, told apart by `reason` rather than by which keys
+        # arrived - the service tags every entry it appends, so a third kind
+        # cannot quietly render as one of these two.
+        if a.get("reason") == transcripts_service.PROJECT_CONFLICT:
+            typer.echo(
+                f"anomaly: {a['path']} is claimed by '{a['claiming']}' but its "
+                f"events were recorded under "
+                f"{', '.join(repr(r) for r in a['recorded'])} - it was stored "
+                f"anyway, under the project it was first filed as",
+                err=True,
+            )
+        else:
+            typer.echo(
+                f"anomaly: {a['path']} shrank on disk (stored {a['stored']}, "
+                f"on disk {a['on_disk']}) - the stored copy is kept",
+                err=True,
+            )
     for f in report.failures:
         typer.echo(f"failed: {f['path']}: {f['reason']}", err=True)
     if report.failures:

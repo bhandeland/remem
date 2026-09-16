@@ -235,3 +235,49 @@ def test_event_session_ids_are_what_prove_a_directory_belongs_to_a_project(
     """
     record_event_for(store, owner, project="p", session_id="session-1")
     assert "session-1" in store.event_session_ids(owner.id, "p")
+
+
+def test_event_session_projects_names_the_project_each_session_was_recorded_under(
+    store: PostgresStore, owner: Principal
+) -> None:
+    """`event_session_ids` cannot answer the import's question.
+
+    That one takes the project as an argument, so it can only confirm what
+    the caller already believes. The import needs the opposite: which
+    project a session was recorded under, whatever the claiming project is.
+    """
+    record_event_for(store, owner, project="alpha", session_id="s1")
+    record_event_for(store, owner, project="beta", session_id="s2")
+
+    pairs = dict(store.event_session_projects(owner.id))
+
+    assert pairs["s1"] == "alpha"
+    assert pairs["s2"] == "beta"
+
+
+def test_a_second_put_under_a_different_project_does_not_re_home_a_transcript(
+    store: PostgresStore, owner: Principal
+) -> None:
+    """A transcript keeps the project it was first filed under.
+
+    `project = excluded.project` in the upsert used to move it silently:
+    every count on both sides is project-scoped, so one project's numbers
+    dropped and the other's rose with nothing recorded anywhere. The import
+    reports the disagreement as an anomaly instead - reported and stable,
+    rather than moved and invisible. The rest of the row still updates,
+    which is what makes this a deliberate exception and not an inert upsert.
+    """
+    body = b'{"type": "user"}\n'
+    first = store.put_transcript(
+        owner.id, "alpha", "claude-code", "s1", "/a/s1.jsonl", body, sha256_hex(body)
+    )
+
+    grown = body + b'{"type": "assistant"}\n'
+    second = store.put_transcript(
+        owner.id, "beta", "claude-code", "s1", "/b/s1.jsonl", grown, sha256_hex(grown)
+    )
+
+    assert second.id == first.id
+    assert second.project == "alpha"
+    assert second.path == "/b/s1.jsonl"
+    assert second.bytes == len(grown)

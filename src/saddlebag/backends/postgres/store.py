@@ -1085,7 +1085,18 @@ class PostgresStore:
                       bytes = excluded.bytes,
                       sha256 = excluded.sha256,
                       path = excluded.path,
-                      project = excluded.project,
+                      -- `project` is deliberately NOT updated. A transcript
+                      -- keeps the project it was first filed under. Two
+                      -- projects can legitimately claim directories holding
+                      -- the same session id if a working directory moved,
+                      -- and overwriting here re-homed the transcript
+                      -- silently: every count on both sides is
+                      -- project-scoped, so one project's numbers quietly
+                      -- dropped and the other's quietly rose with nothing
+                      -- recorded anywhere. The import reports the
+                      -- disagreement as a project-conflict anomaly instead
+                      -- and stores the bytes regardless - reported and
+                      -- stable, rather than moved and invisible.
                       last_read = clock_timestamp()
                 returning {transcript_columns("transcripts")}
                 """),
@@ -1374,6 +1385,20 @@ class PostgresStore:
                 (owner_id, project),
             )
             return [str(r["session_id"]) for r in cur.fetchall()]
+
+    def event_session_projects(self, owner_id: UUID) -> list[tuple[str, str]]:
+        """Distinct (session id, project) pairs recorded for an owner.
+
+        Read-only, and built once per import run rather than once per file:
+        a claimed directory holds hundreds of transcripts and this is one
+        query for all of them.
+        """
+        with self._cur() as cur:
+            cur.execute(
+                "select distinct session_id, project from events where owner_id = %s",
+                (owner_id,),
+            )
+            return [(str(r["session_id"]), str(r["project"])) for r in cur.fetchall()]
 
     # ---------------- recording ----------------
 

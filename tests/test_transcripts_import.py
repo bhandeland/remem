@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -10,7 +11,13 @@ import pytest
 
 from saddlebag.backends.postgres.migrate import migrate
 from saddlebag.backends.postgres.store import PostgresStore
-from saddlebag.domain import Principal, TranscriptTrigger
+from saddlebag.domain import (
+    Event,
+    EventKind,
+    Principal,
+    TranscriptTrigger,
+    new_id,
+)
 from saddlebag.services import transcripts
 from tests.conftest import found
 
@@ -319,6 +326,23 @@ def test_the_run_is_recorded_with_its_trigger(
     assert run.finished_at is not None
 
 
+def _record(store: PostgresStore, owner: Principal, project: str, session: str) -> None:
+    """One recorded event, which is all the project-agreement check reads."""
+    store.put_event(
+        Event(
+            id=new_id(),
+            owner_id=owner.id,
+            project=project,
+            harness="claude-code",
+            session_id=session,
+            kind=EventKind.TOOL_CALL,
+            tool="Bash",
+            payload={"command": "ls"},
+            occurred_at=datetime(2026, 9, 15, tzinfo=UTC),
+        )
+    )
+
+
 def test_a_transcript_whose_derived_lines_vanished_is_rebuilt(
     store: PostgresStore,
     owner: Principal,
@@ -354,3 +378,49 @@ def test_a_transcript_whose_derived_lines_vanished_is_rebuilt(
 
     assert report.files_rebuilt == 1
     assert store.transcript_line_count(stored.id) == 2
+
+
+def test_a_session_recorded_under_another_project_is_an_anomaly_and_is_still_stored(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
+    """The spec's project-agreement check, and what it deliberately does not do.
+
+    A directory can hold sessions from more than one project if a working
+    directory moved. The disagreement is reported, and the bytes are stored
+    anyway: they are the scarce thing - a session Claude Code has since
+    deleted cannot be fetched again - and refusing to store them to protect
+    a label would trade the irreplaceable half for the repairable one.
+    """
+    _record(store, owner, "B", "s1")
+    _write(tmp_path, "s1", [{"type": "user"}])
+    transcripts.designate(store, owner.id, "A", tmp_path)
+
+    report = transcripts.run(store, owner.id, "A", trigger=TranscriptTrigger.MANUAL)
+
+    assert len(report.anomalies) == 1
+    anomaly = report.anomalies[0]
+    assert anomaly["reason"] == transcripts.PROJECT_CONFLICT
+    assert anomaly["claiming"] == "A"
+    assert anomaly["recorded"] == ["B"]
+    assert report.files_new == 1
+    assert found(store.get_transcript(owner.id, transcripts.HARNESS, "s1")).bytes > 0
+
+
+def test_a_session_recorded_under_the_claiming_project_is_not_an_anomaly(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
+    """The common case, and the one that would make the check useless noise.
+
+    Most files in a claimed directory have no recorded events at all -
+    sessions predating the pipeline - and the rest agree. Only a recorded
+    project that DISAGREES is worth a line.
+    """
+    _record(store, owner, "A", "s1")
+    _write(tmp_path, "s1", [{"type": "user"}])
+    _write(tmp_path, "never-recorded", [{"type": "user"}])
+    transcripts.designate(store, owner.id, "A", tmp_path)
+
+    report = transcripts.run(store, owner.id, "A", trigger=TranscriptTrigger.MANUAL)
+
+    assert report.anomalies == []
+    assert report.files_new == 2

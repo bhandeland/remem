@@ -200,6 +200,14 @@ class Store(Protocol):
     #: disk to prove which directory belongs to which project - a
     #: transcript filename IS a session id.
     def event_session_ids(self, owner_id: UUID, project: str) -> list[str]: ...
+    #: Every distinct (session id, project) pair recorded for an owner.
+    #: `event_session_ids` asks the same question with the project already
+    #: pinned, which cannot answer the import's: whether the project that
+    #: CLAIMED a directory and the project the session was recorded under
+    #: disagree. Pairs rather than a mapping because one session id can
+    #: carry more than one project, and collapsing that here would be the
+    #: guess the check exists to refuse.
+    def event_session_projects(self, owner_id: UUID) -> list[tuple[str, str]]: ...
 
     # recording
     def set_record_enabled(
