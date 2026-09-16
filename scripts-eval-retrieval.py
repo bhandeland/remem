@@ -178,6 +178,32 @@ class Question:
         }
 
 
+#: Prefix of the tag that names the file an ingested chunk came from.
+#: `ingest` mints `src:<path>` and `sec:<slug>` per chunk; the first is
+#: document identity and the second is section identity.
+SRC_PREFIX = "src:"
+
+
+def _doc_key(entry: Entry) -> str:
+    """What document an entry belongs to, for document-level scoring.
+
+    The `src:` tag when there is one, and otherwise the entry's own id. A
+    hand-written note is a document of one section, so this makes
+    document-level scoring equal section-level scoring for every origin
+    that is not chunked - the new number can never flatter them, and the
+    two columns are directly comparable across origins.
+
+    Keyed on the tag rather than on the title's `Doc § Section` prefix
+    because the tag is what `ingest` actually treats as identity: a title
+    containing a literal `§`, or a document retitled between ingests,
+    would both break a string split while the tag stays correct.
+    """
+    for tag in entry.tags:
+        if tag.startswith(SRC_PREFIX):
+            return tag
+    return str(entry.id)
+
+
 @dataclass
 class Scored:
     """One question run against one variant."""
@@ -191,6 +217,16 @@ class Scored:
     #: non-null everywhere and stops a reader inferring a cascade result
     #: from a forced one.
     tier: str | None
+    #: 1-indexed position of the first hit from the gold's DOCUMENT, or
+    #: None. Last because it is the only field here with a default, and a
+    #: defaulted field cannot precede an undefaulted one. Measured because
+    #: a section-level number alone reads as an ingest defect when it is a
+    #: granularity artifact: on 2026-09-15 ingested chunks scored 43.6%
+    #: against the exact section and 69.1% against the right document, the
+    #: latter being exactly what hand-written entries score. 28 of 31
+    #: misses lost to another ingested chunk, 14 of those to a sibling
+    #: section of the same file.
+    doc_rank: int | None = None
 
 
 @dataclass
@@ -199,11 +235,23 @@ class VariantReport:
     n: int = 0
     hit1: int = 0
     hit5: int = 0
+    #: Document-level hit@1, tracked beside the section-level one rather
+    #: than instead of it. Neither subsumes the other: the section number
+    #: is what a reader wants when they asked for one specific passage,
+    #: and the document number is what says whether search found the
+    #: right source of knowledge at all.
+    doc_hit1: int = 0
     reciprocal: float = 0.0
     tiers: Counter[str] = field(default_factory=Counter)
     by_origin: dict[str, list[int]] = field(default_factory=lambda: defaultdict(list))
     by_kind: dict[str, list[int]] = field(default_factory=lambda: defaultdict(list))
     by_style: dict[str, list[int]] = field(default_factory=lambda: defaultdict(list))
+    #: Document-level hit@1 split by origin - the one place the two
+    #: granularities can be compared per origin, which is what shows that
+    #: ingested content is only weak at the section grain.
+    doc_by_origin: dict[str, list[int]] = field(
+        default_factory=lambda: defaultdict(list)
+    )
     #: Tier attribution split by style - the single most informative output
     #: here. "Keyword queries are answered by exact, paraphrases by semantic"
     #: is the claim the cascade's ordering rests on, and this is the table
@@ -226,6 +274,9 @@ class VariantReport:
         self.by_origin[s.question.origin].append(hit)
         self.by_kind[s.question.kind].append(hit)
         self.by_style[s.question.style].append(hit)
+        doc_hit = 1 if s.doc_rank == 1 else 0
+        self.doc_hit1 += doc_hit
+        self.doc_by_origin[s.question.origin].append(doc_hit)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -235,10 +286,14 @@ class VariantReport:
             "hit@5": self.hit5,
             "hit@1_rate": _rate(self.hit1, self.n),
             "hit@5_rate": _rate(self.hit5, self.n),
+            "doc_hit@1_rate": _rate(self.doc_hit1, self.n),
             "mrr@%d" % K: round(self.reciprocal / self.n, 4) if self.n else 0.0,
             "answered_by_tier": dict(self.tiers),
             "hit@1_by_origin": {
                 o: _rate(sum(v), len(v)) for o, v in sorted(self.by_origin.items())
+            },
+            "doc_hit@1_by_origin": {
+                o: _rate(sum(v), len(v)) for o, v in sorted(self.doc_by_origin.items())
             },
             "hit@1_by_kind": {
                 k: _rate(sum(v), len(v)) for k, v in sorted(self.by_kind.items())
@@ -535,21 +590,41 @@ def _rrf(*rankings: list[str], k: int = 60) -> list[str]:
 
 
 def _run_variant(
-    variant: str, q: Question, store: Any, owner_id: UUID, cfg: Any, embedder: Any
+    variant: str,
+    q: Question,
+    store: Any,
+    owner_id: UUID,
+    cfg: Any,
+    embedder: Any,
+    gold_docs: dict[str, str] | None = None,
 ) -> Scored:
     base = Query(text=q.question, origins=POOL_ORIGINS, limit=K)
+    #: entry id -> document key, filled in from whatever hits each tier
+    #: returned. Collected as they go by rather than re-fetched, because
+    #: every tier already holds the full Entry; only the GOLD needs a
+    #: lookup, and `cmd_run` prefetches those once for the whole run.
+    docs: dict[str, str] = {}
+
+    def _ids(hits: list[Any]) -> list[str]:
+        out = []
+        for h in hits:
+            eid = str(h.entry.id)
+            docs[eid] = _doc_key(h.entry)
+            out.append(eid)
+        return out
 
     def exact_ids() -> list[str]:
-        return [str(h.entry.id) for h in store.search(base, owner_id)]
+        return _ids(store.search(base, owner_id))
 
     def semantic_ids() -> list[str]:
         if embedder is None:
             return []
         vec = embedder.embed([q.question])[0]
-        hits = store.semantic_search(
-            base, owner_id, vec, cfg.embed_model, cfg.semantic_threshold
+        return _ids(
+            store.semantic_search(
+                base, owner_id, vec, cfg.embed_model, cfg.semantic_threshold
+            )
         )
-        return [str(h.entry.id) for h in hits]
 
     if variant == "cascade":
         hits = search_service.find(
@@ -561,7 +636,7 @@ def _run_variant(
             semantic_threshold=cfg.semantic_threshold,
             embed_model=cfg.embed_model,
         )
-        ids = [str(h.entry.id) for h in hits]
+        ids = _ids(hits)
         tier = str(hits[0].match) if hits else "none"
     elif variant == "exact":
         ids, tier = exact_ids(), "exact"
@@ -572,7 +647,24 @@ def _run_variant(
     else:
         raise ValueError(variant)
 
-    return Scored(question=q, variant=variant, rank=_rank_of(q.gold_id, ids), tier=tier)
+    # `_rank_of` is plain equality over an iterable, so it scores the
+    # document grain unchanged - one ranking function, not two that could
+    # drift. A gold whose document is unknown (an id that no longer
+    # resolves) scores None, the same silence a missing entry already
+    # produces at section level.
+    gold_doc = (gold_docs or {}).get(q.gold_id)
+    doc_rank = (
+        _rank_of(gold_doc, [docs.get(i, "") for i in ids])
+        if gold_doc is not None
+        else None
+    )
+    return Scored(
+        question=q,
+        variant=variant,
+        rank=_rank_of(q.gold_id, ids),
+        tier=tier,
+        doc_rank=doc_rank,
+    )
 
 
 VARIANTS = ["cascade", "exact", "semantic", "blended"]
@@ -604,11 +696,27 @@ def cmd_run(args: argparse.Namespace) -> int:
                 "WARNING: no embedder - semantic and blended variants will "
                 "score zero, and the cascade will be measuring two tiers."
             )
+        # Gold document identity, resolved once per DISTINCT gold entry.
+        # Doing it inside `_run_variant` would cost one lookup per
+        # (question, variant) - 660 for 165 answers across four variants -
+        # and every variant would be asking the same question of the same
+        # rows. A gold id that no longer resolves is simply left out, and
+        # its question scores no document rank rather than a wrong one.
+        gold_docs: dict[str, str] = {}
+        for q in questions:
+            if q.gold_id in gold_docs:
+                continue
+            entry = s.store.get_entry(UUID(q.gold_id), s.owner.id)
+            if entry is not None:
+                gold_docs[q.gold_id] = _doc_key(entry)
+
         for n, q in enumerate(questions, 1):
             if n % 25 == 0:
                 print(f"  {n}/{len(questions)}...", flush=True)
             for v in variants:
-                reports[v].add(_run_variant(v, q, s.store, s.owner.id, cfg, embedder))
+                reports[v].add(
+                    _run_variant(v, q, s.store, s.owner.id, cfg, embedder, gold_docs)
+                )
 
     _report(reports, kinds)
     if args.json:
@@ -629,13 +737,16 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 
 def _report(reports: dict[str, VariantReport], kinds: Counter[str]) -> None:
-    print(f"\n{'variant':<10} {'n':>4} {'hit@1':>8} {'hit@5':>8} {'MRR':>7}")
-    print("-" * 42)
+    print(
+        f"\n{'variant':<10} {'n':>4} {'hit@1':>8} {'hit@5':>8} {'MRR':>7} {'doc@1':>8}"
+    )
+    print("-" * 51)
     for r in reports.values():
         print(
             f"{r.variant:<10} {r.n:>4} "
             f"{_rate(r.hit1, r.n):>8.1%} {_rate(r.hit5, r.n):>8.1%} "
-            f"{(r.reciprocal / r.n if r.n else 0):>7.3f}"
+            f"{(r.reciprocal / r.n if r.n else 0):>7.3f} "
+            f"{_rate(r.doc_hit1, r.n):>8.1%}"
         )
 
     cascade = reports.get("cascade")
@@ -663,10 +774,20 @@ def _report(reports: dict[str, VariantReport], kinds: Counter[str]) -> None:
             print(f"  {style:<11} {_rate(sum(vals), len(vals)):>6.1%}  (n={len(vals)})")
 
     if cascade:
-        print("\nhit@1 by origin (cascade):")
+        # Both grains, per origin, side by side. A chunked origin's section
+        # number in isolation reads as a retrieval defect when it is a
+        # granularity artifact; the document column says whether search
+        # found the right source at all. For an unchunked origin the two
+        # columns are equal by construction - see `_doc_key` - which is
+        # what makes them comparable across origins rather than flattering
+        # the ones that were never split.
+        print("\nhit@1 by origin (cascade), section and document:")
         for origin, vals in sorted(cascade.by_origin.items()):
+            dv = cascade.doc_by_origin.get(origin, [])
+            doc = _rate(sum(dv), len(dv)) if dv else 0.0
             print(
-                f"  {origin:<10} {_rate(sum(vals), len(vals)):>6.1%}  (n={len(vals)})"
+                f"  {origin:<10} section {_rate(sum(vals), len(vals)):>6.1%}   "
+                f"document {doc:>6.1%}  (n={len(vals)})"
             )
 
     # The comparison the control set exists for.
