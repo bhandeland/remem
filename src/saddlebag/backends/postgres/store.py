@@ -1218,24 +1218,37 @@ class PostgresStore:
         refusal, rather than a bare bool: told only "taken", a user has no
         way to find out by what, and the real failure would surface much
         later as a session filed under the wrong project.
+
+        This is an upsert, not a check-then-insert: a SELECT followed by a
+        separate INSERT leaves a race window where two concurrent claims of
+        the same path both see no row and both attempt to insert, so the
+        second crashes on `transcript_paths_one_owner_idx` instead of
+        returning the conflicting project name that is this method's entire
+        contract. The upsert collapses both statements into one round trip
+        with no window between them.
+
+        `do update set project = transcript_paths.project` is a deliberate
+        no-op write - it changes nothing - whose only purpose is to make
+        `returning` hand back the *existing* row's project on a conflict.
+        `do nothing` returns no row at all on conflict, which would force
+        exactly the second round trip (a follow-up SELECT) this upsert
+        exists to eliminate.
         """
         with self._cur() as cur:
             cur.execute(
-                "select project from transcript_paths"
-                " where owner_id = %s and path = %s",
-                (owner_id, path),
-            )
-            row = cur.fetchone()
-            if row is not None:
-                # This module's cursor uses `dict_row`, so rows are read by
-                # column name, never by position.
-                return None if row["project"] == project else str(row["project"])
-            cur.execute(
-                "insert into transcript_paths (owner_id, project, path)"
-                " values (%s, %s, %s)",
+                """
+                insert into transcript_paths (owner_id, project, path)
+                values (%s, %s, %s)
+                on conflict (owner_id, path)
+                  do update set project = transcript_paths.project
+                returning project
+                """,
                 (owner_id, project, path),
             )
-            return None
+            # This module's cursor uses `dict_row`, so rows are read by
+            # column name, never by position.
+            holder = str(_one(cur)["project"])
+            return None if holder == project else holder
 
     def remove_transcript_path(self, owner_id: UUID, project: str, path: str) -> bool:
         with self._cur() as cur:
