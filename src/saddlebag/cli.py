@@ -2433,6 +2433,12 @@ def dedupe_resolve(
     typer.echo(f"  superseded by {kept.id} ({kept.title})")
 
 
+def _count(n: int, noun: str) -> str:
+    """ "1 subagent file", "2 subagent files". Every noun it is given takes
+    a plain -s, which is why this is not a general pluraliser."""
+    return f"{n} {noun}" if n == 1 else f"{n} {noun}s"
+
+
 @transcripts_app.command("discover")
 def transcripts_discover(
     project: Annotated[Optional[str], typer.Option("--project")] = None,
@@ -2459,8 +2465,11 @@ def transcripts_discover(
         return
     for c in found:
         claimed = f" - claimed by {c.claimed_by}" if c.claimed_by else ""
-        extra = f", plus {c.subagents} subagent files" if c.subagents else ""
-        typer.echo(f"{c.path}  {c.matched} of {c.total} sessions match{extra}{claimed}")
+        extra = f", plus {_count(c.subagents, 'subagent file')}" if c.subagents else ""
+        typer.echo(
+            f"{c.path}  {c.matched} of {_count(c.total, 'session')} match"
+            f"{extra}{claimed}"
+        )
 
 
 @transcripts_app.command("designate")
@@ -2497,8 +2506,8 @@ def transcripts_designate(
     files = transcripts_service.transcript_files(Path(absolute))
     subagents = sum(1 for f in files if f.agent_id is not None)
     typer.echo(
-        f"{resolved} claims {absolute} ({len(files) - subagents} sessions, "
-        f"{subagents} subagent files). Nothing has been imported yet - run "
+        f"{resolved} claims {absolute} ({_count(len(files) - subagents, 'session')}, "
+        f"{_count(subagents, 'subagent file')}). Nothing has been imported yet - run "
         f"`bag transcripts import` to read them."
     )
 
@@ -2603,14 +2612,15 @@ def transcripts_status(
         typer.echo("  no directory claimed")
     for p in got.paths:
         state = (
-            f"{p.on_disk} sessions, {p.subagents} subagent files"
+            f"{_count(p.on_disk, 'session')}, {_count(p.subagents, 'subagent file')}"
             if p.present
             else "missing"
         )
         typer.echo(f"  {p.path}: {state}")
     typer.echo(
-        f"  backlog: {got.backlog} sessions, {got.subagent_backlog} subagent files, "
-        f"{got.meta_backlog} sidecars"
+        f"  backlog: {_count(got.backlog, 'session')}, "
+        f"{_count(got.subagent_backlog, 'subagent file')}, "
+        f"{_count(got.meta_backlog, 'sidecar')}"
     )
     typer.echo(f"  irrecoverable: {got.irrecoverable}")
 
@@ -2639,7 +2649,7 @@ def transcripts_import(
         f"{report.files_seen} seen, {report.files_new} new, "
         f"{report.files_appended} appended, {report.files_rebuilt} rebuilt, "
         f"{report.lines_written} lines, {report.bytes_written} bytes, "
-        f"{report.metas_written} sidecars"
+        f"{_count(report.metas_written, 'sidecar')}"
     )
     for a in report.anomalies:
         # Two shapes now, told apart by `reason` rather than by which keys

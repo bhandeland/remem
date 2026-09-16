@@ -116,7 +116,7 @@ def test_discover_prints_its_evidence_and_writes_nothing(
     result = runner.invoke(app, ["transcripts", "discover"])
     assert result.exit_code == 0
     assert "2 of 3" in result.stdout
-    assert "plus 1 subagent files" in result.stdout
+    assert "plus 1 subagent file\n" in result.stdout
 
 
 def test_discover_looks_under_claude_config_dir_when_it_is_set(
@@ -159,7 +159,7 @@ def test_designate_echoes_the_backfill_command_and_its_cost(
     result = runner.invoke(app, ["transcripts", "designate", str(directory)])
     assert result.exit_code == 0
     assert "bag transcripts import" in result.stdout
-    assert "3 sessions, 1 subagent files" in result.stdout
+    assert "3 sessions, 1 subagent file)" in result.stdout
 
 
 def test_undesignate_releases_a_claim_and_keeps_what_was_imported(
@@ -330,8 +330,8 @@ def test_status_prints_subagent_figures_beside_session_ones(
     )
     result = runner.invoke(app, ["transcripts", "status"])
     assert result.exit_code == 0
-    assert "3 sessions, 1 subagent files" in result.stdout
-    assert "backlog: 3 sessions, 1 subagent files" in result.stdout
+    assert "3 sessions, 1 subagent file\n" in result.stdout
+    assert "backlog: 3 sessions, 1 subagent file," in result.stdout
 
 
 def test_import_and_status_print_the_sidecar_figures(
@@ -346,11 +346,11 @@ def test_import_and_status_print_the_sidecar_figures(
     )
     before = runner.invoke(app, ["transcripts", "status"])
     # Not stored yet: the subagent is backlog, so its sidecar is not counted.
-    assert "backlog: 3 sessions, 1 subagent files, 0 sidecars" in before.stdout
+    assert "backlog: 3 sessions, 1 subagent file, 0 sidecars" in before.stdout
 
     result = runner.invoke(app, ["transcripts", "import"])
     assert result.exit_code == 0
-    assert "1 sidecars" in result.stdout
+    assert "1 sidecar\n" in result.stdout
 
 
 def test_a_real_statement_failure_costs_only_its_own_file(
