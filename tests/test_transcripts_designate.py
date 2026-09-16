@@ -26,7 +26,9 @@ def owner(store: PostgresStore) -> Principal:
     return store.ensure_principal("brandon")
 
 
-def test_designate_stores_an_absolute_path(store, owner, tmp_path: Path) -> None:
+def test_designate_stores_an_absolute_path(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     """Absolute, deliberately unlike reingest designate's repo-relative paths.
 
     These directories live outside any repository; there is no git root to
@@ -38,14 +40,16 @@ def test_designate_stores_an_absolute_path(store, owner, tmp_path: Path) -> None
 
 
 def test_designate_refuses_a_directory_that_does_not_exist(
-    store, owner, tmp_path: Path
+    store: PostgresStore, owner: Principal, tmp_path: Path
 ) -> None:
     """Loudly, because this is the one moment there is a human to tell."""
     with pytest.raises(transcripts.PathRefused, match="does not exist"):
         transcripts.designate(store, owner.id, "p", tmp_path / "nope")
 
 
-def test_designate_refuses_a_file(store, owner, tmp_path: Path) -> None:
+def test_designate_refuses_a_file(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     target = tmp_path / "a.jsonl"
     target.write_text("{}")
     with pytest.raises(transcripts.PathRefused, match="not a directory"):
@@ -53,7 +57,7 @@ def test_designate_refuses_a_file(store, owner, tmp_path: Path) -> None:
 
 
 def test_designate_names_the_project_already_holding_the_directory(
-    store, owner, tmp_path: Path
+    store: PostgresStore, owner: Principal, tmp_path: Path
 ) -> None:
     transcripts.designate(store, owner.id, "alpha", tmp_path)
     with pytest.raises(transcripts.PathRefused, match="alpha"):
@@ -61,21 +65,23 @@ def test_designate_names_the_project_already_holding_the_directory(
 
 
 def test_designating_the_same_directory_twice_is_not_an_error(
-    store, owner, tmp_path: Path
+    store: PostgresStore, owner: Principal, tmp_path: Path
 ) -> None:
     transcripts.designate(store, owner.id, "p", tmp_path)
     transcripts.designate(store, owner.id, "p", tmp_path)
     assert len(store.transcript_paths(owner.id, "p")) == 1
 
 
-def test_undesignate_drops_the_claim(store, owner, tmp_path: Path) -> None:
+def test_undesignate_drops_the_claim(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     transcripts.designate(store, owner.id, "p", tmp_path)
     assert transcripts.undesignate(store, owner.id, "p", tmp_path) is True
     assert store.transcript_paths(owner.id, "p") == []
 
 
 def test_undesignate_leaves_imported_transcripts_alone(
-    store, owner, tmp_path: Path
+    store: PostgresStore, owner: Principal, tmp_path: Path
 ) -> None:
     """Dropping a claim stops future reading - it does not destroy sessions.
 

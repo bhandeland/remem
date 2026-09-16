@@ -12,6 +12,7 @@ from saddlebag.backends.postgres.migrate import migrate
 from saddlebag.backends.postgres.store import PostgresStore
 from saddlebag.domain import Event, EventKind, Principal, TranscriptTrigger, new_id
 from saddlebag.transcript_file import parse, sha256_hex
+from tests.conftest import found
 
 pytestmark = pytest.mark.db
 
@@ -57,7 +58,9 @@ def record_event_for(
     )
 
 
-def test_put_transcript_round_trips_content_byte_for_byte(store, owner) -> None:
+def test_put_transcript_round_trips_content_byte_for_byte(
+    store: PostgresStore, owner: Principal
+) -> None:
     """The property the whole design rests on.
 
     Not an approximation of it: if the bytes come back different, the source
@@ -76,7 +79,9 @@ def test_put_transcript_round_trips_content_byte_for_byte(store, owner) -> None:
     assert store.transcript_content(got.id, owner.id) == content
 
 
-def test_put_transcript_is_idempotent_on_the_same_session(store, owner) -> None:
+def test_put_transcript_is_idempotent_on_the_same_session(
+    store: PostgresStore, owner: Principal
+) -> None:
     """Re-importing a session updates it rather than creating a twin."""
     first = store.put_transcript(
         owner.id, "p", "claude-code", "s1", "/tmp/s1.jsonl", b"{}", "aaa"
@@ -89,7 +94,9 @@ def test_put_transcript_is_idempotent_on_the_same_session(store, owner) -> None:
     assert second.sha256 == "bbb"
 
 
-def test_append_transcript_adds_bytes_without_rewriting(store, owner) -> None:
+def test_append_transcript_adds_bytes_without_rewriting(
+    store: PostgresStore, owner: Principal
+) -> None:
     head = b'{"type": "user"}\n'
     tail = b'{"type": "assistant"}\n'
     t = store.put_transcript(
@@ -107,7 +114,9 @@ def test_append_transcript_adds_bytes_without_rewriting(store, owner) -> None:
     assert store.transcript_content(t.id, owner.id) == head + tail
 
 
-def test_append_transcript_refuses_another_owner(store, owner, other) -> None:
+def test_append_transcript_refuses_another_owner(
+    store: PostgresStore, owner: Principal, other: Principal
+) -> None:
     """Ownership is enforced inside the store, never by callers."""
     t = store.put_transcript(
         owner.id, "p", "claude-code", "s1", "/tmp/s1.jsonl", b"{}", "aaa"
@@ -115,7 +124,9 @@ def test_append_transcript_refuses_another_owner(store, owner, other) -> None:
     assert store.append_transcript(t.id, other.id, b"{}", "bbb") is False
 
 
-def test_replace_transcript_lines_rebuilds_from_scratch(store, owner) -> None:
+def test_replace_transcript_lines_rebuilds_from_scratch(
+    store: PostgresStore, owner: Principal
+) -> None:
     t = store.put_transcript(
         owner.id, "p", "claude-code", "s1", "/tmp/s1.jsonl", b"{}", "aaa"
     )
@@ -128,7 +139,9 @@ def test_replace_transcript_lines_rebuilds_from_scratch(store, owner) -> None:
     assert store.transcript_line_count(t.id) == 1
 
 
-def test_add_transcript_lines_continues_the_sequence(store, owner) -> None:
+def test_add_transcript_lines_continues_the_sequence(
+    store: PostgresStore, owner: Principal
+) -> None:
     t = store.put_transcript(
         owner.id, "p", "claude-code", "s1", "/tmp/s1.jsonl", b"{}", "aaa"
     )
@@ -139,7 +152,9 @@ def test_add_transcript_lines_continues_the_sequence(store, owner) -> None:
     assert store.transcript_line_count(t.id) == 2
 
 
-def test_stored_transcripts_lists_without_content(store, owner) -> None:
+def test_stored_transcripts_lists_without_content(
+    store: PostgresStore, owner: Principal
+) -> None:
     store.put_transcript(
         owner.id, "p", "claude-code", "s1", "/tmp/s1.jsonl", b"{}" * 100, "aaa"
     )
@@ -148,7 +163,9 @@ def test_stored_transcripts_lists_without_content(store, owner) -> None:
     assert not hasattr(got[0], "content")
 
 
-def test_add_transcript_path_names_the_project_already_holding_it(store, owner) -> None:
+def test_add_transcript_path_names_the_project_already_holding_it(
+    store: PostgresStore, owner: Principal
+) -> None:
     """A directory belongs to at most one project, and the refusal says whose.
 
     Without the name, a user is told "taken" and has no way to find out by
@@ -159,27 +176,35 @@ def test_add_transcript_path_names_the_project_already_holding_it(store, owner) 
     assert store.add_transcript_path(owner.id, "beta", "/tmp/dir") == "alpha"
 
 
-def test_add_transcript_path_is_idempotent_for_the_same_project(store, owner) -> None:
+def test_add_transcript_path_is_idempotent_for_the_same_project(
+    store: PostgresStore, owner: Principal
+) -> None:
     assert store.add_transcript_path(owner.id, "alpha", "/tmp/dir") is None
     assert store.add_transcript_path(owner.id, "alpha", "/tmp/dir") is None
     assert len(store.transcript_paths(owner.id, "alpha")) == 1
 
 
-def test_transcript_paths_with_no_project_sweeps_every_claim(store, owner) -> None:
+def test_transcript_paths_with_no_project_sweeps_every_claim(
+    store: PostgresStore, owner: Principal
+) -> None:
     store.add_transcript_path(owner.id, "alpha", "/tmp/a")
     store.add_transcript_path(owner.id, "beta", "/tmp/b")
     assert len(store.transcript_paths(owner.id)) == 2
 
 
-def test_a_started_run_has_no_finished_at(store, owner) -> None:
+def test_a_started_run_has_no_finished_at(
+    store: PostgresStore, owner: Principal
+) -> None:
     """The started row is what makes 'crashed' distinguishable from 'never
     ran', and it only works if it commits before any file is read."""
     run = store.start_transcript_run(owner.id, "p", TranscriptTrigger.AUTO)
     assert run.finished_at is None
-    assert store.latest_transcript_run(owner.id, "p").finished_at is None
+    assert found(store.latest_transcript_run(owner.id, "p")).finished_at is None
 
 
-def test_finishing_a_run_records_its_counts(store, owner) -> None:
+def test_finishing_a_run_records_its_counts(
+    store: PostgresStore, owner: Principal
+) -> None:
     run = store.start_transcript_run(owner.id, "p", TranscriptTrigger.MANUAL)
     done = store.finish_transcript_run(
         run.id,
@@ -200,7 +225,7 @@ def test_finishing_a_run_records_its_counts(store, owner) -> None:
 
 
 def test_event_session_ids_are_what_prove_a_directory_belongs_to_a_project(
-    store, owner
+    store: PostgresStore, owner: Principal
 ) -> None:
     """Discovery intersects these with filenames on disk.
 

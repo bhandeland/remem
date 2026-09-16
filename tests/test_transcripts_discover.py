@@ -36,7 +36,9 @@ def _transcript(directory: Path, session_id: str) -> None:
     )
 
 
-def record_event_for(store, owner: Principal, *, project: str, session_id: str) -> None:
+def record_event_for(
+    store: PostgresStore, owner: Principal, *, project: str, session_id: str
+) -> None:
     """One recorded event for a session, which is all discovery needs.
 
     Discovery proves a directory belongs to a project by intersecting
@@ -60,7 +62,7 @@ def record_event_for(store, owner: Principal, *, project: str, session_id: str) 
 
 
 def test_discover_proves_ownership_by_session_id_not_by_directory_name(
-    store, owner, tmp_path: Path
+    store: PostgresStore, owner: Principal, tmp_path: Path
 ) -> None:
     """The answer to the rename problem.
 
@@ -83,7 +85,9 @@ def test_discover_proves_ownership_by_session_id_not_by_directory_name(
     assert found[0].total == 3
 
 
-def test_discover_writes_nothing(store, owner, tmp_path: Path) -> None:
+def test_discover_writes_nothing(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     """Widening scope is always a human act. This command only proposes."""
     old = tmp_path / "-dir"
     _transcript(old, "sess-1")
@@ -93,7 +97,7 @@ def test_discover_writes_nothing(store, owner, tmp_path: Path) -> None:
 
 
 def test_discover_marks_a_directory_already_claimed(
-    store, owner, tmp_path: Path
+    store: PostgresStore, owner: Principal, tmp_path: Path
 ) -> None:
     old = tmp_path / "-dir"
     _transcript(old, "sess-1")
@@ -104,7 +108,7 @@ def test_discover_marks_a_directory_already_claimed(
 
 
 def test_discover_cannot_see_a_directory_with_no_recorded_sessions(
-    store, owner, tmp_path: Path
+    store: PostgresStore, owner: Principal, tmp_path: Path
 ) -> None:
     """The stated floor, not an oversight.
 

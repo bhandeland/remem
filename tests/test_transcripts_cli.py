@@ -59,7 +59,11 @@ def cli_env(live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> N
     monkeypatch.setenv("BAG_DSN", live_dsn)
     monkeypatch.setenv("BAG_USER_ID", "brandon")
     monkeypatch.setenv("BAG_CONFIG", str(tmp_path / "none.toml"))
-    monkeypatch.setattr(pathlib.Path, "home", classmethod(lambda cls: tmp_path))
+
+    def _home(cls: type[pathlib.Path]) -> pathlib.Path:
+        return tmp_path
+
+    monkeypatch.setattr(pathlib.Path, "home", classmethod(_home))
 
     with psycopg.connect(live_dsn) as c:
         migrate(c)

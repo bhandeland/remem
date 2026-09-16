@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,7 @@ from saddlebag.backends.postgres.migrate import migrate
 from saddlebag.backends.postgres.store import PostgresStore
 from saddlebag.domain import Principal, TranscriptTrigger
 from saddlebag.services import transcripts
+from tests.conftest import found
 
 pytestmark = pytest.mark.db
 
@@ -26,14 +28,16 @@ def owner(store: PostgresStore) -> Principal:
     return store.ensure_principal("brandon")
 
 
-def _write(directory: Path, session_id: str, lines: list[dict]) -> Path:
+def _write(directory: Path, session_id: str, lines: list[dict[str, Any]]) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
     target = directory / f"{session_id}.jsonl"
     target.write_bytes(b"".join(json.dumps(line).encode() + b"\n" for line in lines))
     return target
 
 
-def test_import_stores_content_and_lines(store, owner, tmp_path: Path) -> None:
+def test_import_stores_content_and_lines(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     _write(tmp_path, "s1", [{"type": "user"}, {"type": "assistant"}])
     transcripts.designate(store, owner.id, "p", tmp_path)
 
@@ -41,12 +45,15 @@ def test_import_stores_content_and_lines(store, owner, tmp_path: Path) -> None:
 
     assert report.files_new == 1
     assert report.lines_written == 2
-    stored = store.get_transcript(owner.id, transcripts.HARNESS, "s1")
+    stored = found(store.get_transcript(owner.id, transcripts.HARNESS, "s1"))
     assert store.transcript_line_count(stored.id) == 2
 
 
 def test_a_second_run_over_an_unchanged_file_reads_nothing(
-    store, owner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    store: PostgresStore,
+    owner: Principal,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The common case at every session start: one stat, no read.
 
@@ -74,7 +81,9 @@ def test_a_second_run_over_an_unchanged_file_reads_nothing(
     assert report.lines_written == 0
 
 
-def test_an_appended_file_adds_only_the_new_lines(store, owner, tmp_path: Path) -> None:
+def test_an_appended_file_adds_only_the_new_lines(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     target = _write(tmp_path, "s1", [{"type": "user"}])
     transcripts.designate(store, owner.id, "p", tmp_path)
     transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
@@ -86,12 +95,12 @@ def test_an_appended_file_adds_only_the_new_lines(store, owner, tmp_path: Path) 
 
     assert report.files_appended == 1
     assert report.lines_written == 1
-    stored = store.get_transcript(owner.id, transcripts.HARNESS, "s1")
+    stored = found(store.get_transcript(owner.id, transcripts.HARNESS, "s1"))
     assert store.transcript_line_count(stored.id) == 2
 
 
 def test_append_keeps_seq_aligned_with_the_file_across_a_bad_line(
-    store, owner, tmp_path: Path
+    store: PostgresStore, owner: Principal, tmp_path: Path
 ) -> None:
     """seq is the line's number in the FILE, not the count of rows stored.
 
@@ -110,7 +119,7 @@ def test_append_keeps_seq_aligned_with_the_file_across_a_bad_line(
 
     transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
 
-    stored = store.get_transcript(owner.id, transcripts.HARNESS, "s1")
+    stored = found(store.get_transcript(owner.id, transcripts.HARNESS, "s1"))
     assert store.transcript_line_count(stored.id) == 2
     # The appended line is the file's THIRD line, seq 2 - not seq 1, which is
     # what a row-count-derived start would have produced.
@@ -122,7 +131,9 @@ def test_append_keeps_seq_aligned_with_the_file_across_a_bad_line(
         assert [r["seq"] for r in cur.fetchall()] == [0, 2]
 
 
-def test_a_rewritten_file_rebuilds_its_lines(store, owner, tmp_path: Path) -> None:
+def test_a_rewritten_file_rebuilds_its_lines(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     _write(tmp_path, "s1", [{"type": "user"}])
     transcripts.designate(store, owner.id, "p", tmp_path)
     transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
@@ -133,19 +144,19 @@ def test_a_rewritten_file_rebuilds_its_lines(store, owner, tmp_path: Path) -> No
     report = transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
 
     assert report.files_rebuilt == 1
-    stored = store.get_transcript(owner.id, transcripts.HARNESS, "s1")
+    stored = found(store.get_transcript(owner.id, transcripts.HARNESS, "s1"))
     assert store.transcript_line_count(stored.id) == 2
 
 
 def test_a_shrunk_file_is_an_anomaly_and_is_not_followed(
-    store, owner, tmp_path: Path
+    store: PostgresStore, owner: Principal, tmp_path: Path
 ) -> None:
     """The stored copy is more complete. Two sessions are already gone from
     disk, and this is the rule that exists for exactly that."""
     _write(tmp_path, "s1", [{"type": "user"}, {"type": "assistant"}])
     transcripts.designate(store, owner.id, "p", tmp_path)
     transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
-    before = store.get_transcript(owner.id, transcripts.HARNESS, "s1")
+    before = found(store.get_transcript(owner.id, transcripts.HARNESS, "s1"))
 
     _write(tmp_path, "s1", [{"type": "user"}])
 
@@ -153,11 +164,13 @@ def test_a_shrunk_file_is_an_anomaly_and_is_not_followed(
 
     assert len(report.anomalies) == 1
     assert report.anomalies[0]["stored"] == before.bytes
-    after = store.get_transcript(owner.id, transcripts.HARNESS, "s1")
+    after = found(store.get_transcript(owner.id, transcripts.HARNESS, "s1"))
     assert after.bytes == before.bytes
 
 
-def test_an_unparseable_line_is_named_not_dropped(store, owner, tmp_path: Path) -> None:
+def test_an_unparseable_line_is_named_not_dropped(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     tmp_path.joinpath("s1.jsonl").write_bytes(b'{"type": "user"}\nthis is not json\n')
     transcripts.designate(store, owner.id, "p", tmp_path)
 
@@ -172,7 +185,10 @@ def test_an_unparseable_line_is_named_not_dropped(store, owner, tmp_path: Path) 
 
 
 def test_the_cap_bounds_a_refresh_before_it_reads(
-    store, owner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    store: PostgresStore,
+    owner: Principal,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A session-start hook must never read 179MB.
 
@@ -191,11 +207,11 @@ def test_the_cap_bounds_a_refresh_before_it_reads(
     stat_calls = 0
     real_stat = Path.stat
 
-    def _counting_stat(self: Path, *args: object, **kwargs: object) -> object:
+    def _counting_stat(self: Path, *, follow_symlinks: bool = True) -> os.stat_result:
         nonlocal stat_calls
         if self.suffix == ".jsonl":
             stat_calls += 1
-        return real_stat(self, *args, **kwargs)
+        return real_stat(self, follow_symlinks=follow_symlinks)
 
     monkeypatch.setattr(Path, "stat", _counting_stat)
 
@@ -208,7 +224,9 @@ def test_the_cap_bounds_a_refresh_before_it_reads(
     assert stat_calls == 2
 
 
-def test_an_unclaimed_project_does_nothing(store, owner, tmp_path: Path) -> None:
+def test_an_unclaimed_project_does_nothing(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     """The common case, and the entire opt-in.
 
     Asserting `files_seen == 0` alone is satisfied just as well by a version
@@ -224,7 +242,7 @@ def test_an_unclaimed_project_does_nothing(store, owner, tmp_path: Path) -> None
 
 
 def test_a_claimed_project_records_a_run_even_with_nothing_to_import(
-    store, owner, tmp_path: Path
+    store: PostgresStore, owner: Principal, tmp_path: Path
 ) -> None:
     """Opting in means your runs are visible, even the empty ones.
 
@@ -238,7 +256,7 @@ def test_a_claimed_project_records_a_run_even_with_nothing_to_import(
 
 
 def test_a_missing_claimed_directory_is_a_failure_not_a_crash(
-    store, owner, tmp_path: Path
+    store: PostgresStore, owner: Principal, tmp_path: Path
 ) -> None:
     transcripts.designate(store, owner.id, "p", tmp_path)
     tmp_path.rmdir()
@@ -247,7 +265,10 @@ def test_a_missing_claimed_directory_is_a_failure_not_a_crash(
 
 
 def test_a_body_exception_records_the_failure_and_finishes_the_row(
-    store, owner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    store: PostgresStore,
+    owner: Principal,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """`run()`'s wrapper records a partial run and re-raises.
 
@@ -282,15 +303,17 @@ def test_a_body_exception_records_the_failure_and_finishes_the_row(
     with pytest.raises(RuntimeError, match="simulated failure"):
         transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
 
-    run = store.latest_transcript_run(owner.id, "p")
+    run = found(store.latest_transcript_run(owner.id, "p"))
     assert run.finished_at is not None
     assert any(f.get("path") == "*" for f in run.failures)
 
 
-def test_the_run_is_recorded_with_its_trigger(store, owner, tmp_path: Path) -> None:
+def test_the_run_is_recorded_with_its_trigger(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
     _write(tmp_path, "s1", [{"type": "user"}])
     transcripts.designate(store, owner.id, "p", tmp_path)
     transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.AUTO)
-    run = store.latest_transcript_run(owner.id, "p")
+    run = found(store.latest_transcript_run(owner.id, "p"))
     assert run.trigger is TranscriptTrigger.AUTO
     assert run.finished_at is not None
