@@ -12,17 +12,27 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
-from saddlebag.domain import Transcript, TranscriptPath, TranscriptTrigger
+from saddlebag.domain import (
+    Transcript,
+    TranscriptPath,
+    TranscriptRun,
+    TranscriptTrigger,
+)
 from saddlebag.store import Store
 from saddlebag.transcript_file import ReadPlan, classify, parse, sha256_hex
 
 __all__ = [
     "Candidate",
     "PathRefused",
+    "PathStatus",
     "Report",
     "REFRESH_FILE_CAP",
+    "TranscriptStatus",
+    "advisories",
     "discover",
     "designate",
+    "status",
+    "status_to_dict",
     "undesignate",
     "run",
 ]
@@ -389,3 +399,155 @@ def _append(
     report.bytes_written += len(tail)
     report.failures.extend({"path": str(path), "reason": f.reason} for f in failures)
     return True
+
+
+@dataclass
+class PathStatus:
+    """A claimed directory, and whether it is still there."""
+
+    path: str
+    present: bool
+    on_disk: int
+
+
+@dataclass
+class TranscriptStatus:
+    """What `bag transcripts status` answers for one project.
+
+    `run` describes what last HAPPENED; `paths`, `backlog` and
+    `irrecoverable` describe the state NOW. A reader must not have to infer
+    one from the other, which is why both are here rather than only the run.
+    """
+
+    project: str
+    paths: list[PathStatus]
+    run: TranscriptRun | None
+    backlog: int
+    irrecoverable: int
+
+
+def status(store: Store, owner_id: UUID, project: str, root: Path) -> TranscriptStatus:
+    """The current state of transcript capture for one project."""
+    claims = store.transcript_paths(owner_id, project)
+    paths: list[PathStatus] = []
+    on_disk_ids: set[str] = set()
+    for claim in claims:
+        directory = Path(claim.path)
+        present = directory.is_dir()
+        files: list[Path] = sorted(directory.glob("*.jsonl")) if present else []
+        on_disk_ids.update(f.stem for f in files)
+        paths.append(PathStatus(path=claim.path, present=present, on_disk=len(files)))
+
+    stored = {t.session_id for t in store.stored_transcripts(owner_id, project)}
+    recorded = set(store.event_session_ids(owner_id, project))
+
+    # "Anywhere" means anywhere under the transcript root, not only under a
+    # claimed directory: a session whose file sits in an unclaimed directory
+    # is recoverable by claiming it, and calling that irrecoverable would
+    # overstate the loss.
+    everywhere = {f.stem for f in root.glob("*/*.jsonl")} if root.is_dir() else set()
+
+    return TranscriptStatus(
+        project=project,
+        paths=paths,
+        run=store.latest_transcript_run(owner_id, project),
+        backlog=len(on_disk_ids - stored),
+        irrecoverable=len(recorded - stored - everywhere),
+    )
+
+
+def status_to_dict(got: TranscriptStatus) -> dict[str, Any]:
+    """One object, not a list, and never a shorter document.
+
+    The keys are the same in every state - an unclaimed project is a null
+    `run` and an empty `paths`, not fewer keys - so a consumer checks a key
+    for null rather than branching on which keys arrived. Timestamps are a
+    raw `isoformat()`: the offset travels in the string.
+    """
+    return {
+        "project": got.project,
+        "paths": [
+            {"path": p.path, "present": p.present, "on_disk": p.on_disk}
+            for p in got.paths
+        ],
+        "run": None if got.run is None else _run_to_dict(got.run),
+        "backlog": got.backlog,
+        "irrecoverable": got.irrecoverable,
+    }
+
+
+def _run_to_dict(run: TranscriptRun) -> dict[str, Any]:
+    """`TranscriptRun` as plain JSON, mirroring `ingest._run_to_dict` field
+    for field. A raw `.isoformat()` rather than a local conversion: the
+    offset travels in the string, and nothing here reads it beside a
+    human-formatted line the way `render_run` does."""
+    return {
+        "id": str(run.id),
+        "trigger": str(run.trigger),
+        "started_at": run.started_at.isoformat() if run.started_at else None,
+        "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+        "files_seen": run.files_seen,
+        "files_new": run.files_new,
+        "files_appended": run.files_appended,
+        "files_rebuilt": run.files_rebuilt,
+        "lines_written": run.lines_written,
+        "bytes_written": run.bytes_written,
+        "anomalies": list(run.anomalies),
+        "failures": list(run.failures),
+    }
+
+
+def advisories(store: Store, owner_id: UUID) -> list[str]:
+    """One line per unhealthy claimed project, for `bag record status`.
+
+    Sweeps EVERY claimed project, which it can because a claim stores an
+    absolute path and needs no recorded working directory to resolve - unlike
+    `ingest.status`, which can only check the project the current directory
+    resolves to.
+
+    Backlog is deliberately not here. A refresh is bounded before it reads,
+    so a nonzero backlog is the normal state between runs, and an advisory
+    that fires on every run is one people learn to ignore.
+
+    No leading "!" here, unlike the brief's prose sketch of these lines:
+    `bag record status` adds that marker itself (`events.render`), the same
+    way it does for the doctor, ingest, memory and kb advisory lines - a
+    caller that prefixed its own would double it up there.
+    """
+    lines: list[str] = []
+    by_project: dict[str, list[str]] = {}
+    for claim in store.transcript_paths(owner_id):
+        by_project.setdefault(claim.project, []).append(claim.path)
+
+    for project, paths in sorted(by_project.items()):
+        missing = [p for p in paths if not Path(p).is_dir()]
+        if missing:
+            lines.append(
+                f"transcripts '{project}': claimed directory missing "
+                f"({', '.join(missing)}) - run `bag transcripts status`"
+            )
+            continue
+
+        run = store.latest_transcript_run(owner_id, project)
+        if run is None:
+            lines.append(
+                f"transcripts '{project}': claimed but never imported - "
+                f"run `bag transcripts import`"
+            )
+        elif run.finished_at is None:
+            lines.append(
+                f"transcripts '{project}': the last import ({run.trigger}) "
+                f"did not finish - run `bag transcripts status`"
+            )
+        elif run.failures:
+            lines.append(
+                f"transcripts '{project}': {len(run.failures)} failure(s) in "
+                f"the last import ({run.trigger}) - run `bag transcripts status`"
+            )
+        elif run.anomalies:
+            lines.append(
+                f"transcripts '{project}': {len(run.anomalies)} transcript(s) "
+                f"shrank on disk and were not followed - "
+                f"run `bag transcripts status`"
+            )
+    return lines

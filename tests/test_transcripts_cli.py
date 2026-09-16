@@ -1,13 +1,12 @@
-"""CLI tests for `bag transcripts discover|designate|import|refresh`.
+"""CLI tests for `bag transcripts discover|designate|import|refresh|status`.
 
 Same bootstrap as tests/test_memory_cli.py and tests/test_memory_refresh_cli.py:
 these commands commit through `open_session()`, so the schema has to be
 committed before the CLI connects, and the DSN is threaded through the
 environment rather than a fixture object the CLI can see directly.
 
-`status` is deliberately absent - its service function (`transcripts.status`)
-does not exist until Task 10, so the command lands there, beside what it
-calls.
+`status` lands here in Task 10, alongside the service function
+(`transcripts.status`) it calls - it could not exist any earlier.
 """
 
 from __future__ import annotations
@@ -220,3 +219,18 @@ def test_import_records_a_crashed_run_rather_than_losing_it(
     assert run is not None
     assert run.finished_at is not None
     assert any(f.get("path") == "*" for f in run.failures)
+
+
+def test_status_json_has_the_same_keys_when_nothing_is_claimed(cli_env: None) -> None:
+    """One object, not a list, and never a shorter document.
+
+    A consumer checks a field for null rather than branching on which keys
+    arrived - the same rule `bag memory status --json` follows, and
+    deliberately not `bag reingest status --json`, which sweeps every project
+    and so returns an array.
+    """
+    result = runner.invoke(app, ["transcripts", "status", "--json"])
+    assert result.exit_code == 0
+    got = json.loads(result.stdout)
+    assert set(got) == {"project", "paths", "run", "backlog", "irrecoverable"}
+    assert got["run"] is None

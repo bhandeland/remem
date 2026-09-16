@@ -165,6 +165,12 @@ class StatusReport:
     #: every path that could report it is contractually silent, so `record
     #: status` carries it.
     kb_advisories: list[str] = field(default_factory=list)
+    #: Lines from `services/transcripts.advisories`, passed in for the same
+    #: reason the three above are: this module is about events, and a
+    #: claimed transcript directory that has gone missing or never
+    #: imported is not an event - but `record status` is the one screen a
+    #: person checks, so it carries it.
+    transcript_advisories: list[str] = field(default_factory=list)
 
 
 def status(
@@ -175,6 +181,7 @@ def status(
     ingest_advisories: list[str] | None = None,
     memory_advisories: list[str] | None = None,
     kb_advisories: list[str] | None = None,
+    transcript_advisories: list[str] | None = None,
 ) -> StatusReport:
     """Gather the numbers behind `bag record status`. Read-only.
 
@@ -215,6 +222,7 @@ def status(
         ingest_advisories=list(ingest_advisories or []),
         memory_advisories=list(memory_advisories or []),
         kb_advisories=list(kb_advisories or []),
+        transcript_advisories=list(transcript_advisories or []),
     )
 
 
@@ -279,6 +287,8 @@ def render(report: StatusReport) -> str:
         lines.append(f"! {line}")
     for line in report.kb_advisories:
         lines.append(f"! {line}")
+    for line in report.transcript_advisories:
+        lines.append(f"! {line}")
     return "\n".join(lines)
 
 
@@ -317,6 +327,7 @@ def to_dict(report: StatusReport) -> dict[str, Any]:
         "ingest_advisories": list(report.ingest_advisories),
         "memory_advisories": list(report.memory_advisories),
         "kb_advisories": list(report.kb_advisories),
+        "transcript_advisories": list(report.transcript_advisories),
     }
 
 

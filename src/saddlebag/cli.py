@@ -1565,6 +1565,14 @@ def record_status(
         except Exception:
             kb_advisories: list[str] = []
 
+        # Wrapped like the four calls above, and for the same reason: a
+        # transcript status that cannot be computed must not take down the
+        # events status it decorates.
+        try:
+            transcript_advisories = transcripts_service.advisories(s.store, s.owner.id)
+        except Exception:
+            transcript_advisories: list[str] = []
+
         report = events.status(
             s.store,
             s.owner.id,
@@ -1573,6 +1581,7 @@ def record_status(
             ingest_advisories=ingest_advisories,
             memory_advisories=memory_advisories,
             kb_advisories=kb_advisories,
+            transcript_advisories=transcript_advisories,
         )
 
     if as_json:
@@ -2482,6 +2491,68 @@ def transcripts_designate(
         f"{resolved} claims {absolute} ({count} files). Nothing has been "
         f"imported yet - run `bag transcripts import` to read them."
     )
+
+
+@transcripts_app.command("status")
+def transcripts_status(
+    project: Annotated[Optional[str], typer.Option("--project")] = None,
+    as_json: Annotated[bool, typer.Option("--json")] = False,
+):
+    """What is claimed, what is on disk now, and how the last import went.
+
+    `run` answers what last HAPPENED; the claimed-directory, backlog and
+    irrecoverable lines answer the state NOW - a reader must not have to
+    infer one from the other. `root` is the same
+    `~/.claude/projects` every other transcript command resolves against,
+    so status sees exactly what `discover` and `import` would.
+    """
+    resolved = _require_project(_resolve_project(project, False))
+    root = Path.home() / ".claude" / "projects"
+    with _session() as s:
+        got = transcripts_service.status(s.store, s.owner.id, resolved, root)
+    if as_json:
+        # Before the text branches below: one object in every state, never
+        # a shorter document, so a consumer checks a key for null rather
+        # than branching on which keys arrived - the same rule `bag memory
+        # status --json` follows.
+        typer.echo(json.dumps(transcripts_service.status_to_dict(got), indent=2))
+        return
+
+    typer.echo(f"{resolved}:")
+    # Four distinct spellings, following `memory.render_run` and `bag
+    # reingest status`: never synced, clean, did not finish, and finished
+    # with something wrong. Every spelling that has a run names its
+    # TRIGGER, because a spawned `refresh` and a typed `import` leave
+    # identical rows and a reader must be able to tell them apart.
+    run = got.run
+    if run is None:
+        typer.echo("  never imported")
+    elif run.finished_at is None:
+        typer.echo(f"  last import ({run.trigger}) did not finish")
+    elif run.failures or run.anomalies:
+        trouble = []
+        if run.failures:
+            trouble.append(f"{len(run.failures)} failure(s)")
+        if run.anomalies:
+            trouble.append(f"{len(run.anomalies)} anomaly(ies)")
+        typer.echo(
+            f"  last import ({run.trigger}) at "
+            f"{run.started_at.astimezone().strftime('%Y-%m-%d %H:%M')}: "
+            f"{', '.join(trouble)}"
+        )
+    else:
+        typer.echo(
+            f"  last import ({run.trigger}) at "
+            f"{run.started_at.astimezone().strftime('%Y-%m-%d %H:%M')}: clean"
+        )
+
+    if not got.paths:
+        typer.echo("  no directory claimed")
+    for p in got.paths:
+        state = f"{p.on_disk} files" if p.present else "missing"
+        typer.echo(f"  {p.path}: {state}")
+    typer.echo(f"  backlog: {got.backlog}")
+    typer.echo(f"  irrecoverable: {got.irrecoverable}")
 
 
 @transcripts_app.command("import")

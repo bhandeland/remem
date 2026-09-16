@@ -512,6 +512,26 @@ def test_status_carries_a_knowledge_base_budget_advisory(
     assert events.to_dict(report)["kb_advisories"] == lines
 
 
+def test_status_carries_a_transcript_advisory(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
+    """A claimed-but-never-imported project is unhealthy, and this is the
+    fail-loud half of a fail-soft pipeline that already carries the doctor,
+    ingest, memory and kb advisories the same way."""
+    from saddlebag.services import transcripts
+
+    transcripts.designate(store, owner.id, "p", tmp_path)
+    lines = transcripts.advisories(store, owner.id)
+    assert lines
+
+    report = events.status(
+        store, owner.id, idle_seconds=IDLE, transcript_advisories=lines
+    )
+
+    assert "! transcripts 'p'" in events.render(report)
+    assert events.to_dict(report)["transcript_advisories"] == lines
+
+
 def test_record_status_reports_an_over_budget_knowledge_base(
     live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -560,3 +580,32 @@ def test_record_status_reports_an_over_budget_knowledge_base(
     assert result.exit_code == 0
     assert "knowledge base 'fat'" in result.stdout
     assert "not being injected" in result.stdout
+
+
+def test_record_status_reports_a_claimed_but_never_imported_project(
+    live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """End to end, for the same reason the kb-budget test above is: a
+    service that computes the advisory and a frontend that never asks for
+    it is exactly the silent failure this feature exists to catch."""
+    import psycopg
+
+    claimed = tmp_path / "claimed"
+    claimed.mkdir()
+
+    with psycopg.connect(live_dsn) as conn:
+        migrate(conn)
+        s = PostgresStore(conn)
+        live_owner = s.ensure_principal("brandon")
+        s.add_transcript_path(live_owner.id, "p", str(claimed))
+        conn.commit()
+
+    monkeypatch.setenv("BAG_DSN", live_dsn)
+    monkeypatch.setenv("BAG_USER_ID", "brandon")
+    monkeypatch.setenv("BAG_CONFIG", str(tmp_path / "none.toml"))
+
+    result = runner.invoke(app, ["record", "status"])
+
+    assert result.exit_code == 0
+    assert "transcripts 'p'" in result.stdout
+    assert "claimed but never imported" in result.stdout

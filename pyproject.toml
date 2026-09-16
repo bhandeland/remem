@@ -89,6 +89,7 @@ markers = [
     "slow: shells out to a real build; skip with -m 'not slow'",
     "opencode: requires opencode's plugin types installed; checks our vendored copy is fresh",
     "cursor: requires Cursor.app installed; checks our vendored copy is fresh",
+    "transcript: requires a real Claude Code transcript in ~/.claude/projects; checks our parser still handles every line type",
 ]
 
 [tool.pyrefly]

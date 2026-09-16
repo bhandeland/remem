@@ -1,0 +1,14 @@
+{"type": "assistant", "uuid": "a1", "timestamp": "2026-09-15T10:00:00Z", "message": {"role": "assistant", "content": [{"type": "text", "text": "hi"}]}}
+{"type": "user", "uuid": "u1", "timestamp": "2026-09-15T10:00:01Z", "message": {"role": "user", "content": "hello"}}
+{"type": "attachment", "uuid": "at1", "timestamp": "2026-09-15T10:00:02Z", "path": "/tmp/example.txt"}
+{"type": "system", "uuid": "s1", "timestamp": "2026-09-15T10:00:03Z", "content": "session started"}
+{"type": "last-prompt", "uuid": "lp1", "timestamp": "2026-09-15T10:00:04Z", "prompt": "what next"}
+{"type": "mode", "uuid": "m1", "timestamp": "2026-09-15T10:00:05Z", "mode": "default"}
+{"type": "permission-mode", "uuid": "pm1", "timestamp": "2026-09-15T10:00:06Z", "permissionMode": "acceptEdits"}
+{"type": "atis-latch", "uuid": "al1", "timestamp": "2026-09-15T10:00:07Z", "latched": true}
+{"type": "ai-title", "uuid": "ait1", "timestamp": "2026-09-15T10:00:08Z", "title": "Example session"}
+{"type": "file-history-snapshot", "uuid": "fh1", "timestamp": "2026-09-15T10:00:09Z", "snapshot": {}}
+{"type": "cost-state", "uuid": "cs1", "timestamp": "2026-09-15T10:00:10Z", "totalCostUsd": 0.12}
+{"type": "assistant", "uuid": "broken"
+{"type": "user", "uuid": "bad-utf8", "note": "ÿþ broken"}
+{"type": "progress", "uuid": "pg1", "timestamp": "2026-09-15T10:00:11Z", "progress": "thinking"}
