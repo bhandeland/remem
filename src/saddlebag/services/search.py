@@ -159,12 +159,19 @@ def find(
 
         exact full-text  ->  semantic  ->  trigram
 
-    Fallback rather than blending, for the reason the two-tier version
-    already documented: mixing approximate hits into a result set that
-    contains exact ones trades precision for a problem that does not exist
-    there. With three tiers that matters more, not less - a result set
-    holding all three kinds would need the caller to reason about which
-    ranking each number came from, and they are not comparable.
+    Fallback rather than blending. The durable reason is that a fused
+    result set makes `Hit.match` unanswerable: it would hold hits from
+    tiers whose rankings are not comparable - ts_rank, cosine distance and
+    trigram similarity are three different numbers - and the caller would
+    have to reason about which one each position came from. With three
+    tiers that matters more, not less.
+
+    What it is NOT is a precision trade, which is what this docstring
+    claimed before anything measured it. Over 165 questions on 2026-09-15,
+    reciprocal-rank fusion of the exact and semantic tiers scored 60.6%
+    hit@1 against the cascade's 59.4% - discordant 3-1, p=0.625. Blending
+    is inert here, not harmful. So do not defend the chain on the grounds
+    that fusing would cost accuracy; defend it on the grounds above.
 
     Semantic sits above trigram because meaning beats spelling. A query that
     matches nothing lexically is far more often a different wording than a
