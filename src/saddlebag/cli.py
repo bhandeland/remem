@@ -32,6 +32,7 @@ from saddlebag.domain import (
     MemoryTrigger,
     Origin,
     Query,
+    TranscriptTrigger,
 )
 from saddlebag.embed import EmbedderUnavailable, load_embedder
 from saddlebag.importers import claude_mem
@@ -40,6 +41,7 @@ from saddlebag.services import dedupe as dedupe_service
 from saddlebag.services import import_, kb, write
 from saddlebag.services import ingest as ingest_service
 from saddlebag.services import memory as memory_service
+from saddlebag.services import transcripts as transcripts_service
 from saddlebag.services.embed import backfill
 from saddlebag.services.search import find
 from saddlebag.session import ensure_database, open_session
@@ -84,6 +86,9 @@ app.add_typer(reingest_app, name="reingest")
 
 import_app = typer.Typer(help="Import knowledge from another tool's store.")
 app.add_typer(import_app, name="import")
+
+transcripts_app = typer.Typer(help="Raw session transcripts, stored in saddlebag.")
+app.add_typer(transcripts_app, name="transcripts")
 
 
 def _default_project() -> str | None:
@@ -2411,3 +2416,167 @@ def dedupe_resolve(
             raise typer.Exit(1)
     typer.echo(f"{dropped.id} ({dropped.title})")
     typer.echo(f"  superseded by {kept.id} ({kept.title})")
+
+
+@transcripts_app.command("discover")
+def transcripts_discover(
+    project: Annotated[Optional[str], typer.Option("--project")] = None,
+):
+    """Propose directories that hold this project's sessions. Writes nothing.
+
+    Ownership is proven per session id - a transcript's filename intersected
+    with what `bag record event` already recorded for this project - never
+    guessed from a directory's name. This only proposes; `bag transcripts
+    designate` is the one write, and a human decides.
+    """
+    resolved = _require_project(_resolve_project(project, False))
+    root = Path.home() / ".claude" / "projects"
+    with _session() as s:
+        found = transcripts_service.discover(s.store, s.owner.id, resolved, root)
+    if not found:
+        typer.echo(
+            f"No directory under {root} has sessions this project recorded events for."
+        )
+        return
+    for c in found:
+        claimed = f" - claimed by {c.claimed_by}" if c.claimed_by else ""
+        typer.echo(f"{c.path}  {c.matched} of {c.total} sessions match{claimed}")
+
+
+@transcripts_app.command("designate")
+def transcripts_designate(
+    directory: Annotated[
+        str, typer.Argument(help="A directory of .jsonl transcripts.")
+    ],
+    project: Annotated[Optional[str], typer.Option("--project")] = None,
+):
+    """Claim a transcript directory for this project. Fail-loud.
+
+    Claiming records a claim; it does not read a single file. The count
+    printed here is what `bag transcripts import` will have to read to
+    back it up - saying so is the whole point, because claiming without it
+    would silently commit someone to a read that has been 179MB on this
+    project's own history.
+    """
+    resolved = _require_project(_resolve_project(project, False))
+    with _session() as s:
+        try:
+            absolute = transcripts_service.designate(
+                s.store, s.owner.id, resolved, Path(directory)
+            )
+        except transcripts_service.PathRefused as exc:
+            # Fail-loud, and the message is the deliverable: the conflicting-
+            # project case names the project already holding the directory,
+            # which is why the service returns a name rather than a bool.
+            # The CLI does not reformat, re-derive or swallow it.
+            typer.echo(str(exc))
+            raise typer.Exit(1)
+    count = len(list(Path(absolute).glob("*.jsonl")))
+    typer.echo(
+        f"{resolved} claims {absolute} ({count} files). Nothing has been "
+        f"imported yet - run `bag transcripts import` to read them."
+    )
+
+
+@transcripts_app.command("import")
+def transcripts_import(
+    project: Annotated[Optional[str], typer.Option("--project")] = None,
+):
+    """Import every directory claimed for this project. Loud, unbounded.
+
+    The typed, unbounded half of `bag transcripts refresh` - a person asked
+    for this one, so it passes no cap and reads everything a claimed
+    directory holds. The first import of a claimed directory can be 179MB
+    across many files.
+    """
+    resolved = _require_project(_resolve_project(project, False))
+    # autocommit, exactly as `bag memory sync` and `bag reingest run`: the
+    # started run row has to be committed before any file is read, or a
+    # crash rolls it back and "crashed" becomes indistinguishable from
+    # "never ran".
+    with _session(autocommit=True) as s:
+        report = transcripts_service.run(
+            s.store, s.owner.id, resolved, trigger=TranscriptTrigger.MANUAL
+        )
+    typer.echo(
+        f"{report.files_seen} seen, {report.files_new} new, "
+        f"{report.files_appended} appended, {report.files_rebuilt} rebuilt, "
+        f"{report.lines_written} lines, {report.bytes_written} bytes"
+    )
+    for a in report.anomalies:
+        typer.echo(
+            f"anomaly: {a['path']} shrank on disk (stored {a['stored']}, "
+            f"on disk {a['on_disk']}) - the stored copy is kept",
+            err=True,
+        )
+    for f in report.failures:
+        typer.echo(f"failed: {f['path']}: {f['reason']}", err=True)
+    if report.failures:
+        # Fail-loud: a person typed this, and a failure is a definite
+        # statement that something was not imported - not an "I could not
+        # tell".
+        raise typer.Exit(1)
+
+
+@transcripts_app.command("refresh")
+def transcripts_refresh():
+    """Import this project's transcripts. Spawned, not typed.
+
+    The silent half of `bag transcripts import`, and the exact analogue of
+    `bag memory refresh` and `bag reingest run`: started detached by a
+    session start, so it exits 0 on every path, prints nothing to stdout,
+    and explains itself only to stderr behind BAG_HOOK_DEBUG. A project
+    with no claimed directory does nothing, which is the common case.
+
+    Bounded at REFRESH_FILE_CAP files, enforced before reading: the first
+    import of a claimed directory is 179MB, and a session start must never
+    pay for it. `bag transcripts import` is the unbounded half, and a person
+    asked for that one.
+    """
+    from saddlebag import hookio
+
+    env = dict(os.environ)
+    try:
+        _transcripts_refresh_once(env)
+    except BaseException as exc:
+        # BaseException, not Exception, and the reason is narrower than it
+        # looks. `typer.Exit` is a RuntimeError, so `except Exception`
+        # already swallows the `typer.Exit(1)` `_session` raises for an
+        # unreachable database - measured, not assumed. What BaseException
+        # adds is a real SystemExit from any library that calls sys.exit(),
+        # and a KeyboardInterrupt. A detached command nobody is watching has
+        # no path on which a non-zero exit helps anyone, so it catches the
+        # lot.
+        hookio.debug(env, f"{type(exc).__name__}: {exc}")
+    raise typer.Exit(0)
+
+
+def _transcripts_refresh_once(env: dict[str, str]) -> None:
+    """The work `transcripts refresh` wraps in silence. Free to raise."""
+    from saddlebag import hookio
+
+    resolved = resolve_project()
+    if resolved is None:
+        hookio.debug(env, "no project to import transcripts for")
+        return
+    # autocommit, exactly as `bag transcripts import` does it: the started
+    # run row has to be committed before any file is read, or a crash rolls
+    # it back and "crashed" becomes indistinguishable from "never ran".
+    with _session(autocommit=True) as s:
+        report = transcripts_service.run(
+            s.store,
+            s.owner.id,
+            resolved,
+            trigger=TranscriptTrigger.AUTO,
+            cap=transcripts_service.REFRESH_FILE_CAP,
+        )
+    hookio.debug(
+        env,
+        f"transcripts import: {report.files_seen} seen, "
+        f"{report.files_new} new, {report.files_appended} appended, "
+        f"{report.files_rebuilt} rebuilt",
+    )
+    for a in report.anomalies:
+        hookio.debug(env, f"transcripts import anomaly: {a['path']}")
+    for f in report.failures:
+        hookio.debug(env, f"transcripts import failed: {f['path']}: {f['reason']}")
