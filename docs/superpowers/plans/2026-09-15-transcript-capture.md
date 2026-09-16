@@ -2368,10 +2368,14 @@ def test_refresh_survives_a_library_calling_sys_exit(
 (The `status --json` test lives in Task 10, with the command.)
 
 `cli_env` is a fixture you write at the top of this file: it points `BAG_DSN`
-at `live_dsn`, creates the owner, stubs all four `hookio.spawn_*` helpers, and
-seeds a transcript directory with three files, two of whose session ids have
-recorded events. Copying `tests/test_memory_cli.py`'s equivalent is faster
-than inventing one.
+at `live_dsn`, creates the owner, and seeds a transcript directory with three
+files, two of whose session ids have recorded events. Copying
+`tests/test_memory_cli.py`'s equivalent is faster than inventing one.
+
+It does **not** need to stub any `hookio.spawn_*` helper. None of these four
+commands spawns anything - `bag transcripts refresh` is itself the thing that
+gets spawned, not a spawner. The spawn helper and its stubs arrive in Task 9,
+which wires `spawn_transcripts` into `SessionStart` and `bag hook context`.
 
 - [ ] **Step 2: Run to verify it fails**
 
