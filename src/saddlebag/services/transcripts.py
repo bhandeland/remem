@@ -259,6 +259,18 @@ def undesignate(store: Store, owner_id: UUID, project: str, path: Path) -> bool:
 #: and does everything, because a person asked for that.
 REFRESH_FILE_CAP = 25
 
+#: How many files in a row may raise before the run stops and raises.
+#:
+#: A file that raises is recorded under its own path and the run moves on,
+#: so one bad file never blocks the rest. Several in a row say the problem
+#: is not the files - a lost connection fails every one - and past this the
+#: run raises instead of writing the same failure once per file. Consecutive
+#: rather than total, so bad files scattered through a directory never add
+#: up to it. Three is small enough to stop quickly and large enough that two
+#: adjacent bad files (a session and its subagent, as the U+0000 case was)
+#: do not trip it.
+MAX_CONSECUTIVE_FILE_FAILURES = 3
+
 
 @dataclass
 class Report:
@@ -288,8 +300,10 @@ def run(
     Split into a recording wrapper and `_run_body` for the reason
     `memory.sync` is: the wrapper owns the row, and the body is handed the
     `Report` it mutates, so a run that raises partway is still recorded with
-    what it had done. A Python exception is recorded as a failure with path
-    `*` and re-raised.
+    what it had done. An exception from one file is recorded under that
+    file's path and the run continues; `MAX_CONSECUTIVE_FILE_FAILURES` in a
+    row, or one from outside the per-file work, is recorded as a failure
+    with path `*` and re-raised.
 
     The caller MUST open its `store` with `autocommit=True`, the same rule
     `bag reingest run` and `bag memory sync` already follow. `start_transcript_run`
@@ -359,6 +373,7 @@ def _run_body(
         recorded.setdefault(session_id, set()).add(recorded_project)
 
     budget = cap
+    consecutive = 0
     for claim in claims:
         directory = Path(claim.path)
         if not directory.is_dir():
@@ -373,17 +388,40 @@ def _run_body(
             if budget is not None and budget <= 0:
                 return
             report.files_seen += 1
-            existing = store.get_transcript(
-                owner_id, HARNESS, file.session_id, file.agent_id
-            )
-            did_work = _import_one(
-                store, owner_id, project, file, existing, report, recorded
-            )
+            try:
+                existing = store.get_transcript(
+                    owner_id, HARNESS, file.session_id, file.agent_id
+                )
+                did_work = _import_one(
+                    store, owner_id, project, file, existing, report, recorded
+                )
+                # After the transcript, whatever its plan - and outside the
+                # budget. See `_import_meta`.
+                _import_meta(store, owner_id, file, existing, report)
+            except Exception as exc:
+                # One file's failure is that file's. Before this, a single
+                # line `jsonb` refused raised out of the whole run - and the
+                # zero-lines repair re-read that file first on every later
+                # run, so the project never imported anything again. The
+                # caller's autocommit session is what makes continuing
+                # safe: a failed statement does not poison the connection.
+                report.failures.append(
+                    {"path": str(file.path), "reason": f"{type(exc).__name__}: {exc}"}
+                )
+                consecutive += 1
+                if consecutive >= MAX_CONSECUTIVE_FILE_FAILURES:
+                    # Not the files: a dropped connection fails every one
+                    # of them, and recording the same error hundreds of
+                    # times would bury it. `run()` records and re-raises.
+                    raise
+                # It may have read before failing, so it spends the budget:
+                # the cap bounds I/O, and a file that fails every run must
+                # not make a refresh unbounded.
+                did_work = True
+            else:
+                consecutive = 0
             if did_work and budget is not None:
                 budget -= 1
-            # After the transcript, whatever its plan - and outside the
-            # budget. See `_import_meta`.
-            _import_meta(store, owner_id, file, existing, report)
 
 
 def _import_one(

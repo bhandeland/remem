@@ -627,6 +627,17 @@ nothing with no evidence and no error, and `status` calls every recorded
 session irrecoverable. `discover` and `status` still take `root` as a
 parameter - only the default moved.
 
+**One file's failure is that file's.** An exception while importing a file
+is recorded under its path and the run moves on - a single line `jsonb`
+refused (U+0000) once stopped a project's imports for good, because the
+zero-lines repair re-read that file first on every run. `parse` now names
+such a line as a failure, and `_run_body` isolates each file regardless.
+`MAX_CONSECUTIVE_FILE_FAILURES` (3) in a row is not a bad file but a broken
+database, so the run raises there rather than recording one failure per
+file. A failing file spends the refresh budget, since it may have read
+before raising. Isolation is only safe under the autocommit session both
+CLI paths already open.
+
 The refresh is bounded before it reads; `import` is not. A session start
 must never pay for a backfill, so `bag transcripts refresh` stats first and
 skips a file whose size has not changed, capped at a per-run file count

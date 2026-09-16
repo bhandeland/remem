@@ -250,9 +250,11 @@ def test_import_records_a_crashed_run_rather_than_losing_it(
     row survives and the finishing UPDATE still runs after the failure.
 
     `transcripts.run` writes no row at all for a project with no claim, so
-    this test claims a real directory holding one file first - otherwise the
-    failure below would fire before a row was ever started, and the test
-    would pass or fail independently of `autocommit`, proving nothing.
+    this test claims a real directory first - otherwise the failure below
+    would fire before a row was ever started, and the test would pass or
+    fail independently of `autocommit`, proving nothing. It holds THREE
+    files because one failing file is only that file's failure now; it takes
+    `MAX_CONSECUTIVE_FILE_FAILURES` in a row to make the run raise.
 
     The store method below is monkeypatched to run genuinely bad SQL,
     rather than just raise a plain Python exception - only a real
@@ -263,9 +265,10 @@ def test_import_records_a_crashed_run_rather_than_losing_it(
 
     claimed = tmp_path / "claimed"
     claimed.mkdir()
-    (claimed / "sess-1.jsonl").write_bytes(
-        json.dumps({"type": "user"}).encode() + b"\n"
-    )
+    for session_id in ("sess-1", "sess-2", "sess-3"):
+        (claimed / f"{session_id}.jsonl").write_bytes(
+            json.dumps({"type": "user"}).encode() + b"\n"
+        )
 
     conn: psycopg.Connection[Any] = psycopg.connect(live_dsn)
     store = PostgresStore(conn)
@@ -354,3 +357,56 @@ def test_import_and_status_print_the_sidecar_figures(
     result = runner.invoke(app, ["transcripts", "import"])
     assert result.exit_code == 0
     assert "1 sidecars" in result.stdout
+
+
+def test_a_real_statement_failure_costs_only_its_own_file(
+    cli_env: None, monkeypatch: pytest.MonkeyPatch, live_dsn: str, tmp_path: Path
+) -> None:
+    """Under autocommit a failed statement does not poison the connection,
+    which is what lets the files after it import. Only real SQL shows that:
+    a Python exception never touches the connection."""
+    from saddlebag.backends.postgres.store import PostgresStore
+
+    claimed = tmp_path / "claimed"
+    claimed.mkdir()
+    for session_id in ("sess-bad", "sess-good"):
+        (claimed / f"{session_id}.jsonl").write_bytes(
+            json.dumps({"type": "user"}).encode() + b"\n"
+        )
+    conn: psycopg.Connection[Any] = psycopg.connect(live_dsn)
+    store = PostgresStore(conn)
+    owner = store.ensure_principal("brandon")
+    store.add_transcript_path(owner.id, PROJECT, str(claimed))
+    conn.commit()
+    conn.close()
+
+    real = PostgresStore.get_transcript
+
+    def bad_for_one(
+        self: PostgresStore,
+        owner_id: Any,
+        harness: str,
+        session_id: str,
+        agent_id: Any = None,
+    ) -> Any:
+        if session_id == "sess-bad":
+            with self._conn.cursor() as cur:
+                cur.execute("select this_column_does_not_exist")
+        return real(self, owner_id, harness, session_id, agent_id)
+
+    monkeypatch.setattr(PostgresStore, "get_transcript", bad_for_one)
+
+    result = runner.invoke(app, ["transcripts", "import"])
+    assert result.exit_code == 1
+    assert "sess-bad.jsonl: UndefinedColumn" in result.stderr
+
+    monkeypatch.undo()
+    conn = psycopg.connect(live_dsn)
+    store = PostgresStore(conn)
+    owner = store.ensure_principal("brandon")
+    got = store.get_transcript(owner.id, "claude-code", "sess-good")
+    run = store.latest_transcript_run(owner.id, PROJECT)
+    conn.close()
+    assert got is not None
+    assert run is not None
+    assert run.files_new == 1

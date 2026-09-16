@@ -277,7 +277,7 @@ def test_a_missing_claimed_directory_is_a_failure_not_a_crash(
     assert len(report.failures) == 1
 
 
-def test_a_body_exception_records_the_failure_and_finishes_the_row(
+def test_a_run_of_failing_files_is_raised_and_the_row_still_finishes(
     store: PostgresStore,
     owner: Principal,
     tmp_path: Path,
@@ -285,32 +285,25 @@ def test_a_body_exception_records_the_failure_and_finishes_the_row(
 ) -> None:
     """`run()`'s wrapper records a partial run and re-raises.
 
-    A body that dies partway still leaves a finished row carrying the
-    `{"path": "*"}` failure - this proves that much, with a stub that raises
-    a plain `RuntimeError` before any DB write happens.
+    One failing file is that file's failure (see the next test). Several in
+    a row mean the problem is not the files - a dropped connection fails
+    every one of them - so the run stops and raises rather than recording
+    the same error hundreds of times. The row still finishes, carrying the
+    per-file failures and the `{"path": "*"}` one.
 
-    What this does NOT cover: a real psycopg error leaves the connection in
-    a failed transaction, and there the `finish_transcript_run` call in the
-    `finally` would itself raise `InFailedSqlTransaction`, silently
-    replacing the original exception and recording nothing. A bare Python
-    exception never poisons a connection, so this test cannot exercise that
-    failure mode - and the per-test `conn` fixture, already inside a
-    transaction that gets rolled back at test end, cannot be made to either.
-    Guarding against it is the caller's job: `run()`'s docstring states the
-    `autocommit=True` requirement that makes the finish succeed even after a
-    failed statement, and that contract is established end to end by the
-    CLI's own test, not by this one.
+    What this does NOT cover: a real psycopg error under a non-autocommit
+    session, where the `finish_transcript_run` in the `finally` would itself
+    raise `InFailedSqlTransaction`. The per-test `conn` fixture is one
+    rolled-back transaction and cannot show that; the CLI's own tests
+    establish the `autocommit=True` contract end to end.
     """
-    _write(tmp_path, "s1", [{"type": "user"}])
+    for session_id in ("s1", "s2", "s3", "s4"):
+        _write(tmp_path, session_id, [{"type": "user"}])
     transcripts.designate(store, owner.id, "p", tmp_path)
 
     def _boom(*args: object, **kwargs: object) -> None:
         raise RuntimeError("simulated failure")
 
-    # get_transcript is called from inside _import_one, which _run_body only
-    # reaches once a claimed directory exists with a file to look at - unlike
-    # transcript_paths, which run() now consults once up front (to decide
-    # whether to write a row at all) and never calls again.
     monkeypatch.setattr(store, "get_transcript", _boom)
 
     with pytest.raises(RuntimeError, match="simulated failure"):
@@ -318,7 +311,50 @@ def test_a_body_exception_records_the_failure_and_finishes_the_row(
 
     run = found(store.latest_transcript_run(owner.id, "p"))
     assert run.finished_at is not None
-    assert any(f.get("path") == "*" for f in run.failures)
+    assert [f["path"] for f in run.failures] == [
+        str(tmp_path / "s1.jsonl"),
+        str(tmp_path / "s2.jsonl"),
+        str(tmp_path / "s3.jsonl"),
+        "*",
+    ]
+    assert run.files_seen == 3
+
+
+def test_one_failing_file_does_not_stop_the_others(
+    store: PostgresStore,
+    owner: Principal,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A file that raises every run used to stop its project's imports for
+    good. It is now that file's failure, recorded every run, and the files
+    after it still import. Interleaved with successes, failures never add
+    up to the consecutive limit."""
+    # Files import in name order, so the names fix the interleaving.
+    for session_id in ("a-bad", "b-bad", "c-good", "d-bad", "e-bad", "f-good"):
+        _write(tmp_path, session_id, [{"type": "user"}])
+    transcripts.designate(store, owner.id, "p", tmp_path)
+
+    real = store.get_transcript
+
+    def _flaky(
+        owner_id: Any, harness: str, session_id: str, agent_id: Any = None
+    ) -> Any:
+        if session_id.endswith("-bad"):
+            raise RuntimeError(f"cannot read {session_id}")
+        return real(owner_id, harness, session_id, agent_id)
+
+    monkeypatch.setattr(store, "get_transcript", _flaky)
+
+    report = transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
+
+    assert report.files_new == 2
+    assert [f["path"] for f in report.failures] == [
+        str(tmp_path / f"{s}.jsonl") for s in ("a-bad", "b-bad", "d-bad", "e-bad")
+    ]
+    assert report.failures[0]["reason"] == "RuntimeError: cannot read a-bad"
+    monkeypatch.undo()
+    assert found(store.get_transcript(owner.id, transcripts.HARNESS, "f-good"))
 
 
 def test_the_run_is_recorded_with_its_trigger(
@@ -725,3 +761,32 @@ def test_a_line_jsonb_refuses_does_not_stop_the_import(
     stored = found(store.get_transcript(owner.id, transcripts.HARNESS, "s1"))
     assert store.transcript_content(stored.id, owner.id) == target.read_bytes()
     assert store.transcript_line_count(stored.id) == 1
+
+
+def test_a_failing_file_spends_the_refresh_budget(
+    store: PostgresStore,
+    owner: Principal,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """It may have read megabytes before raising, and it raises every run -
+    a free pass would let one bad file make every refresh unbounded."""
+    for session_id in ("a-bad", "b-good"):
+        _write(tmp_path, session_id, [{"type": "user"}])
+    transcripts.designate(store, owner.id, "p", tmp_path)
+    real = store.get_transcript
+
+    def _flaky(
+        owner_id: Any, harness: str, session_id: str, agent_id: Any = None
+    ) -> Any:
+        if session_id == "a-bad":
+            raise RuntimeError("cannot read")
+        return real(owner_id, harness, session_id, agent_id)
+
+    monkeypatch.setattr(store, "get_transcript", _flaky)
+
+    report = transcripts.run(
+        store, owner.id, "p", trigger=TranscriptTrigger.AUTO, cap=1
+    )
+
+    assert (report.files_seen, report.files_new) == (1, 0)
