@@ -187,6 +187,10 @@ def test_a_shrunk_file_is_an_anomaly_and_is_not_followed(
 
     assert len(report.anomalies) == 1
     assert report.anomalies[0]["stored"] == before.bytes
+    # The same identity keys a project-conflict anomaly carries, so a reader
+    # keys every anomaly the same way whatever its reason.
+    assert report.anomalies[0]["session_id"] == "s1"
+    assert report.anomalies[0]["agent_id"] is None
     after = found(
         store.get_transcript(owner.id, transcripts.HARNESS, "s1", agent_id=None)
     )

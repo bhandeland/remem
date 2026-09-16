@@ -643,6 +643,8 @@ def _plan_for(
             {
                 "reason": SHRANK,
                 "path": str(path),
+                "session_id": existing.session_id,
+                "agent_id": existing.agent_id,
                 "stored": existing.bytes,
                 "on_disk": disk_size,
             }
