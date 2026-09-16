@@ -1848,6 +1848,38 @@ def test_an_appended_file_adds_only_the_new_lines(
     assert store.transcript_line_count(stored.id) == 2
 
 
+def test_append_keeps_seq_aligned_with_the_file_across_a_bad_line(
+    store, owner, tmp_path: Path
+) -> None:
+    """seq is the line's number in the FILE, not the count of rows stored.
+
+    A line that fails to parse still occupies a line. If the append path
+    derived its starting seq from the stored ROW count, every blank or
+    unparseable line would shift every later seq by one - silently, and
+    against the coordinate future labelling work keys on.
+    """
+    target = tmp_path / "s1.jsonl"
+    target.write_bytes(b'{"type": "user"}\nthis is not json\n')
+    transcripts.designate(store, owner.id, "p", tmp_path)
+    transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
+
+    with target.open("ab") as fh:
+        fh.write(b'{"type": "assistant"}\n')
+
+    transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
+
+    stored = store.get_transcript(owner.id, transcripts.HARNESS, "s1")
+    assert store.transcript_line_count(stored.id) == 2
+    # The appended line is the file's THIRD line, seq 2 - not seq 1, which is
+    # what a row-count-derived start would have produced.
+    with store._cur() as cur:  # noqa: SLF001 - asserting stored seqs directly
+        cur.execute(
+            "select seq from transcript_lines where transcript_id = %s order by seq",
+            (stored.id,),
+        )
+        assert [r["seq"] for r in cur.fetchall()] == [0, 2]
+
+
 def test_a_rewritten_file_rebuilds_its_lines(store, owner, tmp_path: Path) -> None:
     _write(tmp_path, "s1", [{"type": "user"}])
     transcripts.designate(store, owner.id, "p", tmp_path)
@@ -2159,17 +2191,30 @@ def _append(
         report.failures.append({"path": str(path), "reason": str(exc)})
         return False
 
-    whole_sha = sha256_hex(_stored_plus(store, owner_id, existing, tail))
-    if not store.append_transcript(existing.id, owner_id, tail, whole_sha):
+    # Fetched once and used twice: for the whole-file hash that the NEXT
+    # append check compares against, and for the tail's first line number.
+    stored = store.transcript_content(existing.id, owner_id) or b""
+
+    # seq is the line's number within the FILE, and `parse` numbers lines by
+    # their index in `split(b"\n")` - which counts blank lines and lines that
+    # failed to parse, because each still occupies a line in the file. The
+    # stored ROW count counts neither, so using it here would drift seq by one
+    # for every blank or unparseable line ever seen, silently - and
+    # (transcript_id, seq) is the coordinate future labelling work keys on.
+    # Counting newlines in the stored bytes is exact: the tail begins
+    # immediately after the last stored byte, so its first line is line number
+    # `stored.count(b"\n")`.
+    start_seq = stored.count(b"\n")
+
+    if not store.append_transcript(
+        existing.id, owner_id, tail, sha256_hex(stored + tail)
+    ):
         report.failures.append(
             {"path": str(path), "reason": "append refused - not this owner"}
         )
         return False
 
-    # The tail's first line continues the file, so parsing starts at the line
-    # count already stored. seq is the line's number within the FILE, because
-    # (transcript_id, seq) is the coordinate labels will reference.
-    lines, failures = parse(tail, start_seq=store.transcript_line_count(existing.id))
+    lines, failures = parse(tail, start_seq=start_seq)
     store.add_transcript_lines(existing.id, lines)
 
     report.files_appended += 1
@@ -2179,22 +2224,6 @@ def _append(
         {"path": str(path), "reason": f.reason} for f in failures
     )
     return True
-
-
-def _stored_plus(
-    store: Store, owner_id: UUID, existing: Transcript, tail: bytes
-) -> bytes:
-    """The whole file's bytes, for the new hash.
-
-    The hash covers the WHOLE file because that is what the next append
-    check compares against - it reads the first `bytes` bytes from disk and
-    expects this value. Fetching the stored content to compute it is the one
-    place an append pays for the bytes it avoided elsewhere; a running hash
-    stored alongside would avoid it and is a later optimisation, not a
-    correctness matter.
-    """
-    stored = store.transcript_content(existing.id, owner_id) or b""
-    return stored + tail
 ```
 
 Add the imports this needs at the top of the module: `Any` from `typing`,
