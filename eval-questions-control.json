@@ -1,24 +1,107 @@
 [
   {
-    "_comment": "Delete this row. The ones below are examples - replace them with ~15 of your own, then delete any you did not fill in. gold_id must be a real entry id: find one with `bag search <term> --json` and copy its \"id\". style is \"keyword\" (2-5 words, the terms you would actually type) or \"paraphrase\" (a sentence describing the problem, not its vocabulary). Write roughly half of each: the per-style tier table is only meaningful when both regimes are represented, and a control set that is all one style cannot check the generated set's other half.",
-    "question": "",
-    "gold_id": "",
-    "origin": "",
-    "source_title": "",
-    "style": "paraphrase"
-  },
-  {
-    "question": "<example, keyword style: two to five words you would really type>",
-    "gold_id": "<paste a real entry id here>",
-    "origin": "human",
-    "source_title": "<optional, for your own reference when reading results>",
+    "question": "dedupe both tiers run",
+    "gold_id": "01a073af-2d87-71ed-90c5-285b09d6602b",
+    "origin": "ingested",
+    "source_title": "Finding duplicate entries § Both tiers always run, and never merge into one list",
     "style": "keyword"
   },
   {
-    "question": "<example, paraphrase style: one sentence about the problem, avoiding the entry's own wording>",
-    "gold_id": "<paste a real entry id here>",
+    "question": "why was the character ceiling lowered back down instead of leaving the extra headroom in place",
+    "gold_id": "01a06f2f-ac9f-7685-bc62-284a1185d336",
+    "origin": "ingested",
+    "source_title": "Keeping the context block bounded as rules accumulate § The budget comes back down to 8,000",
+    "style": "paraphrase"
+  },
+  {
+    "question": "memory_runs table schema",
+    "gold_id": "01a073de-a946-71e3-85d1-005cae49abd9",
+    "origin": "ingested",
+    "source_title": "Making memory sync observable § The table",
+    "style": "keyword"
+  },
+  {
+    "question": "why do some entries come out with nothing recorded about which session produced them",
+    "gold_id": "01a06f08-b223-70ef-9e1f-3b382f5b8fdf",
+    "origin": "ingested",
+    "source_title": "remem - design § Provenance limitation",
+    "style": "paraphrase"
+  },
+  {
+    "question": "sync autocommit crashed row",
+    "gold_id": "01a073de-a94b-7402-82ea-dc8bdb1ae071",
+    "origin": "ingested",
+    "source_title": "Making memory sync observable § Sync moves to an autocommit session",
+    "style": "keyword"
+  },
+  {
+    "question": "I took a pile of notes out of the collection and what gets injected did not get any smaller, what did I misunderstand",
+    "gold_id": "01a054e1-d00e-70ba-b6d6-a7de70359e52",
     "origin": "human",
-    "source_title": "<optional, for your own reference when reading results>",
+    "source_title": "Against REMEM_MAX_CHARS, watch rules+header - not the total block size",
+    "style": "paraphrase"
+  },
+  {
+    "question": "hf model not found token",
+    "gold_id": "01a04ff7-1c5f-7046-85d4-c486ee46dcc1",
+    "origin": "human",
+    "source_title": "An invalid HF_TOKEN makes public HuggingFace repos report 'Model not found'",
+    "style": "keyword"
+  },
+  {
+    "question": "I corrected the reader, is there anything else owed to the rows that were already written by the broken one",
+    "gold_id": "01a06ed0-961c-76b5-8cd1-04aa0226e3bd",
+    "origin": "human",
+    "source_title": "Fixing a parser does not repair what the old parser already stored",
+    "style": "paraphrase"
+  },
+  {
+    "question": "too complex to verify worktree",
+    "gold_id": "01a044e9-1a5b-748b-b9ea-24901c29f94b",
+    "origin": "human",
+    "source_title": "A worktree-isolated Claude Code session refuses compound bash commands, not just git",
+    "style": "keyword"
+  },
+  {
+    "question": "which collection is each project set up to sync its memory files from, and why is one of them set up differently",
+    "gold_id": "01a06eb8-9cb2-7368-bf7b-e52d2f940b1d",
+    "origin": "agent",
+    "source_title": "remem memory collection query shapes",
+    "style": "paraphrase"
+  },
+  {
+    "question": "grafana url rigel cluster",
+    "gold_id": "01a06e97-3e05-75db-be2f-3607a03721f0",
+    "origin": "agent",
+    "source_title": "Observability architecture",
+    "style": "keyword"
+  },
+  {
+    "question": "is it worth asking someone I do not actually know to put me forward at their company",
+    "gold_id": "01a06e97-3a9b-734c-90fd-656defc32b6a",
+    "origin": "agent",
+    "source_title": "Outreach comfort",
+    "style": "paraphrase"
+  },
+  {
+    "question": "years of experience resume",
+    "gold_id": "01a0a5c8-269e-7597-b4ce-c4daee9a2fca",
+    "origin": "agent",
+    "source_title": "Avoid age discrimination framing",
+    "style": "keyword"
+  },
+  {
+    "question": "print a saved handoff",
+    "gold_id": "01a0a54c-5689-75f4-ae0d-4e81a92f5379",
+    "origin": "extracted",
+    "source_title": "`remem handoff read <topic>` does not exist",
+    "style": "keyword"
+  },
+  {
+    "question": "did the package release and the project rename both finish, or is some part of it still waiting on something",
+    "gold_id": "01a0a725-2b09-748c-86fe-4e4376f13071",
+    "origin": "extracted",
+    "source_title": "saddlebag 0.9.0 published: GitLab project renamed nighthawk-oss/remem -> nighthawk-oss/saddlebag, PyPI trusted publisher pending",
     "style": "paraphrase"
   }
 ]
