@@ -28,6 +28,8 @@ from saddlebag.domain import (
     Principal,
     Query,
     SessionRef,
+    Transcript,
+    TranscriptLine,
 )
 
 
@@ -106,6 +108,43 @@ class Store(Protocol):
         self, collection_id: UUID, entry_id: UUID, position: int, owner_id: UUID
     ) -> bool: ...
     def pinned_entries(self, collection_id: UUID, owner_id: UUID) -> list[Entry]: ...
+
+    # transcripts
+    #: Upsert by (owner, harness, session). Re-importing a session updates it
+    #: rather than creating a twin - session id is identity, not path.
+    def put_transcript(
+        self,
+        owner_id: UUID,
+        project: str,
+        harness: str,
+        session_id: str,
+        path: str,
+        content: bytes,
+        sha256: str,
+    ) -> Transcript: ...
+    def get_transcript(
+        self, owner_id: UUID, harness: str, session_id: str
+    ) -> Transcript | None: ...
+    #: The bytes, fetched deliberately and separately. `Transcript` does not
+    #: carry them: listing is common and a transcript is megabytes.
+    def transcript_content(
+        self, transcript_id: UUID, owner_id: UUID
+    ) -> bytes | None: ...
+    #: False when the ownership guard matched nothing - the same contract as
+    #: `pin` and `set_superseded`, and callers must check it.
+    def append_transcript(
+        self, transcript_id: UUID, owner_id: UUID, tail: bytes, sha256: str
+    ) -> bool: ...
+    #: Delete and rewrite every line. Safe by construction: the rows are
+    #: derived, and nothing may store anything only in them.
+    def replace_transcript_lines(
+        self, transcript_id: UUID, lines: list[TranscriptLine]
+    ) -> int: ...
+    def add_transcript_lines(
+        self, transcript_id: UUID, lines: list[TranscriptLine]
+    ) -> int: ...
+    def transcript_line_count(self, transcript_id: UUID) -> int: ...
+    def stored_transcripts(self, owner_id: UUID, project: str) -> list[Transcript]: ...
 
     # recording
     def set_record_enabled(

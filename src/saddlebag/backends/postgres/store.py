@@ -10,6 +10,7 @@ from uuid import UUID
 
 import psycopg
 from psycopg.rows import dict_row
+from psycopg.types.json import Jsonb
 
 from saddlebag.backends.postgres.sqltext import as_sql
 from saddlebag.domain import (
@@ -39,6 +40,8 @@ from saddlebag.domain import (
     Query,
     Scope,
     SessionRef,
+    Transcript,
+    TranscriptLine,
     new_id,
 )
 from saddlebag.store import NotOwner
@@ -311,6 +314,43 @@ def _row_to_ingest_run(row: dict[str, Any]) -> IngestRun:
         failures=list(row["failures"]),
         twins=list(row["twins"]),
         embed_error=row["embed_error"],
+    )
+
+
+def transcript_columns(alias: str = "t") -> str:
+    """The Transcript fields, in dataclass order. `content` is NOT here.
+
+    A module constant so `as_sql` interpolation stays an interpolation of our
+    own text, and so that listing transcripts can never accidentally select
+    megabytes of bytea.
+    """
+    cols = (
+        "id",
+        "owner_id",
+        "project",
+        "harness",
+        "session_id",
+        "path",
+        "bytes",
+        "sha256",
+        "first_seen",
+        "last_read",
+    )
+    return ", ".join(f"{alias}.{c}" for c in cols)
+
+
+def _row_to_transcript(row: dict[str, Any]) -> Transcript:
+    return Transcript(
+        id=row["id"],
+        owner_id=row["owner_id"],
+        project=row["project"],
+        harness=row["harness"],
+        session_id=row["session_id"],
+        path=row["path"],
+        bytes=row["bytes"],
+        sha256=row["sha256"],
+        first_seen=row["first_seen"],
+        last_read=row["last_read"],
     )
 
 
@@ -966,6 +1006,152 @@ class PostgresStore:
                 (collection_id, owner_id),
             )
             return [_row_to_entry(r) for r in cur.fetchall()]
+
+    # ---------------- transcripts ----------------
+
+    def put_transcript(
+        self,
+        owner_id: UUID,
+        project: str,
+        harness: str,
+        session_id: str,
+        path: str,
+        content: bytes,
+        sha256: str,
+    ) -> Transcript:
+        with self._cur() as cur:
+            cur.execute(
+                as_sql(f"""
+                insert into transcripts
+                  (id, owner_id, project, harness, session_id, path,
+                   content, bytes, sha256)
+                values (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                on conflict (owner_id, harness, session_id) do update
+                  set content = excluded.content,
+                      bytes = excluded.bytes,
+                      sha256 = excluded.sha256,
+                      path = excluded.path,
+                      project = excluded.project,
+                      last_read = clock_timestamp()
+                returning {transcript_columns("transcripts")}
+                """),
+                (
+                    new_id(),
+                    owner_id,
+                    project,
+                    harness,
+                    session_id,
+                    path,
+                    content,
+                    len(content),
+                    sha256,
+                ),
+            )
+            return _row_to_transcript(_one(cur))
+
+    def get_transcript(
+        self, owner_id: UUID, harness: str, session_id: str
+    ) -> Transcript | None:
+        with self._cur() as cur:
+            cur.execute(
+                as_sql(f"""
+                select {transcript_columns("t")} from transcripts t
+                 where t.owner_id = %s and t.harness = %s and t.session_id = %s
+                """),
+                (owner_id, harness, session_id),
+            )
+            row = cur.fetchone()
+            return _row_to_transcript(row) if row else None
+
+    def transcript_content(self, transcript_id: UUID, owner_id: UUID) -> bytes | None:
+        with self._cur() as cur:
+            cur.execute(
+                "select content from transcripts where id = %s and owner_id = %s",
+                (transcript_id, owner_id),
+            )
+            row = cur.fetchone()
+            return bytes(row["content"]) if row else None
+
+    def append_transcript(
+        self, transcript_id: UUID, owner_id: UUID, tail: bytes, sha256: str
+    ) -> bool:
+        """Append bytes in place, in one statement.
+
+        `content || %s` rather than read-modify-write: the bytes never travel
+        to Python and back, which for a 22MB transcript is the difference
+        between a cheap session-start refresh and an expensive one.
+        """
+        with self._cur() as cur:
+            cur.execute(
+                """
+                update transcripts
+                   set content = content || %s,
+                       bytes = bytes + %s,
+                       sha256 = %s,
+                       last_read = clock_timestamp()
+                 where id = %s and owner_id = %s
+                """,
+                (tail, len(tail), sha256, transcript_id, owner_id),
+            )
+            return cur.rowcount == 1
+
+    def replace_transcript_lines(
+        self, transcript_id: UUID, lines: list[TranscriptLine]
+    ) -> int:
+        with self._cur() as cur:
+            cur.execute(
+                "delete from transcript_lines where transcript_id = %s",
+                (transcript_id,),
+            )
+        return self.add_transcript_lines(transcript_id, lines)
+
+    def add_transcript_lines(
+        self, transcript_id: UUID, lines: list[TranscriptLine]
+    ) -> int:
+        if not lines:
+            return 0
+        with self._cur() as cur:
+            cur.executemany(
+                """
+                insert into transcript_lines
+                  (transcript_id, seq, type, uuid, occurred_at, raw)
+                values (%s, %s, %s, %s, %s, %s)
+                on conflict (transcript_id, seq) do nothing
+                """,
+                [
+                    (
+                        transcript_id,
+                        line.seq,
+                        line.type,
+                        line.uuid,
+                        line.occurred_at,
+                        Jsonb(line.raw),
+                    )
+                    for line in lines
+                ],
+            )
+        return len(lines)
+
+    def transcript_line_count(self, transcript_id: UUID) -> int:
+        with self._cur() as cur:
+            cur.execute(
+                "select count(*) as count from transcript_lines"
+                " where transcript_id = %s",
+                (transcript_id,),
+            )
+            return int(_one(cur)["count"])
+
+    def stored_transcripts(self, owner_id: UUID, project: str) -> list[Transcript]:
+        with self._cur() as cur:
+            cur.execute(
+                as_sql(f"""
+                select {transcript_columns("t")} from transcripts t
+                 where t.owner_id = %s and t.project = %s
+                 order by t.first_seen
+                """),
+                (owner_id, project),
+            )
+            return [_row_to_transcript(r) for r in cur.fetchall()]
 
     # ---------------- recording ----------------
 
