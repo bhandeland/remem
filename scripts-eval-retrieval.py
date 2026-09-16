@@ -54,6 +54,7 @@ from uuid import UUID
 
 from saddlebag.config import DEFAULT_EXTRACT_MODEL, load
 from saddlebag.domain import Entry, Query
+from saddlebag.embed import query_text
 from saddlebag.extract.claude_cli import build_command, build_env
 from saddlebag.services import search as search_service
 from saddlebag.session import open_session
@@ -637,7 +638,9 @@ def _run_variant(
     def semantic_ids() -> list[str]:
         if embedder is None:
             return []
-        vec = embedder.embed([q.question])[0]
+        # As the search service does it, or this variant measures a query
+        # convention the shipped tier does not use.
+        vec = embedder.embed([query_text(embedder.name, q.question)])[0]
         return _ids(
             store.semantic_search(
                 base, owner_id, vec, cfg.embed_model, cfg.semantic_threshold

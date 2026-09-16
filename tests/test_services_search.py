@@ -202,6 +202,25 @@ def test_an_embedder_that_raises_degrades_rather_than_failing_the_search() -> No
     assert [h.match for h in hits] == [Match.FUZZY]
 
 
+def test_the_semantic_tier_embeds_the_query_with_its_models_instruction() -> None:
+    """Passages are embedded bare and queries are not, for models trained
+    that way. The prefix is chosen by the embedder's name, so the stub
+    borrows a real one."""
+    seen: list[str] = []
+
+    class Recording(StubEmbedder):
+        name = "BAAI/bge-base-en-v1.5"
+
+        @override
+        def embed(self, texts: list[str]) -> list[list[float]]:
+            seen.extend(texts)
+            return super().embed(texts)
+
+    find(StubStore(), new_id(), Query(text="q"), embedder=Recording())
+
+    assert seen == ["Represent this sentence for searching relevant passages: q"]
+
+
 def test_empty_query_text_skips_both_fallbacks() -> None:
     # A listing query - no text, just filters. There is nothing to be
     # approximately like.

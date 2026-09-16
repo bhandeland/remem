@@ -23,6 +23,32 @@ from typing import Protocol, runtime_checkable
 DEFAULT_EMBED_MODEL = "BAAI/bge-small-en-v1.5"
 
 
+_BGE_QUERY = "Represent this sentence for searching relevant passages: "
+
+#: Models trained asymmetrically: passages embedded bare, queries behind an
+#: instruction. A fact about each model, so it lives beside the seam rather
+#: than in the search service, and it is keyed on the name recorded in
+#: `entry_vectors.model` so a stored vector and the query compared against it
+#: always come from the same convention. Passages are never prefixed - every
+#: model here documents a bare passage side - which is why `bag embed` and
+#: its existing vectors are untouched by this table.
+#:
+#: Measured 2026-09-16 on the 165-question retrieval instrument, semantic
+#: tier only: bge-small gains 11-4 with the instruction (p=0.118, not
+#: significant but not a loss), bge-base with it beats bge-small without it
+#: 18-4 (p=0.004).
+QUERY_PREFIXES: dict[str, str] = {
+    "BAAI/bge-small-en-v1.5": _BGE_QUERY,
+    "BAAI/bge-base-en-v1.5": _BGE_QUERY,
+    "BAAI/bge-large-en-v1.5": _BGE_QUERY,
+}
+
+
+def query_text(model: str, text: str) -> str:
+    """The text to embed for a search, as `model` expects to receive it."""
+    return QUERY_PREFIXES.get(model, "") + text
+
+
 @runtime_checkable
 class Embedder(Protocol):
     name: str

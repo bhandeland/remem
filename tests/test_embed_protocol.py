@@ -45,3 +45,21 @@ def test_unknown_backend_raises_embedder_unavailable():
     # The message has to name the install command. This error surfaces in a
     # cron log, where a bare "unavailable" costs an hour.
     assert "uv tool install" in str(exc.value)
+
+
+def test_a_bge_query_carries_its_retrieval_instruction():
+    """bge v1.5 was trained with this instruction on the QUERY side of short
+    query -> passage retrieval. Measured 2026-09-16: with it, bge-base beats
+    bge-small without it 18-4 on the retrieval instrument. Spelled literally
+    - it is the model's contract, not ours."""
+    from saddlebag.embed import query_text
+
+    assert query_text("BAAI/bge-base-en-v1.5", "why x") == (
+        "Represent this sentence for searching relevant passages: why x"
+    )
+
+
+def test_a_model_with_no_known_instruction_gets_the_query_unchanged():
+    from saddlebag.embed import query_text
+
+    assert query_text("fake-2", "why x") == "why x"

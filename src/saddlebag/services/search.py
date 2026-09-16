@@ -13,6 +13,7 @@ from saddlebag.embed import (
     Embedder,
     EmbedderUnavailable,
     load_embedder,
+    query_text,
 )
 
 MAX_LIMIT = 200
@@ -247,7 +248,7 @@ def _semantic(
     if embedder is None:
         return []
     try:
-        vectors = embedder.embed([text])
+        vectors = embedder.embed([query_text(embedder.name, text)])
     except Exception:
         # A missing model file, a corrupt download, an out-of-memory ONNX
         # session. All of them cost this tier and none of them should cost
