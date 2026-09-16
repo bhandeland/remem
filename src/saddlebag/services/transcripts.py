@@ -390,7 +390,7 @@ def _run_body(
             report.files_seen += 1
             try:
                 existing = store.get_transcript(
-                    owner_id, HARNESS, file.session_id, file.agent_id
+                    owner_id, HARNESS, file.session_id, agent_id=file.agent_id
                 )
                 did_work = _import_one(
                     store, owner_id, project, file, existing, report, recorded
@@ -524,7 +524,7 @@ def _import_meta(
     # A row stored this run is fetched again for its id. A new subagent is
     # the only case that reaches here, which is rare after the first import.
     row = existing or store.get_transcript(
-        owner_id, HARNESS, file.session_id, file.agent_id
+        owner_id, HARNESS, file.session_id, agent_id=file.agent_id
     )
     if row is None:
         # The transcript's own read failed and is already reported. Its

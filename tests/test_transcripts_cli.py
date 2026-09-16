@@ -387,12 +387,13 @@ def test_a_real_statement_failure_costs_only_its_own_file(
         owner_id: Any,
         harness: str,
         session_id: str,
-        agent_id: Any = None,
+        *,
+        agent_id: Any,
     ) -> Any:
         if session_id == "sess-bad":
             with self._conn.cursor() as cur:
                 cur.execute("select this_column_does_not_exist")
-        return real(self, owner_id, harness, session_id, agent_id)
+        return real(self, owner_id, harness, session_id, agent_id=agent_id)
 
     monkeypatch.setattr(PostgresStore, "get_transcript", bad_for_one)
 
@@ -404,7 +405,7 @@ def test_a_real_statement_failure_costs_only_its_own_file(
     conn = psycopg.connect(live_dsn)
     store = PostgresStore(conn)
     owner = store.ensure_principal("brandon")
-    got = store.get_transcript(owner.id, "claude-code", "sess-good")
+    got = store.get_transcript(owner.id, "claude-code", "sess-good", agent_id=None)
     run = store.latest_transcript_run(owner.id, PROJECT)
     conn.close()
     assert got is not None

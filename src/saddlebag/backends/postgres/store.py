@@ -1081,7 +1081,8 @@ class PostgresStore:
         path: str,
         content: bytes,
         sha256: str,
-        agent_id: str | None = None,
+        *,
+        agent_id: str | None,
     ) -> Transcript:
         with self._cur() as cur:
             cur.execute(
@@ -1133,7 +1134,8 @@ class PostgresStore:
         owner_id: UUID,
         harness: str,
         session_id: str,
-        agent_id: str | None = None,
+        *,
+        agent_id: str | None,
     ) -> Transcript | None:
         with self._cur() as cur:
             cur.execute(

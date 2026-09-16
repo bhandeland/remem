@@ -58,7 +58,9 @@ def test_import_stores_content_and_lines(
 
     assert report.files_new == 1
     assert report.lines_written == 2
-    stored = found(store.get_transcript(owner.id, transcripts.HARNESS, "s1"))
+    stored = found(
+        store.get_transcript(owner.id, transcripts.HARNESS, "s1", agent_id=None)
+    )
     assert store.transcript_line_count(stored.id) == 2
 
 
@@ -108,7 +110,9 @@ def test_an_appended_file_adds_only_the_new_lines(
 
     assert report.files_appended == 1
     assert report.lines_written == 1
-    stored = found(store.get_transcript(owner.id, transcripts.HARNESS, "s1"))
+    stored = found(
+        store.get_transcript(owner.id, transcripts.HARNESS, "s1", agent_id=None)
+    )
     assert store.transcript_line_count(stored.id) == 2
 
 
@@ -132,7 +136,9 @@ def test_append_keeps_seq_aligned_with_the_file_across_a_bad_line(
 
     transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
 
-    stored = found(store.get_transcript(owner.id, transcripts.HARNESS, "s1"))
+    stored = found(
+        store.get_transcript(owner.id, transcripts.HARNESS, "s1", agent_id=None)
+    )
     assert store.transcript_line_count(stored.id) == 2
     # The appended line is the file's THIRD line, seq 2 - not seq 1, which is
     # what a row-count-derived start would have produced.
@@ -157,7 +163,9 @@ def test_a_rewritten_file_rebuilds_its_lines(
     report = transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
 
     assert report.files_rebuilt == 1
-    stored = found(store.get_transcript(owner.id, transcripts.HARNESS, "s1"))
+    stored = found(
+        store.get_transcript(owner.id, transcripts.HARNESS, "s1", agent_id=None)
+    )
     assert store.transcript_line_count(stored.id) == 2
 
 
@@ -169,7 +177,9 @@ def test_a_shrunk_file_is_an_anomaly_and_is_not_followed(
     _write(tmp_path, "s1", [{"type": "user"}, {"type": "assistant"}])
     transcripts.designate(store, owner.id, "p", tmp_path)
     transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
-    before = found(store.get_transcript(owner.id, transcripts.HARNESS, "s1"))
+    before = found(
+        store.get_transcript(owner.id, transcripts.HARNESS, "s1", agent_id=None)
+    )
 
     _write(tmp_path, "s1", [{"type": "user"}])
 
@@ -177,7 +187,9 @@ def test_a_shrunk_file_is_an_anomaly_and_is_not_followed(
 
     assert len(report.anomalies) == 1
     assert report.anomalies[0]["stored"] == before.bytes
-    after = found(store.get_transcript(owner.id, transcripts.HARNESS, "s1"))
+    after = found(
+        store.get_transcript(owner.id, transcripts.HARNESS, "s1", agent_id=None)
+    )
     assert after.bytes == before.bytes
 
 
@@ -337,12 +349,10 @@ def test_one_failing_file_does_not_stop_the_others(
 
     real = store.get_transcript
 
-    def _flaky(
-        owner_id: Any, harness: str, session_id: str, agent_id: Any = None
-    ) -> Any:
+    def _flaky(owner_id: Any, harness: str, session_id: str, *, agent_id: Any) -> Any:
         if session_id.endswith("-bad"):
             raise RuntimeError(f"cannot read {session_id}")
-        return real(owner_id, harness, session_id, agent_id)
+        return real(owner_id, harness, session_id, agent_id=agent_id)
 
     monkeypatch.setattr(store, "get_transcript", _flaky)
 
@@ -354,7 +364,9 @@ def test_one_failing_file_does_not_stop_the_others(
     ]
     assert report.failures[0]["reason"] == "RuntimeError: cannot read a-bad"
     monkeypatch.undo()
-    assert found(store.get_transcript(owner.id, transcripts.HARNESS, "f-good"))
+    assert found(
+        store.get_transcript(owner.id, transcripts.HARNESS, "f-good", agent_id=None)
+    )
 
 
 def test_the_run_is_recorded_with_its_trigger(
@@ -406,7 +418,9 @@ def test_a_transcript_whose_derived_lines_vanished_is_rebuilt(
     _write(tmp_path, "s1", [{"type": "user"}, {"type": "assistant"}])
     transcripts.designate(store, owner.id, "p", tmp_path)
     transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
-    stored = found(store.get_transcript(owner.id, transcripts.HARNESS, "s1"))
+    stored = found(
+        store.get_transcript(owner.id, transcripts.HARNESS, "s1", agent_id=None)
+    )
 
     with conn.cursor() as cur:
         cur.execute(
@@ -445,7 +459,12 @@ def test_a_session_recorded_under_another_project_is_an_anomaly_and_is_still_sto
     assert anomaly["claiming"] == "A"
     assert anomaly["recorded"] == ["B"]
     assert report.files_new == 1
-    assert found(store.get_transcript(owner.id, transcripts.HARNESS, "s1")).bytes > 0
+    assert (
+        found(
+            store.get_transcript(owner.id, transcripts.HARNESS, "s1", agent_id=None)
+        ).bytes
+        > 0
+    )
 
 
 def test_a_session_recorded_under_the_claiming_project_is_not_an_anomaly(
@@ -481,8 +500,12 @@ def test_an_import_stores_every_subagent_file_byte_exact(
     report = transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
 
     assert report.files_new == 3
-    parent = found(store.get_transcript(owner.id, transcripts.HARNESS, "s1"))
-    child = found(store.get_transcript(owner.id, transcripts.HARNESS, "s1", "a1"))
+    parent = found(
+        store.get_transcript(owner.id, transcripts.HARNESS, "s1", agent_id=None)
+    )
+    child = found(
+        store.get_transcript(owner.id, transcripts.HARNESS, "s1", agent_id="a1")
+    )
     assert parent.id != child.id
     assert store.transcript_content(child.id, owner.id) == a1.read_bytes()
     # designate stores the resolved claim path, and macOS tmp paths may
@@ -491,7 +514,10 @@ def test_an_import_stores_every_subagent_file_byte_exact(
     assert Path(child.path) == a1.resolve()
     assert store.transcript_line_count(child.id) == 2
     # Identity came from the path's directories, never from its stem.
-    assert store.get_transcript(owner.id, transcripts.HARNESS, "agent-a1") is None
+    assert (
+        store.get_transcript(owner.id, transcripts.HARNESS, "agent-a1", agent_id=None)
+        is None
+    )
 
 
 def test_one_agent_id_under_two_sessions_is_stored_twice(
@@ -504,8 +530,12 @@ def test_one_agent_id_under_two_sessions_is_stored_twice(
     report = transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
 
     assert report.files_new == 2
-    one = found(store.get_transcript(owner.id, transcripts.HARNESS, "s1", "a1"))
-    two = found(store.get_transcript(owner.id, transcripts.HARNESS, "s2", "a1"))
+    one = found(
+        store.get_transcript(owner.id, transcripts.HARNESS, "s1", agent_id="a1")
+    )
+    two = found(
+        store.get_transcript(owner.id, transcripts.HARNESS, "s2", agent_id="a1")
+    )
     assert store.transcript_line_count(one.id) == 1
     assert store.transcript_line_count(two.id) == 2
 
@@ -522,7 +552,7 @@ def test_a_subagent_whose_parent_file_is_missing_is_still_stored(
 
     assert report.files_new == 1
     assert report.anomalies == []
-    assert store.get_transcript(owner.id, transcripts.HARNESS, "gone", "a1")
+    assert store.get_transcript(owner.id, transcripts.HARNESS, "gone", agent_id="a1")
 
 
 def test_an_unchanged_subagent_file_is_not_read_again(
@@ -566,7 +596,9 @@ def test_an_appended_subagent_file_adds_only_its_new_lines(
 
     assert report.files_appended == 1
     assert report.lines_written == 1
-    child = found(store.get_transcript(owner.id, transcripts.HARNESS, "s1", "a1"))
+    child = found(
+        store.get_transcript(owner.id, transcripts.HARNESS, "s1", agent_id="a1")
+    )
     assert store.transcript_content(child.id, owner.id) == path.read_bytes()
 
 
@@ -605,7 +637,9 @@ def test_a_subagent_of_a_session_recorded_elsewhere_is_an_anomaly_too(
 
 
 def _subagent_row(store: PostgresStore, owner: Principal, agent_id: str) -> Any:
-    return found(store.get_transcript(owner.id, transcripts.HARNESS, "s1", agent_id))
+    return found(
+        store.get_transcript(owner.id, transcripts.HARNESS, "s1", agent_id=agent_id)
+    )
 
 
 def test_a_new_subagent_stores_its_sidecar_byte_for_byte(
@@ -740,7 +774,9 @@ def test_a_session_file_never_gets_a_sidecar(
     report = transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
     assert report.metas_written == 0
     assert (
-        found(store.get_transcript(owner.id, transcripts.HARNESS, "s1")).has_meta
+        found(
+            store.get_transcript(owner.id, transcripts.HARNESS, "s1", agent_id=None)
+        ).has_meta
         is False
     )
 
@@ -758,7 +794,9 @@ def test_a_line_jsonb_refuses_does_not_stop_the_import(
 
     assert report.files_new == 2
     assert [f["path"] for f in report.failures] == [str(target)]
-    stored = found(store.get_transcript(owner.id, transcripts.HARNESS, "s1"))
+    stored = found(
+        store.get_transcript(owner.id, transcripts.HARNESS, "s1", agent_id=None)
+    )
     assert store.transcript_content(stored.id, owner.id) == target.read_bytes()
     assert store.transcript_line_count(stored.id) == 1
 
@@ -776,12 +814,10 @@ def test_a_failing_file_spends_the_refresh_budget(
     transcripts.designate(store, owner.id, "p", tmp_path)
     real = store.get_transcript
 
-    def _flaky(
-        owner_id: Any, harness: str, session_id: str, agent_id: Any = None
-    ) -> Any:
+    def _flaky(owner_id: Any, harness: str, session_id: str, *, agent_id: Any) -> Any:
         if session_id == "a-bad":
             raise RuntimeError("cannot read")
-        return real(owner_id, harness, session_id, agent_id)
+        return real(owner_id, harness, session_id, agent_id=agent_id)
 
     monkeypatch.setattr(store, "get_transcript", _flaky)
 

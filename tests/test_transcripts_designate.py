@@ -99,6 +99,7 @@ def test_undesignate_leaves_imported_transcripts_alone(
         str(tmp_path / "s1.jsonl"),
         content,
         sha256_hex(content),
+        agent_id=None,
     )
 
     transcripts.undesignate(store, owner.id, "p", tmp_path)

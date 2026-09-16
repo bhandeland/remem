@@ -125,14 +125,16 @@ class Store(Protocol):
         path: str,
         content: bytes,
         sha256: str,
-        agent_id: str | None = None,
+        *,
+        agent_id: str | None,
     ) -> Transcript: ...
     def get_transcript(
         self,
         owner_id: UUID,
         harness: str,
         session_id: str,
-        agent_id: str | None = None,
+        *,
+        agent_id: str | None,
     ) -> Transcript | None: ...
     #: The bytes, fetched deliberately and separately. `Transcript` does not
     #: carry them: listing is common and a transcript is megabytes.

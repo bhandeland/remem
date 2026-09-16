@@ -75,6 +75,7 @@ def test_put_transcript_round_trips_content_byte_for_byte(
         "/tmp/s1.jsonl",
         content,
         sha256_hex(content),
+        agent_id=None,
     )
     assert store.transcript_content(got.id, owner.id) == content
 
@@ -84,10 +85,17 @@ def test_put_transcript_is_idempotent_on_the_same_session(
 ) -> None:
     """Re-importing a session updates it rather than creating a twin."""
     first = store.put_transcript(
-        owner.id, "p", "claude-code", "s1", "/tmp/s1.jsonl", b"{}", "aaa"
+        owner.id, "p", "claude-code", "s1", "/tmp/s1.jsonl", b"{}", "aaa", agent_id=None
     )
     second = store.put_transcript(
-        owner.id, "p", "claude-code", "s1", "/tmp/s1.jsonl", b"{}{}", "bbb"
+        owner.id,
+        "p",
+        "claude-code",
+        "s1",
+        "/tmp/s1.jsonl",
+        b"{}{}",
+        "bbb",
+        agent_id=None,
     )
     assert first.id == second.id
     assert second.bytes == 4
@@ -107,6 +115,7 @@ def test_append_transcript_adds_bytes_without_rewriting(
         "/tmp/s1.jsonl",
         head,
         sha256_hex(head),
+        agent_id=None,
     )
     assert (
         store.append_transcript(t.id, owner.id, tail, sha256_hex(head + tail)) is True
@@ -119,7 +128,7 @@ def test_append_transcript_refuses_another_owner(
 ) -> None:
     """Ownership is enforced inside the store, never by callers."""
     t = store.put_transcript(
-        owner.id, "p", "claude-code", "s1", "/tmp/s1.jsonl", b"{}", "aaa"
+        owner.id, "p", "claude-code", "s1", "/tmp/s1.jsonl", b"{}", "aaa", agent_id=None
     )
     assert store.append_transcript(t.id, other.id, b"{}", "bbb") is False
 
@@ -128,7 +137,7 @@ def test_replace_transcript_lines_rebuilds_from_scratch(
     store: PostgresStore, owner: Principal
 ) -> None:
     t = store.put_transcript(
-        owner.id, "p", "claude-code", "s1", "/tmp/s1.jsonl", b"{}", "aaa"
+        owner.id, "p", "claude-code", "s1", "/tmp/s1.jsonl", b"{}", "aaa", agent_id=None
     )
     lines, _ = parse(b'{"type": "user"}\n{"type": "assistant"}\n')
     assert store.replace_transcript_lines(t.id, lines) == 2
@@ -143,7 +152,7 @@ def test_add_transcript_lines_continues_the_sequence(
     store: PostgresStore, owner: Principal
 ) -> None:
     t = store.put_transcript(
-        owner.id, "p", "claude-code", "s1", "/tmp/s1.jsonl", b"{}", "aaa"
+        owner.id, "p", "claude-code", "s1", "/tmp/s1.jsonl", b"{}", "aaa", agent_id=None
     )
     head, _ = parse(b'{"type": "user"}\n')
     store.replace_transcript_lines(t.id, head)
@@ -156,7 +165,14 @@ def test_stored_transcripts_lists_without_content(
     store: PostgresStore, owner: Principal
 ) -> None:
     store.put_transcript(
-        owner.id, "p", "claude-code", "s1", "/tmp/s1.jsonl", b"{}" * 100, "aaa"
+        owner.id,
+        "p",
+        "claude-code",
+        "s1",
+        "/tmp/s1.jsonl",
+        b"{}" * 100,
+        "aaa",
+        agent_id=None,
     )
     got = store.stored_transcripts(owner.id, "p")
     assert len(got) == 1
@@ -270,12 +286,26 @@ def test_a_second_put_under_a_different_project_does_not_re_home_a_transcript(
     """
     body = b'{"type": "user"}\n'
     first = store.put_transcript(
-        owner.id, "alpha", "claude-code", "s1", "/a/s1.jsonl", body, sha256_hex(body)
+        owner.id,
+        "alpha",
+        "claude-code",
+        "s1",
+        "/a/s1.jsonl",
+        body,
+        sha256_hex(body),
+        agent_id=None,
     )
 
     grown = body + b'{"type": "assistant"}\n'
     second = store.put_transcript(
-        owner.id, "beta", "claude-code", "s1", "/b/s1.jsonl", grown, sha256_hex(grown)
+        owner.id,
+        "beta",
+        "claude-code",
+        "s1",
+        "/b/s1.jsonl",
+        grown,
+        sha256_hex(grown),
+        agent_id=None,
     )
 
     assert second.id == first.id
@@ -297,6 +327,7 @@ def test_a_session_and_its_subagent_are_two_rows(
         "/x/s1.jsonl",
         b"parent\n",
         sha256_hex(b"parent\n"),
+        agent_id=None,
     )
     child = store.put_transcript(
         owner.id,
@@ -311,9 +342,13 @@ def test_a_session_and_its_subagent_are_two_rows(
     assert parent.id != child.id
     assert parent.agent_id is None
     assert child.agent_id == "a1"
-    assert found(store.get_transcript(owner.id, "claude-code", "s1")).id == parent.id
     assert (
-        found(store.get_transcript(owner.id, "claude-code", "s1", "a1")).id == child.id
+        found(store.get_transcript(owner.id, "claude-code", "s1", agent_id=None)).id
+        == parent.id
+    )
+    assert (
+        found(store.get_transcript(owner.id, "claude-code", "s1", agent_id="a1")).id
+        == child.id
     )
     assert store.transcript_content(parent.id, owner.id) == b"parent\n"
 
@@ -380,7 +415,14 @@ def test_a_second_session_row_with_no_agent_is_refused(
     silently loses its uniqueness. Raw SQL, because `put_transcript` would
     upsert and never show the constraint at all."""
     store.put_transcript(
-        owner.id, "p", "claude-code", "s1", "/x", b"a\n", sha256_hex(b"a\n")
+        owner.id,
+        "p",
+        "claude-code",
+        "s1",
+        "/x",
+        b"a\n",
+        sha256_hex(b"a\n"),
+        agent_id=None,
     )
     with pytest.raises(psycopg.errors.UniqueViolation):
         conn.execute(
@@ -396,7 +438,14 @@ def test_stored_transcripts_carry_the_agent(
     store: PostgresStore, owner: Principal
 ) -> None:
     store.put_transcript(
-        owner.id, "p", "claude-code", "s1", "/x", b"a\n", sha256_hex(b"a\n")
+        owner.id,
+        "p",
+        "claude-code",
+        "s1",
+        "/x",
+        b"a\n",
+        sha256_hex(b"a\n"),
+        agent_id=None,
     )
     store.put_transcript(
         owner.id,
@@ -428,7 +477,9 @@ def test_a_sidecar_round_trips_on_its_row(
     assert store.transcript_meta(row.id, owner.id) == meta
     assert store.transcript_meta(row.id, other.id) is None
     assert (
-        found(store.get_transcript(owner.id, "claude-code", "s1", "a1")).has_meta
+        found(
+            store.get_transcript(owner.id, "claude-code", "s1", agent_id="a1")
+        ).has_meta
         is True
     )
     # Re-storing the transcript leaves the sidecar alone.
