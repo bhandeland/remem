@@ -103,6 +103,30 @@ trigram similarity - and each runs **only when the one above returned nothing**,
 blended. Semantic sits above trigram because a query that matches nothing lexically is
 far more often a different wording than a typo.
 
+Measured 2026-09-15 against a 165-question instrument, and the numbers moved this
+reasoning rather than confirming it. The tier ORDER is a **cost** decision, not a
+ranking-quality one: the full cascade scores 59.4% hit@1 against semantic-only at
+58.2% - discordant 8-6, p=0.79, indistinguishable. What exact-first actually buys is
+that 47.3% of queries are answered before an embedder exists at all, and constructing
+one imports fastembed, builds an ONNX session and can download ~130MB. Against
+exact-only the chain is unambiguous, 41-0, p<0.0001. So do not defend the order on
+the grounds that it ranks better, and do not reorder it on the grounds that it does
+not - the argument is what the middle tier costs to reach.
+
+Never blending survives the measurement, but on the other of its two justifications.
+Reciprocal-rank fusion of exact and semantic scores 60.6% against the cascade's 59.4%
+- discordant 3-1, p=0.625, inert rather than harmful. Blending is therefore not
+declined because it trades precision away; it is declined because a fused result set
+makes `Hit.match` unanswerable and the rankings behind it are not comparable, which is
+the paragraph below.
+
+On this corpus the trigram tier never fires at all - zero answers out of 165 - and
+forced to run alone it is statistically indistinguishable from the exact tier (36.4%
+against 34.5%, discordant 25-22, p=0.77). Neither figure argues for moving it up: the
+instrument's questions are all well spelled, and typos are the tier's entire job, so
+its real workload is unmeasured here. Both are facts about this corpus on this date,
+not about the design.
+
 Every hit carries `Hit.match` (`Match.EXACT`/`SEMANTIC`/`FUZZY`) and every frontend must
 surface it - `~`/`?` markers in the CLI, `"match"` in `--json` and in MCP `recall`. An
 agent handed an unmarked approximate match cites it as certain. There is no compatibility
