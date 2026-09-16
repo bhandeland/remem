@@ -15,7 +15,10 @@ from saddlebag.store import Store
 
 __all__ = [
     "Candidate",
+    "PathRefused",
     "discover",
+    "designate",
+    "undesignate",
 ]
 
 #: The harness whose transcripts this reads. A constant rather than a
@@ -78,3 +81,47 @@ def discover(store: Store, owner_id: UUID, project: str, root: Path) -> list[Can
             )
         )
     return found
+
+
+class PathRefused(Exception):
+    """A directory cannot be claimed, and the message says why."""
+
+
+def designate(store: Store, owner_id: UUID, project: str, path: Path) -> str:
+    """Claim a transcript directory for a project. Fail-loud by design.
+
+    This is the second opt-in and it deserves saying plainly: the per-project
+    record gate governs recording going FORWARD, while claiming a directory
+    imports all of it - including sessions that predate the pipeline
+    entirely. Nothing auto-claims, which is why this refuses loudly rather
+    than skipping: it is the one moment there is a human to tell.
+
+    The path is stored absolute and resolved, deliberately unlike
+    `reingest designate`, which stores repo-relative paths against a git
+    root. These directories are outside any repository.
+    """
+    if not path.exists():
+        raise PathRefused(f"{path} does not exist")
+    if not path.is_dir():
+        raise PathRefused(f"{path} is not a directory")
+
+    absolute = str(path.resolve())
+    holder = store.add_transcript_path(owner_id, project, absolute)
+    if holder is not None:
+        raise PathRefused(
+            f"{absolute} is already claimed by project '{holder}' - "
+            f"a directory belongs to one project, or the same session would "
+            f"be filed under two"
+        )
+    return absolute
+
+
+def undesignate(store: Store, owner_id: UUID, project: str, path: Path) -> bool:
+    """Drop a claim. Transcripts already imported are NOT deleted.
+
+    Same reasoning as the import's refusal to follow a shrunk file: this
+    command stops future reading, and destroying stored sessions is a
+    separate, explicit act. `bag transcripts prune` is the thing that would
+    delete, and it does not exist yet.
+    """
+    return store.remove_transcript_path(owner_id, project, str(path.resolve()))
