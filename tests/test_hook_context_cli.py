@@ -38,9 +38,9 @@ def env(live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> str:
     monkeypatch.setenv("BAG_USER_ID", "brandon")
     monkeypatch.setenv("BAG_CONFIG", str(tmp_path / "none.toml"))
 
-    # `hook context` spawns three detached `bag` processes in a `finally`
-    # on every path (extraction, re-ingest and the memory sync). Pointed
-    # at this live test
+    # `hook context` spawns four detached `bag` processes in a `finally`
+    # on every path (extraction, re-ingest, the memory sync and the
+    # transcript refresh). Pointed at this live test
     # database, those processes outlive the test and race conftest's
     # truncate-cascade for locks on the same tables - a deadlock seen twice
     # on this branch. Every test gets the no-op stub by default; the tests
@@ -52,6 +52,7 @@ def env(live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> str:
     monkeypatch.setattr("saddlebag.hookio.spawn_process", no_spawn)
     monkeypatch.setattr("saddlebag.hookio.spawn_ingest", no_spawn)
     monkeypatch.setattr("saddlebag.hookio.spawn_memory", no_spawn)
+    monkeypatch.setattr("saddlebag.hookio.spawn_transcripts", no_spawn)
     return live_dsn
 
 
@@ -412,6 +413,53 @@ def test_context_spawns_the_memory_sync_even_when_no_project_resolves(
         return True
 
     monkeypatch.setattr("saddlebag.hookio.spawn_memory", record_spawn)
+    result = runner.invoke(app, ["hook", "context"], input="not json")
+    assert result.exit_code == 0
+    assert len(calls) == 1
+
+
+def test_context_spawns_the_transcript_refresh(
+    env: str, repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The fourth spawn, from the same `finally` and for the same reason.
+
+    A claimed transcript directory goes unread otherwise, and nothing but a
+    session start reliably happens. Whether the spawned refresh has anything
+    to do is its own question - a project with no claimed directory exits 0
+    having done nothing.
+    """
+    calls: list[dict[str, Any]] = []
+
+    def record_spawn(env: Mapping[str, str]) -> bool:
+        calls.append(dict(env))
+        return True
+
+    monkeypatch.setattr("saddlebag.hookio.spawn_transcripts", record_spawn)
+    _seed_kb(env)
+    result = runner.invoke(
+        app,
+        ["hook", "context"],
+        input=json.dumps({"cwd": str(repo), "session_id": "s1"}),
+    )
+    assert result.exit_code == 0
+    assert len(calls) == 1
+
+
+def test_hook_context_spawns_transcripts_even_when_it_returns_no_block(
+    env: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The call sits in a `finally`, like its three siblings.
+
+    The backlog is global: whether THIS payload produced a block says
+    nothing about whether there are transcripts waiting.
+    """
+    calls: list[dict[str, Any]] = []
+
+    def record_spawn(env: Mapping[str, str]) -> bool:
+        calls.append(dict(env))
+        return True
+
+    monkeypatch.setattr("saddlebag.hookio.spawn_transcripts", record_spawn)
     result = runner.invoke(app, ["hook", "context"], input="not json")
     assert result.exit_code == 0
     assert len(calls) == 1

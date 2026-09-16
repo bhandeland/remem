@@ -18,7 +18,12 @@ from saddlebag.agents.claude_code.adapter import ClaudeCodeAdapter
 from saddlebag.config import load
 from saddlebag.extract.base import CHILD_ENV_VAR
 from saddlebag.hookio import debug as _debug
-from saddlebag.hookio import spawn_ingest, spawn_memory, spawn_process
+from saddlebag.hookio import (
+    spawn_ingest,
+    spawn_memory,
+    spawn_process,
+    spawn_transcripts,
+)
 from saddlebag.services import context, record
 from saddlebag.session import open_session
 
@@ -88,6 +93,7 @@ def main() -> int:
         spawn_process(env)
         spawn_ingest(env)
         spawn_memory(env)
+        spawn_transcripts(env)
     except Exception:
         pass
     return 0

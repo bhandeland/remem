@@ -91,6 +91,26 @@ def spawn_memory(env: Mapping[str, str]) -> bool:
     return _spawn(["bag", "memory", "refresh"], env)
 
 
+def spawn_transcripts(env: Mapping[str, str]) -> bool:
+    """Start a detached `bag transcripts refresh` and return immediately.
+
+    The fourth spawn, from the same two places as the other three - Claude
+    Code's SessionStart and `bag hook context` - because that pair is the one
+    trigger all three harnesses share. Fixed once, rather than bolted onto
+    each new install path.
+
+    A project with no claimed transcript directory does nothing, so this is a
+    no-op for everyone who has not opted in. Separate from `spawn_memory` for
+    the same reason that one is separate from `spawn_ingest`: the jobs share
+    their trigger and nothing else, and neither should be able to delay the
+    other.
+
+    `bag transcripts refresh`, not `import`: the refresh is bounded before it
+    reads, and a session start must never pay for a 179MB backfill.
+    """
+    return _spawn(["bag", "transcripts", "refresh"], env)
+
+
 def _spawn(cmd: list[str], env: Mapping[str, str]) -> bool:
     """Launch a detached background command, or report that it could not be.
 

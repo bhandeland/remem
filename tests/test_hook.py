@@ -74,6 +74,7 @@ def test_injects_the_project_knowledge_base(
     monkeypatch.setattr("saddlebag.agents.claude_code.hook.spawn_process", no_spawn)
     monkeypatch.setattr("saddlebag.agents.claude_code.hook.spawn_ingest", no_spawn)
     monkeypatch.setattr("saddlebag.agents.claude_code.hook.spawn_memory", no_spawn)
+    monkeypatch.setattr("saddlebag.agents.claude_code.hook.spawn_transcripts", no_spawn)
 
     project_dir = tmp_path / "myproj"
     project_dir.mkdir()
@@ -143,6 +144,7 @@ def test_returns_empty_when_the_project_has_no_knowledge_base(
     monkeypatch.setattr("saddlebag.agents.claude_code.hook.spawn_process", no_spawn)
     monkeypatch.setattr("saddlebag.agents.claude_code.hook.spawn_ingest", no_spawn)
     monkeypatch.setattr("saddlebag.agents.claude_code.hook.spawn_memory", no_spawn)
+    monkeypatch.setattr("saddlebag.agents.claude_code.hook.spawn_transcripts", no_spawn)
     env = {
         "BAG_DSN": live_dsn,
         "BAG_USER_ID": "brandon",
@@ -226,6 +228,7 @@ def test_debug_names_the_missing_knowledge_base(
     monkeypatch.setattr("saddlebag.agents.claude_code.hook.spawn_process", no_spawn)
     monkeypatch.setattr("saddlebag.agents.claude_code.hook.spawn_ingest", no_spawn)
     monkeypatch.setattr("saddlebag.agents.claude_code.hook.spawn_memory", no_spawn)
+    monkeypatch.setattr("saddlebag.agents.claude_code.hook.spawn_transcripts", no_spawn)
     env = {
         "BAG_DSN": live_dsn,
         "BAG_USER_ID": "brandon",

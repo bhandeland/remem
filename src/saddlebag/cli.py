@@ -1249,6 +1249,12 @@ def hook_context(
         # ingest paths did. An undesignated project - the common case -
         # exits 0 having done nothing.
         hookio.spawn_memory(env)
+        # And the transcript refresh, fourth and last, from the same two
+        # places. It is bounded before it reads, so a session start never
+        # pays for the backfill a project's first `bag transcripts import`
+        # would - a project with no claimed transcript directory does
+        # nothing, same as the other three when their designation is absent.
+        hookio.spawn_transcripts(env)
 
     raise typer.Exit(0)
 

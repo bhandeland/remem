@@ -95,6 +95,9 @@ def test_session_start_spawns_the_sync(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "saddlebag.agents.claude_code.hook.spawn_process", already_spawned
     )
+    monkeypatch.setattr(
+        "saddlebag.agents.claude_code.hook.spawn_transcripts", already_spawned
+    )
     monkeypatch.setattr("sys.stdin", __import__("io").StringIO("{}"))
 
     assert hook.main() == 0

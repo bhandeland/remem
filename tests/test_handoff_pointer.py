@@ -25,7 +25,7 @@ def live(
         migrate(c)
         c.commit()
 
-    # session_start spawns three detached `bag` processes in a `finally` on
+    # session_start spawns four detached `bag` processes in a `finally` on
     # every path. Pointed at this live test database they outlive the test
     # and race conftest's truncate-cascade for table locks - the same
     # deadlock test_hook_context_cli.py's env fixture stubs against.
@@ -35,6 +35,7 @@ def live(
     monkeypatch.setattr("saddlebag.agents.claude_code.hook.spawn_process", no_spawn)
     monkeypatch.setattr("saddlebag.agents.claude_code.hook.spawn_ingest", no_spawn)
     monkeypatch.setattr("saddlebag.agents.claude_code.hook.spawn_memory", no_spawn)
+    monkeypatch.setattr("saddlebag.agents.claude_code.hook.spawn_transcripts", no_spawn)
     return {
         "BAG_DSN": live_dsn,
         "BAG_USER_ID": "brandon",
