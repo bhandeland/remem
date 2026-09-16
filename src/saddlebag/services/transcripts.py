@@ -313,8 +313,34 @@ def _import_one(
         return _store_whole(store, owner_id, project, path, report, new=True)
 
     plan = _plan_for(existing, path, disk_size, report)
-    if plan is ReadPlan.SKIP or plan is ReadPlan.SHRUNK:
+    if plan is ReadPlan.SHRUNK:
         return False
+    if plan is ReadPlan.SKIP:
+        # The derived-lines repair. `transcript_lines` is written in a
+        # separate transaction from the content (both CLI paths open with
+        # autocommit=True, which the run row genuinely needs), so a Ctrl-C
+        # during a long typed backfill - or a line Postgres refuses as
+        # jsonb, a NUL byte inside a string being the realistic one - can
+        # leave the bytes stored and the lines empty. Nothing else would
+        # ever notice: the file has not changed, so every later run stats
+        # it, classifies SKIP, and it stays empty forever. The source bytes
+        # are never at risk, but "derived and rebuildable" is only true if
+        # something actually rebuilds.
+        #
+        # The guard is `> 0` and deliberately NOT a comparison against an
+        # expected count. A torn final line and a `do nothing` seq conflict
+        # are both known, accepted fidelity warts that leave fewer rows
+        # than the file has lines, so an exact comparison would re-parse
+        # those files on EVERY run, forever. Zero is the only value that
+        # unambiguously means "the derived half never landed". Do not tidy
+        # this into the stricter check.
+        #
+        # It costs one indexed count per unchanged file, which is cheap
+        # beside the stat it sits next to, and it self-heals at the next
+        # session start with no human having to notice a silent condition.
+        if store.transcript_line_count(existing.id) > 0:
+            return False
+        return _store_whole(store, owner_id, project, path, report, new=False)
     if plan is ReadPlan.REBUILD:
         return _store_whole(store, owner_id, project, path, report, new=False)
     return _append(store, owner_id, existing, path, report)

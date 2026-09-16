@@ -317,3 +317,40 @@ def test_the_run_is_recorded_with_its_trigger(
     run = found(store.latest_transcript_run(owner.id, "p"))
     assert run.trigger is TranscriptTrigger.AUTO
     assert run.finished_at is not None
+
+
+def test_a_transcript_whose_derived_lines_vanished_is_rebuilt(
+    store: PostgresStore,
+    owner: Principal,
+    conn: psycopg.Connection[Any],
+    tmp_path: Path,
+) -> None:
+    """The bytes and the lines are written in separate transactions.
+
+    Both CLI paths open with autocommit=True - the run row needs it - so a
+    Ctrl-C during a long typed backfill, or a line Postgres refuses as
+    jsonb, can leave the content stored and `transcript_lines` empty.
+    Nothing would ever notice on its own: the file has not changed, so every
+    later run stats it, classifies SKIP, and it stays empty forever.
+
+    The rows are deleted here directly rather than by simulating a crash,
+    because the stranded STATE is what the repair keys on and how it came
+    about does not matter. Reverting the guard leaves the count at zero.
+    """
+    _write(tmp_path, "s1", [{"type": "user"}, {"type": "assistant"}])
+    transcripts.designate(store, owner.id, "p", tmp_path)
+    transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
+    stored = found(store.get_transcript(owner.id, transcripts.HARNESS, "s1"))
+
+    with conn.cursor() as cur:
+        cur.execute(
+            "delete from transcript_lines where transcript_id = %s", (stored.id,)
+        )
+    assert store.transcript_line_count(stored.id) == 0
+
+    # The file on disk is untouched, so this is the SKIP path - the only
+    # thing that can bring the lines back is the count guard.
+    report = transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
+
+    assert report.files_rebuilt == 1
+    assert store.transcript_line_count(stored.id) == 2
