@@ -34,7 +34,7 @@
 - Create: `src/saddlebag/backends/postgres/migrations/022_transcript_paths.sql`
 - Create: `src/saddlebag/backends/postgres/migrations/023_transcript_runs.sql`
 - Modify: `src/saddlebag/domain.py` (append new dataclasses and enum)
-- Test: `tests/test_migrations.py` (add one test), `tests/test_domain.py` (add one test)
+- Test: `tests/test_migrate.py` (add one test), `tests/test_domain.py` (add one test)
 
 **Interfaces:**
 - Consumes: nothing.
@@ -42,7 +42,7 @@
 
 - [ ] **Step 1: Write the failing migration test**
 
-Add to `tests/test_migrations.py`:
+Add to `tests/test_migrate.py`:
 
 ```python
 @pytest.mark.db
@@ -92,7 +92,7 @@ def test_transcript_lines_cascade_when_their_transcript_goes(
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `uv run pytest tests/test_migrations.py -k transcript -v`
+Run: `uv run pytest tests/test_migrate.py -k transcript -v`
 Expected: FAIL - `to_regclass` returns None, the table does not exist.
 
 - [ ] **Step 3: Write migration 020**
@@ -262,7 +262,7 @@ create index transcript_runs_latest_idx
 
 - [ ] **Step 7: Run the migration test to verify it passes**
 
-Run: `uv run pytest tests/test_migrations.py -k transcript -v`
+Run: `uv run pytest tests/test_migrate.py -k transcript -v`
 Expected: PASS, 2 tests.
 
 - [ ] **Step 8: Write the failing domain test**
@@ -366,7 +366,7 @@ class TranscriptRun:
 
 - [ ] **Step 11: Run both test files**
 
-Run: `uv run pytest tests/test_domain.py tests/test_migrations.py -k transcript -v`
+Run: `uv run pytest tests/test_domain.py tests/test_migrate.py -k transcript -v`
 Expected: PASS, 4 tests.
 
 - [ ] **Step 12: Run the gate**
@@ -377,7 +377,7 @@ Expected: exit 0. If pyrefly complains about `Any` in a signature, import it fro
 - [ ] **Step 13: Commit**
 
 ```bash
-git add src/saddlebag/backends/postgres/migrations/02*.sql src/saddlebag/domain.py tests/test_domain.py tests/test_migrations.py
+git add src/saddlebag/backends/postgres/migrations/02*.sql src/saddlebag/domain.py tests/test_domain.py tests/test_migrate.py
 git commit -m "Add transcript tables and domain types
 
 Four tables: transcripts (byte-exact source), transcript_lines (derived
@@ -2144,17 +2144,17 @@ sessions are already gone from disk."
 
 **Files:**
 - Modify: `src/saddlebag/cli.py`
-- Test: `tests/test_cli_transcripts.py`
+- Test: `tests/test_transcripts_cli.py`
 
 **Interfaces:**
 - Produces: `bag transcripts discover`, `bag transcripts designate <dir>`, `bag transcripts import`, `bag transcripts refresh`, `bag transcripts status [--json]`.
 
 - [ ] **Step 1: Write the failing tests**
 
-Create `tests/test_cli_transcripts.py`. These commit through `open_session()`,
+Create `tests/test_transcripts_cli.py`. These commit through `open_session()`,
 so they need the `live_dsn` fixture rather than `conn` - copy the environment
-setup verbatim from the top of `tests/test_cli_memory.py` (`grep -n "live_dsn"
-tests/test_cli_memory.py` shows how it points `BAG_DSN` at the scratch
+setup verbatim from the top of `tests/test_memory_cli.py` (`grep -n "live_dsn"
+tests/test_memory_cli.py` shows how it points `BAG_DSN` at the scratch
 database and stubs the spawn helpers).
 
 ```python
@@ -2256,12 +2256,12 @@ def test_status_json_has_the_same_keys_when_nothing_is_claimed(cli_env) -> None:
 `cli_env` is a fixture you write at the top of this file: it points `BAG_DSN`
 at `live_dsn`, creates the owner, stubs all four `hookio.spawn_*` helpers, and
 seeds a transcript directory with three files, two of whose session ids have
-recorded events. Copying `tests/test_cli_memory.py`'s equivalent is faster
+recorded events. Copying `tests/test_memory_cli.py`'s equivalent is faster
 than inventing one.
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `uv run pytest tests/test_cli_transcripts.py -v`
+Run: `uv run pytest tests/test_transcripts_cli.py -v`
 Expected: FAIL - `No such command 'transcripts'`.
 
 - [ ] **Step 3: Implement the sub-app and commands**
@@ -2318,9 +2318,9 @@ run.
 - [ ] **Step 4: Run the tests, the gate, and commit**
 
 ```bash
-uv run pytest tests/test_cli_transcripts.py -v
+uv run pytest tests/test_transcripts_cli.py -v
 make check
-git add src/saddlebag/cli.py tests/test_cli_transcripts.py
+git add src/saddlebag/cli.py tests/test_transcripts_cli.py
 git commit -m "Add the bag transcripts commands
 
 refresh is the spawned, silent, bounded half; import is the typed,
@@ -2334,7 +2334,7 @@ every state, like bag memory status and unlike bag reingest status."
 
 **Files:**
 - Modify: `src/saddlebag/hookio.py`, `src/saddlebag/agents/claude_code/hook.py`, `src/saddlebag/cli.py` (the `hook context` command)
-- Test: `tests/test_hookio.py`, `tests/test_hook_context.py` (extend both)
+- Test: `tests/test_hook_spawn_transcripts.py` (create, following `test_hook_spawn_process.py`), `tests/test_hook_context_cli.py` (extend)
 
 **Interfaces:**
 - Produces: `hookio.spawn_transcripts(env: Mapping[str, str]) -> bool`.
@@ -2376,7 +2376,7 @@ tests/` and add it everywhere it appears.
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `uv run pytest tests/test_hookio.py -k transcripts -v`
+Run: `uv run pytest tests/test_hook_spawn_transcripts.py -v`
 Expected: FAIL - `module 'saddlebag.hookio' has no attribute 'spawn_transcripts'`.
 
 - [ ] **Step 3: Implement**
