@@ -2497,6 +2497,48 @@ def transcripts_designate(
     )
 
 
+@transcripts_app.command("undesignate")
+def transcripts_undesignate(
+    directory: Annotated[str, typer.Argument(help="A claimed directory to release.")],
+    project: Annotated[Optional[str], typer.Option("--project")] = None,
+):
+    """Release a claimed transcript directory. Transcripts already imported
+    are NOT deleted.
+
+    The counterpart `designate` needs: a directory belongs to one project,
+    so `designate` refuses one another project already holds, and without
+    this the only way out of a claim made under the wrong project is
+    hand-written SQL. `bag transcripts import` reports a session whose
+    events were recorded under a different project as an anomaly - this is
+    how a user acts on that report.
+
+    Releasing stops future reading and nothing else. Destroying stored
+    sessions is a separate, explicit act and there is no command for it, so
+    releasing is safe - the echo says so, because someone who has just been
+    told their transcripts are filed under the wrong project needs to know
+    that before they type this.
+    """
+    resolved = _require_project(_resolve_project(project, False))
+    with _session() as s:
+        released = transcripts_service.undesignate(
+            s.store, s.owner.id, resolved, Path(directory)
+        )
+    if not released:
+        # Fail-loud: a person typed this, and "that project does not claim
+        # that directory" is a definite statement, not an "I could not
+        # tell". The likeliest cause is the claim being held by another
+        # project, which is exactly the case this command exists for.
+        typer.echo(
+            f"{resolved} does not claim {Path(directory).resolve()} - "
+            f"`bag transcripts status` names what it does claim."
+        )
+        raise typer.Exit(1)
+    typer.echo(
+        f"{resolved} released {Path(directory).resolve()}. Transcripts "
+        f"already imported are kept - this stops future reading only."
+    )
+
+
 @transcripts_app.command("status")
 def transcripts_status(
     project: Annotated[Optional[str], typer.Option("--project")] = None,

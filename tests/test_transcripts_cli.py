@@ -1,4 +1,5 @@
-"""CLI tests for `bag transcripts discover|designate|import|refresh|status`.
+"""CLI tests for `bag transcripts
+discover|designate|undesignate|import|refresh|status`.
 
 Same bootstrap as tests/test_memory_cli.py and tests/test_memory_refresh_cli.py:
 these commands commit through `open_session()`, so the schema has to be
@@ -148,6 +149,38 @@ def test_designate_echoes_the_backfill_command_and_its_cost(
     result = runner.invoke(app, ["transcripts", "designate", str(tmp_path)])
     assert result.exit_code == 0
     assert "bag transcripts import" in result.stdout
+
+
+def test_undesignate_releases_a_claim_and_keeps_what_was_imported(
+    cli_env: None, tmp_path: Path
+) -> None:
+    """The way out of a claim made under the wrong project.
+
+    `designate` refuses a directory another project holds, so without this
+    the only release was hand-written SQL. The echo has to say that stored
+    transcripts survive: a user reaching for this has usually just been told
+    their sessions are filed under the wrong project, and needs to know that
+    releasing the claim is not a delete.
+    """
+    assert (
+        runner.invoke(app, ["transcripts", "designate", str(tmp_path)]).exit_code == 0
+    )
+
+    result = runner.invoke(app, ["transcripts", "undesignate", str(tmp_path)])
+
+    assert result.exit_code == 0
+    assert "kept" in result.stdout
+    after = runner.invoke(app, ["transcripts", "status"])
+    assert "no directory claimed" in after.stdout
+
+
+def test_undesignate_exits_non_zero_when_nothing_was_claimed(
+    cli_env: None, tmp_path: Path
+) -> None:
+    """A person typed this, so "not claimed" is said, not swallowed."""
+    result = runner.invoke(app, ["transcripts", "undesignate", str(tmp_path)])
+    assert result.exit_code == 1
+    assert "does not claim" in result.stdout
 
 
 def test_designate_exits_non_zero_when_refused(cli_env: None) -> None:
