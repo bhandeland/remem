@@ -1,3 +1,4 @@
+import uuid
 from typing import Any
 
 import psycopg
@@ -8,7 +9,7 @@ from saddlebag.backends.postgres.migrate import (
     migrate,
     pending_versions,
 )
-from tests.conftest import one
+from tests.conftest import one, scalar
 
 pytestmark = pytest.mark.db
 
@@ -58,3 +59,44 @@ def test_generated_search_column_is_populated(conn: psycopg.Connection[Any]) -> 
         )
     )
     assert row[0] == 1
+
+
+def test_transcript_tables_exist_after_migrate(conn: psycopg.Connection[Any]) -> None:
+    migrate(conn)
+    for table in (
+        "transcripts",
+        "transcript_lines",
+        "transcript_paths",
+        "transcript_runs",
+    ):
+        assert scalar(conn.execute(f"select to_regclass('public.{table}')")) is not None
+
+
+def test_transcript_lines_cascade_when_their_transcript_goes(
+    conn: psycopg.Connection[Any],
+) -> None:
+    """The derived table must never outlive its source.
+
+    Nothing may store anything only in transcript_lines, and the cascade is
+    what makes that enforceable rather than merely intended.
+    """
+    migrate(conn)
+    owner = uuid.uuid4()
+    conn.execute(
+        "insert into principals (id, handle) values (%s, 'test')",
+        (owner,),
+    )
+    tid = uuid.uuid4()
+    conn.execute(
+        "insert into transcripts"
+        " (id, owner_id, project, harness, session_id, path, content, bytes, sha256)"
+        " values (%s, %s, 'p', 'claude-code', 's', '/tmp/s.jsonl', %s, 2, 'abc')",
+        (tid, owner, b"{}"),
+    )
+    conn.execute(
+        "insert into transcript_lines (transcript_id, seq, raw)"
+        " values (%s, 0, '{}'::jsonb)",
+        (tid,),
+    )
+    conn.execute("delete from transcripts where id = %s", (tid,))
+    assert scalar(conn.execute("select count(*) from transcript_lines")) == 0

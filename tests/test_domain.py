@@ -1,3 +1,4 @@
+from dataclasses import fields
 from uuid import UUID
 
 from saddlebag.domain import (
@@ -10,6 +11,8 @@ from saddlebag.domain import (
     PrincipalKind,
     Query,
     Scope,
+    Transcript,
+    TranscriptTrigger,
     new_id,
 )
 
@@ -76,3 +79,18 @@ def test_query_origins_are_not_shared_between_instances():
     a, b = Query(), Query()
     a.origins.append(Origin.EXTRACTED)
     assert b.origins == []
+
+
+def test_transcript_trigger_values_match_the_migration_check() -> None:
+    """The check constraint in 023 allows exactly these two strings."""
+    assert {str(t) for t in TranscriptTrigger} == {"auto", "manual"}
+
+
+def test_transcript_does_not_carry_its_content() -> None:
+    """Listing transcripts must never drag 156MB through memory.
+
+    `content` is fetched deliberately, by its own store call, and only when
+    something is about to parse it. A field here would make every list
+    operation pay for every byte.
+    """
+    assert "content" not in {f.name for f in fields(Transcript)}

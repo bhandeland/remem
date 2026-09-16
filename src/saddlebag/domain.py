@@ -473,6 +473,75 @@ class ProvenanceRow:
     present: bool
 
 
+class TranscriptTrigger(StrEnum):
+    """Who started an import. See transcript_runs.trigger."""
+
+    AUTO = "auto"
+    MANUAL = "manual"
+
+
+@dataclass(slots=True)
+class Transcript:
+    """A stored session transcript, without its bytes.
+
+    `content` is deliberately absent: a transcript is megabytes, listing them
+    is common, and reading the bytes is a separate store call made only when
+    something is about to parse them.
+    """
+
+    id: UUID
+    owner_id: UUID
+    project: str
+    harness: str
+    session_id: str
+    path: str
+    bytes: int
+    sha256: str
+    first_seen: datetime
+    last_read: datetime
+
+
+@dataclass(slots=True)
+class TranscriptLine:
+    """One parsed JSONL line. Derived, and rebuildable from the source."""
+
+    seq: int
+    type: str | None
+    uuid: str | None
+    occurred_at: datetime | None
+    raw: dict[str, Any]
+
+
+@dataclass(slots=True)
+class TranscriptPath:
+    """A directory a project claims. Absolute, as the user gave it."""
+
+    owner_id: UUID
+    project: str
+    path: str
+    added_at: datetime
+
+
+@dataclass(slots=True)
+class TranscriptRun:
+    """One import invocation. `finished_at` None means it died mid-run."""
+
+    id: UUID
+    owner_id: UUID
+    project: str
+    trigger: TranscriptTrigger
+    started_at: datetime
+    finished_at: datetime | None
+    files_seen: int
+    files_new: int
+    files_appended: int
+    files_rebuilt: int
+    lines_written: int
+    bytes_written: int
+    anomalies: list[dict[str, Any]]
+    failures: list[dict[str, Any]]
+
+
 @dataclass(slots=True)
 class SessionRef:
     """A session with events, as the idle trigger sees it.
