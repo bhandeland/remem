@@ -154,3 +154,65 @@ def test_refresh_survives_a_library_calling_sys_exit(
     monkeypatch.setattr(transcripts, "run", boom)
     result = runner.invoke(app, ["transcripts", "refresh"])
     assert result.exit_code == 0
+
+
+def test_import_records_a_crashed_run_rather_than_losing_it(
+    cli_env: None, monkeypatch: pytest.MonkeyPatch, live_dsn: str, tmp_path: Path
+) -> None:
+    """Pins `autocommit=True` on `bag transcripts import`'s session.
+
+    Without it, a mid-run failure poisons the ONE transaction the session
+    holds open: `run()`'s `finally` then tries to UPDATE the started row,
+    which raises `InFailedSqlTransaction` in place of the original error -
+    and psycopg's own rollback on the way out discards the started row
+    along with everything else. "Crashed" becomes indistinguishable from
+    "never ran", which is the entire reason the row exists. With
+    `autocommit=True` each statement is durable on its own, so the started
+    row survives and the finishing UPDATE still runs after the failure.
+
+    `transcripts.run` writes no row at all for a project with no claim, so
+    this test claims a real directory holding one file first - otherwise the
+    failure below would fire before a row was ever started, and the test
+    would pass or fail independently of `autocommit`, proving nothing.
+
+    The store method below is monkeypatched to run genuinely bad SQL,
+    rather than just raise a plain Python exception - only a real
+    statement failure reproduces the poisoning above, which is exactly
+    what this test needs to tell the two session modes apart.
+    """
+    from saddlebag.backends.postgres.store import PostgresStore
+
+    claimed = tmp_path / "claimed"
+    claimed.mkdir()
+    (claimed / "sess-1.jsonl").write_bytes(
+        json.dumps({"type": "user"}).encode() + b"\n"
+    )
+
+    conn: psycopg.Connection[Any] = psycopg.connect(live_dsn)
+    store = PostgresStore(conn)
+    owner = store.ensure_principal("brandon")
+    store.add_transcript_path(owner.id, PROJECT, str(claimed))
+    conn.commit()
+    conn.close()
+
+    def boom(
+        self: PostgresStore, owner_id: object, harness: object, session_id: object
+    ) -> None:
+        with self._conn.cursor() as cur:
+            cur.execute("select this_column_does_not_exist")
+        return None  # unreachable - the execute above always raises
+
+    monkeypatch.setattr(PostgresStore, "get_transcript", boom)
+
+    result = runner.invoke(app, ["transcripts", "import"])
+    assert result.exit_code != 0
+
+    conn = psycopg.connect(live_dsn)
+    store = PostgresStore(conn)
+    owner = store.ensure_principal("brandon")
+    run = store.latest_transcript_run(owner.id, PROJECT)
+    conn.close()
+
+    assert run is not None
+    assert run.finished_at is not None
+    assert any(f.get("path") == "*" for f in run.failures)
