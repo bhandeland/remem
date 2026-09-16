@@ -1216,13 +1216,40 @@ def test_event_session_ids_are_what_prove_a_directory_belongs_to_a_project(
     a session id, and events already record which project a session belongs
     to, so ownership is proven rather than guessed from a directory slug.
     """
-    store.record_event(...)  # use the existing event-recording store method
+    record_event_for(store, owner, project="p", session_id="session-1")
     assert "session-1" in store.event_session_ids(owner.id, "p")
 ```
 
-Replace the `store.record_event(...)` line with the real call - find it with
-`grep -n "def record_event\|def put_event" src/saddlebag/store.py` and use the
-existing signature.
+Define `record_event_for` at the top of the test file:
+
+```python
+def record_event_for(
+    store: PostgresStore, owner: Principal, *, project: str, session_id: str
+) -> None:
+    """One recorded event for a session, which is all discovery needs.
+
+    Discovery proves a directory belongs to a project by intersecting
+    recorded session ids with transcript filenames, so the only field that
+    matters here is `session_id`. Everything else is the shape `Event`
+    requires.
+    """
+    store.put_event(
+        Event(
+            id=new_id(),
+            owner_id=owner.id,
+            project=project,
+            harness="claude-code",
+            session_id=session_id,
+            kind=EventKind.TOOL_CALL,
+            tool="Bash",
+            payload={"command": "ls"},
+            occurred_at=datetime(2026, 9, 15, tzinfo=UTC),
+        )
+    )
+```
+
+Imports it needs: `from datetime import UTC, datetime`, and from
+`saddlebag.domain`: `Event`, `EventKind`, `Principal`, `new_id`.
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -1438,8 +1465,36 @@ def test_discover_cannot_see_a_directory_with_no_recorded_sessions(
     assert transcripts.discover(store, owner.id, "p", tmp_path) == []
 ```
 
-Define `record_event_for` at the top of the file as a small helper calling the
-existing store event-recording method, so the four tests share it.
+Define `record_event_for` at the top of the file, so the four tests share it:
+
+```python
+def record_event_for(
+    store: PostgresStore, owner: Principal, *, project: str, session_id: str
+) -> None:
+    """One recorded event for a session, which is all discovery needs.
+
+    Discovery proves a directory belongs to a project by intersecting
+    recorded session ids with transcript filenames, so the only field that
+    matters here is `session_id`. Everything else is the shape `Event`
+    requires.
+    """
+    store.put_event(
+        Event(
+            id=new_id(),
+            owner_id=owner.id,
+            project=project,
+            harness="claude-code",
+            session_id=session_id,
+            kind=EventKind.TOOL_CALL,
+            tool="Bash",
+            payload={"command": "ls"},
+            occurred_at=datetime(2026, 9, 15, tzinfo=UTC),
+        )
+    )
+```
+
+Imports it needs: `from datetime import UTC, datetime`, and from
+`saddlebag.domain`: `Event`, `EventKind`, `Principal`, `new_id`.
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -2590,6 +2645,10 @@ def test_status_counts_the_backlog(store, owner, tmp_path: Path) -> None:
         (tmp_path / f"s{i}.jsonl").write_bytes(b'{"type": "user"}\n')
     transcripts.designate(store, owner.id, "p", tmp_path)
     assert transcripts.status(store, owner.id, "p", tmp_path).backlog == 3
+
+
+# `record_event_for` is the same helper Task 5's test file defines - copy it
+# here rather than importing across test files.
 
 
 def test_status_counts_sessions_whose_transcript_is_gone(
