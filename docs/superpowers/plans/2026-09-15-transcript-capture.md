@@ -811,12 +811,12 @@ def test_append_transcript_adds_bytes_without_rewriting(store, owner) -> None:
     assert store.transcript_content(t.id, owner.id) == head + tail
 
 
-def test_append_transcript_refuses_another_owner(store, owner, other_owner) -> None:
+def test_append_transcript_refuses_another_owner(store, owner, other) -> None:
     """Ownership is enforced inside the store, never by callers."""
     t = store.put_transcript(
         owner.id, "p", "claude-code", "s1", "/tmp/s1.jsonl", b"{}", "aaa"
     )
-    assert store.append_transcript(t.id, other_owner.id, b"{}", "bbb") is False
+    assert store.append_transcript(t.id, other.id, b"{}", "bbb") is False
 
 
 def test_replace_transcript_lines_rebuilds_from_scratch(store, owner) -> None:
@@ -852,9 +852,29 @@ def test_stored_transcripts_lists_without_content(store, owner) -> None:
     assert not hasattr(got[0], "content")
 ```
 
-If `tests/` has no shared `store` / `owner` / `other_owner` fixtures, copy the
-construction used by the nearest existing store test file (`grep -rn "def store"
-tests/conftest.py tests/test_store*.py`) rather than inventing new ones.
+`store`, `owner` and `other` are NOT in conftest - every store test file
+defines its own, and they look like this (copy verbatim from
+`tests/test_store_ingest_runs.py`):
+
+```python
+pytestmark = pytest.mark.db
+
+
+@pytest.fixture
+def store(conn: psycopg.Connection[Any]) -> PostgresStore:
+    migrate(conn)
+    return PostgresStore(conn)
+
+
+@pytest.fixture
+def owner(store: PostgresStore) -> Principal:
+    return store.ensure_principal("brandon")
+
+
+@pytest.fixture
+def other(store: PostgresStore) -> Principal:
+    return store.ensure_principal("someone-else")
+```
 
 - [ ] **Step 2: Run to verify it fails**
 
