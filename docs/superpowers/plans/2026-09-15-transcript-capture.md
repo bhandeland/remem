@@ -2491,9 +2491,28 @@ def test_hook_context_spawns_transcripts_even_when_it_returns_no_block(...) -> N
 **Every test whose code path reaches a spawn helper must stub it.** A real
 detached `bag` at `live_dsn` outlives the test and deadlocks conftest's
 truncate. This rule already exists for `spawn_process`, `spawn_ingest` and
-`spawn_memory`; `spawn_transcripts` is the fourth, and any existing test that
-stubs the first three must now stub this one too - `grep -rn "spawn_process"
-tests/` and add it everywhere it appears.
+`spawn_memory`; `spawn_transcripts` is the fourth.
+
+These are the files that already stub `spawn_memory`, and every one of them
+needs `spawn_transcripts` stubbed alongside it:
+
+- `tests/test_handoff_pointer.py`
+- `tests/test_hook.py`
+- `tests/test_hook_context_cli.py`
+- `tests/test_hook_spawn_ingest.py`
+- `tests/test_hook_spawn_memory.py`
+
+Verify none were missed before committing:
+
+```bash
+grep -rln --include="*.py" "spawn_memory" tests/ | while read f; do
+  grep -q "spawn_transcripts" "$f" || echo "MISSING stub: $f"
+done
+```
+
+That loop printing nothing is the check. A missed stub does not fail loudly -
+it launches a real detached `bag` against the test database, which outlives
+the test and deadlocks conftest's truncate on some later, unrelated run.
 
 - [ ] **Step 2: Run to verify it fails**
 
