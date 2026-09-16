@@ -116,11 +116,24 @@ designation is the deliberate, separate opt-in for *backfill*. Nothing
 auto-claims, and `discover` never writes, precisely so that widening scope
 is always a human act.
 
-Where a session has recorded events, the import asserts the claiming project
-and the recorded project agree, and reports a conflict if they do not. A
-directory can hold sessions from more than one project if the working
-directory moved, and guessing there would file traces under the wrong
-project silently.
+Where a session has recorded events, the import checks that the claiming
+project and the recorded project agree, and **reports a conflict as an
+anomaly while storing the file anyway**. A directory can hold sessions from
+more than one project if the working directory moved, and guessing there
+would file traces under the wrong project silently. Refusing to store them
+is the worse answer, though: the bytes are the scarce thing here - a session
+Claude Code has since rotated away cannot be fetched again - so refusing
+would lose data permanently to protect a label that a human can correct
+afterwards. The conflict is named in the run row and on stderr, and
+`bag transcripts undesignate` is how the claim is released.
+
+The label is made **stable** rather than merely reported: `put_transcript`
+deliberately does not carry `project = excluded.project` through its `on
+conflict` clause, so a stored transcript keeps the project it was first
+filed under. Overwriting it re-homed transcripts with nothing recorded
+anywhere, and because `stored_transcripts`, the backlog and `status` are all
+project-scoped, the move was invisible from both sides - one project's
+counts quietly dropped and the other's quietly rose.
 
 Paths are stored **absolute, as given** - deliberately unlike `reingest
 designate`, which stores repo-relative and resolves against the git root.
@@ -320,6 +333,20 @@ future caller record identically - the last of those being the caller with
 no terminal, and the reason the table is built before it exists. One row per
 project. A `--dry-run` writes none, because a row for it would make "last
 run" describe a state that never existed.
+
+A project with **no claimed directory writes no row at all** - not even one
+recording that nothing happened. The spawned refresh fires at every session
+start, for whatever project the session is in, and most projects will never
+claim a transcript directory: without this, every one of those sessions
+would leave a `transcript_runs` row, forever, and the table would be mostly
+a log of the feature being unused. It is the same contract `bag memory
+refresh` holds for an undesignated project - the common case must cost
+nothing and record nothing. A project that *has* claimed a directory still
+gets a row on every run, including one where the directory has since been
+deleted: that project opted in, and a reader needs to see its state,
+including that the claim has gone missing. Whoever designs a fifth spawned
+refresh should inherit this rather than rediscover it; it is the difference
+between a table that says what happened and one nobody reads.
 
 Both commands open with `autocommit=True`, like `bag memory sync` and `bag
 reingest run`: the started row must commit **before any file is read**, or a
