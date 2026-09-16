@@ -63,10 +63,30 @@ def write_subagent(
 def write_tool_result(directory: Path, session_id: str) -> Path:
     """`<directory>/<session_id>/tool-results/hook-...-stdout.txt`.
 
-    The one other thing Claude Code writes below a session directory. Not a
-    transcript; nothing may import it.
+    One of two other things Claude Code writes below a session directory.
+    Not a transcript; nothing may import it.
     """
     target = directory / session_id / "tool-results" / "hook-0000-stdout.txt"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("hook output\n")
+    return target
+
+
+def write_subagent_meta(directory: Path, session_id: str, agent_id: str) -> Path:
+    """`<directory>/<session_id>/subagents/agent-<agent_id>.meta.json`.
+
+    Claude Code writes one beside every subagent transcript; it describes
+    the subagent; it is not a transcript.
+    """
+    target = directory / session_id / "subagents" / f"agent-{agent_id}.meta.json"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        json.dumps(
+            {
+                "agentType": "implementer",
+                "description": "Implement Task 1",
+                "spawnDepth": 0,
+            }
+        )
+    )
     return target

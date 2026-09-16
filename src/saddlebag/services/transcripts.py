@@ -104,15 +104,17 @@ def transcript_files(directory: Path) -> list[TranscriptFile]:
     """Every transcript in a claimed directory, sessions and subagents both.
 
     The ONLY place that knows the layout. The first version of this feature
-    globbed `*.jsonl` in three places, none of them recursive, and all
-    three were blind to `<session>/subagents/agent-<id>.jsonl` - more bytes
+    globbed `*.jsonl` in four places, none of them recursive, and all
+    four were blind to `<session>/subagents/agent-<id>.jsonl` - more bytes
     than the sessions themselves, and the only copy of those conversations
     (the parent transcript holds none of their lines). One owner is what
     stops a fourth caller reintroducing the blind spot.
 
     `tool-results/` sits beside `subagents/` and is hook stdout, not a
     transcript, so the subagent pattern is anchored on its directory name
-    rather than recursing.
+    rather than recursing. `agent-<id>.meta.json` sits beside each subagent
+    transcript and is not matched - capturing it is an open decision, not a
+    rejection.
 
     Sorted on identity, not on the Path: `Path` ordering compares parts, so
     `s1` sorts before `s1.jsonl` and every subagent would come ahead of its

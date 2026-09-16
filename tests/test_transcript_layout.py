@@ -5,7 +5,12 @@ from __future__ import annotations
 from pathlib import Path
 
 from saddlebag.services import transcripts
-from tests.transcript_tree import write_session, write_subagent, write_tool_result
+from tests.transcript_tree import (
+    write_session,
+    write_subagent,
+    write_subagent_meta,
+    write_tool_result,
+)
 
 
 def _ids(directory: Path) -> list[tuple[str, str | None]]:
@@ -70,3 +75,13 @@ def test_tool_results_and_memory_are_not_transcripts(tmp_path: Path) -> None:
 
 def test_a_missing_directory_has_no_transcripts(tmp_path: Path) -> None:
     assert transcripts.transcript_files(tmp_path / "absent") == []
+
+
+def test_a_subagent_sidecar_is_not_a_transcript(tmp_path: Path) -> None:
+    write_session(tmp_path, "s1")
+    path = write_subagent(tmp_path, "s1", "a1")
+    sidecar = write_subagent_meta(tmp_path, "s1", "a1")
+    files = transcripts.transcript_files(tmp_path)
+    assert _ids(tmp_path) == [("s1", None), ("s1", "a1")]
+    assert sidecar not in [f.path for f in files]
+    assert files[1].path == path

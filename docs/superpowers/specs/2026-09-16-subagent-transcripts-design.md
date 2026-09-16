@@ -49,9 +49,16 @@ Established by reading every file, not by sampling:
 - A subagent directory sits inside its parent's session directory, which
   sits inside the claimed directory. A claim therefore already covers it,
   and it belongs to the claiming project with no further evidence needed.
-- The only other thing below a session directory is `tool-results/`: 95
-  `.txt` files, 3.9MB, of hook stdout. Not a transcript, not JSONL, out of
-  scope.
+- `tool-results/`: 95 `.txt` files, 3.9MB, of hook stdout. Not a
+  transcript, not JSONL, out of scope.
+- `agent-<agent-id>.meta.json` beside each subagent transcript: 428
+  files, 107KB, one per transcript (one transcript has none). JSON
+  naming the subagent's `agentType`, `description`, `model` and
+  sometimes the parent's `toolUseId` - for some subagents the only
+  record of what they were for. Missed by the first survey of this
+  design, which filtered on the `agent-` prefix and so never saw a
+  second suffix. Not captured by this amendment; see "What this does
+  not do".
 
 ## Data model
 
@@ -129,7 +136,8 @@ It returns `<dir>/*.jsonl` (agent `None`) and
 name, agent from the stem minus `agent-`), sorted so a parent precedes its
 own subagents. Every caller that globbed goes through it - `run`,
 `discover`, `status` - so the blind spot cannot come back through one
-caller that was missed.
+caller that was missed. The `agent-<id>.meta.json` sidecar is also not
+matched, because the pattern is anchored on `.jsonl`.
 
 **Identity is read from the path, never from the contents.** A refresh must
 classify a file from a stat, before any read, and the path agreed with the
@@ -185,6 +193,11 @@ since subagent files add no evidence of ownership. `Candidate` gains
 `subagents`, because `total` exists to warn that a claim imports all of a
 directory, and subagent files are now part of that.
 
+A directory whose sessions' own `.jsonl` files are all gone, leaving only
+subagent files, is never proposed - `matched` counts parent files - and so
+can only be claimed by someone who knows it exists, the same floor as a
+directory with no recorded sessions.
+
 ## Testing
 
 The previous fixtures built only flat directories - the same assumption the
@@ -234,7 +247,11 @@ model, then the merge decision.
 
 ## What this does not do
 
-- No `tool-results/` capture.
+- No `tool-results/` capture, and no capture of `agent-<id>.meta.json`
+  sidecars. The sidecars are the stronger candidate - small, irreplaceable,
+  and descriptive of the subagent - and are an open decision: storing them
+  needs a nullable column on the subagent's row (migration 025) and a
+  re-read rule for rows imported before it.
 - No parent linkage beyond the shared `session_id`, and no rendering of a
   subagent conversation inline into its parent's.
 - No change to discovery's proof, the claim model, redaction, or the

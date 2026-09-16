@@ -545,7 +545,7 @@ claims with their evidence and writes nothing; `bag transcripts designate
 Code writes `<session id>/subagents/agent-<agent id>.jsonl` for every
 subagent the session dispatched, and those are the only copy of those
 conversations - the parent transcript holds none of their lines. The first
-import globbed `*.jsonl` non-recursively in three places and reported
+import globbed `*.jsonl` non-recursively in four places and reported
 "clean, backlog 0" while leaving more bytes on disk than it stored.
 `transcripts.transcript_files()` is now the one owner of the layout, and
 nothing may derive identity from `path.stem`: for a subagent the stem is
@@ -558,8 +558,11 @@ its tool calls under. `agent_id` alone is not an identity; real ones repeat
 across parents. Any question about *sessions* - `irrecoverable`, the
 `backlog` figure, `discover`'s proof - must filter to `agent_id is null`,
 and subagent counts are reported beside session counts rather than folded
-into them. `tool-results/`, the other thing below a session directory, is
-hook stdout and is not read.
+into them. `tool-results/` (hook stdout) and the `agent-<id>.meta.json`
+sidecar beside each subagent transcript (its type, description and
+model - small, and the only record of what that subagent was for) are
+not read. The sidecar is an open decision rather than a rejection:
+storing it needs a column and a migration this amendment did not take.
 
 **Claiming a directory is a second, separate opt-in.** The per-project
 record gate governs recording going forward; designating a directory backfills
