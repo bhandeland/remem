@@ -28,15 +28,17 @@ __all__ = [
     "PathStatus",
     "Report",
     "REFRESH_FILE_CAP",
+    "TranscriptFile",
     "TranscriptStatus",
     "advisories",
-    "discover",
     "designate",
+    "discover",
+    "run",
     "status",
     "status_to_dict",
+    "transcript_files",
     "transcript_root",
     "undesignate",
-    "run",
 ]
 
 #: The harness whose transcripts this reads. A constant rather than a
@@ -70,6 +72,61 @@ def transcript_root() -> Path:
     `tmp_path`.
     """
     return projects_dir()
+
+
+#: Claude Code's layout below a session directory. Module constants so the
+#: one function that reads the layout names it once - tests deliberately do
+#: NOT import these, and spell the layout literally instead.
+SUBAGENT_DIR = "subagents"
+SUBAGENT_PREFIX = "agent-"
+
+
+@dataclass(frozen=True)
+class TranscriptFile:
+    """One transcript on disk, and the identity its PATH gives it.
+
+    Identity is read from the path and never from the contents: a refresh
+    has to decide what a file is from a stat, before it reads a byte.
+    Measured 2026-09-16, every line's `sessionId` and `agentId` agreed with
+    the path in all 392 subagent files on this machine.
+    """
+
+    path: Path
+    #: For a subagent file this is the PARENT's session id - which is what
+    #: the file's own lines say, and what `events` records its tool calls
+    #: under.
+    session_id: str
+    #: None for a session's own transcript; the `agentId` for a subagent's.
+    agent_id: str | None
+
+
+def transcript_files(directory: Path) -> list[TranscriptFile]:
+    """Every transcript in a claimed directory, sessions and subagents both.
+
+    The ONLY place that knows the layout. The first version of this feature
+    globbed `*.jsonl` in three places, none of them recursive, and all
+    three were blind to `<session>/subagents/agent-<id>.jsonl` - more bytes
+    than the sessions themselves, and the only copy of those conversations
+    (the parent transcript holds none of their lines). One owner is what
+    stops a fourth caller reintroducing the blind spot.
+
+    `tool-results/` sits beside `subagents/` and is hook stdout, not a
+    transcript, so the subagent pattern is anchored on its directory name
+    rather than recursing.
+
+    Sorted on identity, not on the Path: `Path` ordering compares parts, so
+    `s1` sorts before `s1.jsonl` and every subagent would come ahead of its
+    own parent. Nothing here stats a file - a bounded refresh counts those.
+    """
+    found = [TranscriptFile(p, p.stem, None) for p in directory.glob("*.jsonl")]
+    for p in directory.glob(f"*/{SUBAGENT_DIR}/{SUBAGENT_PREFIX}*.jsonl"):
+        found.append(
+            TranscriptFile(
+                p, p.parent.parent.name, p.stem.removeprefix(SUBAGENT_PREFIX)
+            )
+        )
+    found.sort(key=lambda f: (f.session_id, f.agent_id is not None, f.agent_id or ""))  # type: ignore[implicit-any-lambda]
+    return found
 
 
 @dataclass
