@@ -507,6 +507,87 @@ anchor with the same filename exists under another `src:` path,
 in the run row by the refresh. Nothing supersedes a twin automatically - a
 moved file and a document ingested twice look identical from here.
 
+### Session transcripts
+
+The Claude Code adapter registers four hooks and only two record:
+`PostToolUse` -> `tool_call` and `SessionEnd` -> `session_end`. `claude-code`
+contributes zero `message` rows, where cursor and opencode both record them.
+So what lands in Postgres is `tool_input`, `tool_response`, `cwd` and a tool
+name - the part of a session that carries *why* something was done is not
+captured by the pipeline whose purpose is to capture why. Claude Code
+already writes the rest, in full, to `~/.claude/projects/<slug>/<session
+id>.jsonl`; nothing here has ever read one.
+
+This finishes the events design's decision rather than reversing it. That
+design replaced transcript-based capture on the rule that derived data lives
+apart from its source, is recomputable, and never overwrites it - its
+complaint was that capture kept a path instead of the raw material, so a bad
+extraction could never be re-run. Events fixed that for the tool layer; this
+fixes it for the rest. It does not touch the reason a per-session table was
+rejected before: a transcript exists in one harness of three, so this
+surface is strictly **additive**. Nothing downstream may require one,
+extraction keeps working for a session with only `tool_call` events, and the
+tables are simply empty for cursor and opencode.
+
+**Ownership of a directory is proven, not guessed.** A transcript's filename
+*is* a session id, and `events` already records which project each session
+belongs to, so intersecting the two proves a directory belongs to a
+project without a name-matching heuristic to get wrong - matching directory
+names would have missed most of this project's own history, filed under an
+older binary name. That intersection only ever proves *part* of a directory,
+because recording started partway through its history, and it cannot find a
+directory at all whose sessions were never recorded - claimable only by a
+human who knows it exists. That is why `bag transcripts discover` proposes
+claims with their evidence and writes nothing; `bag transcripts designate
+<dir>` is the human act that decides.
+
+**Claiming a directory is a second, separate opt-in.** The per-project
+record gate governs recording going forward; designating a directory backfills
+everything already in it, including sessions that predate the pipeline
+entirely. Nothing auto-claims, so widening scope is always a human act.
+
+`transcript_lines` is derived from `content` and must stay droppable -
+nothing may store anything only there. Labels and any future training
+signal reference `(transcript_id, seq)` from their own tables, because the
+day one lives on `transcript_lines` itself, rebuilding the parse destroys
+data the "derived lives apart from its source" rule exists to protect.
+
+A shrunk file is an anomaly, not a signal to follow: the stored copy is more
+complete than what is on disk, and the entire purpose of the source row is
+that a rotating or truncated file does not destroy the session it recorded.
+Two sessions already recorded in `events` have no transcript anywhere on
+disk - permanently, since nothing prunes on a schedule here either - which
+is the rotation risk this design was meant to catch, already realized twice.
+
+The refresh is bounded before it reads; `import` is not. A session start
+must never pay for a backfill, so `bag transcripts refresh` stats first and
+skips a file whose size has not changed, capped at a per-run file count
+enforced before any read - the same bargain `bag reingest run` and `bag
+memory sync` strike between a spawned hook and a person's typed command.
+`bag transcripts import` is where the bulk backfill happens, typed, once,
+fail-loud like `ingest` and `embed`.
+
+`run()` for a project with no claim records nothing at all, matching what
+`bag memory refresh` does for an undesignated project: the spawned refresh
+fires at every session start on every project, so the common, unclaimed
+case must cost nothing.
+
+Both commands open their session with `autocommit=True`, the same rule `bag
+reingest run` and `bag memory sync` follow: the started run row must commit
+before any file is read, or a mid-run failure poisons the transaction, the
+finishing UPDATE raises in place of the original error, and the row rolls
+back - making "crashed" indistinguishable from "never ran".
+
+Redaction is deferred, deliberately. Transcripts are stored raw for the same
+reason every other capture boundary here is: filtering at capture caps what
+any future extractor could ever see, and extraction is the layer meant to be
+fixable and re-run. That reasoning covers capture only - redaction belongs
+at export or publish, and neither exists yet, so the boundary does not
+either. Said here so the absence is a recorded decision and not an
+oversight: a transcript carries far more secret material than a tool-call
+event does, and the day this corpus is meant to leave the machine, that is
+the first problem to solve.
+
 ### Importing claude-mem
 
 `bag import claude-mem <path>` reads claude-mem's sqlite file directly and
