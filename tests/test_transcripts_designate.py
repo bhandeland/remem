@@ -10,6 +10,7 @@ from saddlebag.backends.postgres.migrate import migrate
 from saddlebag.backends.postgres.store import PostgresStore
 from saddlebag.domain import Principal
 from saddlebag.services import transcripts
+from saddlebag.transcript_file import sha256_hex
 
 pytestmark = pytest.mark.db
 
@@ -65,3 +66,37 @@ def test_designating_the_same_directory_twice_is_not_an_error(
     transcripts.designate(store, owner.id, "p", tmp_path)
     transcripts.designate(store, owner.id, "p", tmp_path)
     assert len(store.transcript_paths(owner.id, "p")) == 1
+
+
+def test_undesignate_drops_the_claim(store, owner, tmp_path: Path) -> None:
+    transcripts.designate(store, owner.id, "p", tmp_path)
+    assert transcripts.undesignate(store, owner.id, "p", tmp_path) is True
+    assert store.transcript_paths(owner.id, "p") == []
+
+
+def test_undesignate_leaves_imported_transcripts_alone(
+    store, owner, tmp_path: Path
+) -> None:
+    """Dropping a claim stops future reading - it does not destroy sessions.
+
+    Deleting stored transcripts is a separate, explicit act that does not
+    exist yet, and the whole reason the source rows are kept byte-exact is
+    that losing them is unrecoverable.
+    """
+    transcripts.designate(store, owner.id, "p", tmp_path)
+    content = b'{"type": "user"}\n'
+    store.put_transcript(
+        owner.id,
+        "p",
+        transcripts.HARNESS,
+        "s1",
+        str(tmp_path / "s1.jsonl"),
+        content,
+        sha256_hex(content),
+    )
+
+    transcripts.undesignate(store, owner.id, "p", tmp_path)
+
+    survivors = store.stored_transcripts(owner.id, "p")
+    assert [t.session_id for t in survivors] == ["s1"]
+    assert store.transcript_content(survivors[0].id, owner.id) == content
