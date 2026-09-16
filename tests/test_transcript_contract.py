@@ -67,3 +67,26 @@ def test_a_real_transcript_still_parses(tmp_path: Path) -> None:
     assert lines, "a real transcript parsed to no lines at all"
     unknown = {line.type for line in lines if line.type} - KNOWN_TYPES
     assert not unknown, f"new line types: {sorted(unknown)}"
+
+
+@pytest.mark.transcript
+def test_a_real_subagent_transcript_still_parses_and_names_its_parent() -> None:
+    """May skip. The identity `transcript_files` reads from a subagent's
+    PATH is only right while the lines inside agree with it - measured true
+    for all 392 files on 2026-09-16. This is what notices when Claude Code
+    changes that."""
+    root = transcript_root()
+    found: list[Path] = (
+        sorted(root.glob("*/*/subagents/agent-*.jsonl")) if root.is_dir() else []
+    )
+    if not found:
+        pytest.skip(f"no subagent transcript under {root}")
+    path = found[-1]
+    lines, _ = parse(path.read_bytes())
+    assert lines, "a real subagent transcript parsed to no lines at all"
+    unknown = {line.type for line in lines if line.type} - KNOWN_TYPES
+    assert not unknown, f"new line types: {sorted(unknown)}"
+    sessions = {line.raw.get("sessionId") for line in lines} - {None}
+    agents = {line.raw.get("agentId") for line in lines} - {None}
+    assert sessions == {path.parent.parent.name}
+    assert agents == {path.stem.removeprefix("agent-")}

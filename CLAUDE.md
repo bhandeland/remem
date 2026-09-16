@@ -541,6 +541,26 @@ human who knows it exists. That is why `bag transcripts discover` proposes
 claims with their evidence and writes nothing; `bag transcripts designate
 <dir>` is the human act that decides.
 
+**A session is more than one file.** Beside `<session id>.jsonl`, Claude
+Code writes `<session id>/subagents/agent-<agent id>.jsonl` for every
+subagent the session dispatched, and those are the only copy of those
+conversations - the parent transcript holds none of their lines. The first
+import globbed `*.jsonl` non-recursively in three places and reported
+"clean, backlog 0" while leaving more bytes on disk than it stored.
+`transcripts.transcript_files()` is now the one owner of the layout, and
+nothing may derive identity from `path.stem`: for a subagent the stem is
+`agent-<id>`, and both places that once read it went wrong without
+raising. Identity is `(session_id, agent_id)` with `agent_id` NULL for the
+session's own file (migration 024, `nulls not distinct` - load-bearing, or
+the session row stops being unique), and a subagent row's `session_id` is
+its parent's, which is what its own lines say and what `events` records
+its tool calls under. `agent_id` alone is not an identity; real ones repeat
+across parents. Any question about *sessions* - `irrecoverable`, the
+`backlog` figure, `discover`'s proof - must filter to `agent_id is null`,
+and subagent counts are reported beside session counts rather than folded
+into them. `tool-results/`, the other thing below a session directory, is
+hook stdout and is not read.
+
 **Claiming a directory is a second, separate opt-in.** The per-project
 record gate governs recording going forward; designating a directory backfills
 everything already in it, including sessions that predate the pipeline
