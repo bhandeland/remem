@@ -341,9 +341,13 @@ def transcript_columns(alias: str = "t") -> str:
         "last_read",
     )
     # `has_meta` is computed, not a column: the sidecar's bytes stay out of
-    # every listing for the same reason `content` does.
+    # every listing for the same reason `content` does. `has_lines` is an
+    # `exists`, not a count: it stops at the first row of the
+    # (transcript_id, seq) key, and presence is the only question asked.
     return ", ".join(f"{alias}.{c}" for c in cols) + (
         f", {alias}.meta is not null as has_meta"
+        f", exists (select 1 from transcript_lines l"
+        f" where l.transcript_id = {alias}.id) as has_lines"
     )
 
 
@@ -361,6 +365,7 @@ def _row_to_transcript(row: dict[str, Any]) -> Transcript:
         first_seen=row["first_seen"],
         last_read=row["last_read"],
         has_meta=row["has_meta"],
+        has_lines=row["has_lines"],
     )
 
 
@@ -1247,6 +1252,17 @@ class PostgresStore:
                 (transcript_id,),
             )
             return int(_one(cur)["count"])
+
+    def transcripts_for_harness(self, owner_id: UUID, harness: str) -> list[Transcript]:
+        with self._cur() as cur:
+            cur.execute(
+                as_sql(f"""
+                select {transcript_columns("t")} from transcripts t
+                 where t.owner_id = %s and t.harness = %s
+                """),
+                (owner_id, harness),
+            )
+            return [_row_to_transcript(r) for r in cur.fetchall()]
 
     def stored_transcripts(self, owner_id: UUID, project: str) -> list[Transcript]:
         with self._cur() as cur:

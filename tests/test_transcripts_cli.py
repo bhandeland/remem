@@ -277,18 +277,12 @@ def test_import_records_a_crashed_run_rather_than_losing_it(
     conn.commit()
     conn.close()
 
-    def boom(
-        self: PostgresStore,
-        owner_id: object,
-        harness: object,
-        session_id: object,
-        agent_id: object = None,
-    ) -> None:
+    def boom(self: PostgresStore, *args: object, **kwargs: object) -> None:
         with self._conn.cursor() as cur:
             cur.execute("select this_column_does_not_exist")
         return None  # unreachable - the execute above always raises
 
-    monkeypatch.setattr(PostgresStore, "get_transcript", boom)
+    monkeypatch.setattr(PostgresStore, "put_transcript", boom)
 
     result = runner.invoke(app, ["transcripts", "import"])
     assert result.exit_code != 0
@@ -380,22 +374,15 @@ def test_a_real_statement_failure_costs_only_its_own_file(
     conn.commit()
     conn.close()
 
-    real = PostgresStore.get_transcript
+    real = PostgresStore.put_transcript
 
-    def bad_for_one(
-        self: PostgresStore,
-        owner_id: Any,
-        harness: str,
-        session_id: str,
-        *,
-        agent_id: Any,
-    ) -> Any:
-        if session_id == "sess-bad":
+    def bad_for_one(self: PostgresStore, *args: Any, **kwargs: Any) -> Any:
+        if args[3] == "sess-bad":
             with self._conn.cursor() as cur:
                 cur.execute("select this_column_does_not_exist")
-        return real(self, owner_id, harness, session_id, agent_id=agent_id)
+        return real(self, *args, **kwargs)
 
-    monkeypatch.setattr(PostgresStore, "get_transcript", bad_for_one)
+    monkeypatch.setattr(PostgresStore, "put_transcript", bad_for_one)
 
     result = runner.invoke(app, ["transcripts", "import"])
     assert result.exit_code == 1

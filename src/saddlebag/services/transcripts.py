@@ -372,6 +372,17 @@ def _run_body(
     for session_id, recorded_project in store.event_session_projects(owner_id):
         recorded.setdefault(session_id, set()).add(recorded_project)
 
+    # Also once per run: every stored row for this harness, keyed on the
+    # identity a file carries. A refresh walks hundreds of unchanged files at
+    # every session start, and fetching each row - then counting its lines -
+    # was two queries a file. A file stored during this run is never looked
+    # up again (identities are unique within one run), so a snapshot taken
+    # before the walk is exactly what per-file lookups would have seen.
+    stored: dict[tuple[str, str | None], Transcript] = {
+        (t.session_id, t.agent_id): t
+        for t in store.transcripts_for_harness(owner_id, HARNESS)
+    }
+
     budget = cap
     consecutive = 0
     for claim in claims:
@@ -389,9 +400,7 @@ def _run_body(
                 return
             report.files_seen += 1
             try:
-                existing = store.get_transcript(
-                    owner_id, HARNESS, file.session_id, agent_id=file.agent_id
-                )
+                existing = stored.get((file.session_id, file.agent_id))
                 did_work = _import_one(
                     store, owner_id, project, file, existing, report, recorded
                 )
@@ -480,12 +489,12 @@ def _import_one(
         # unambiguously means "the derived half never landed". Do not tidy
         # this into the stricter check.
         #
-        # It costs one indexed count per unchanged file, which is cheap
-        # beside the stat it sits next to, and it self-heals at the next
+        # `has_lines` rides on the row the run already read, so the healthy
+        # case costs nothing beyond the stat, and it self-heals at the next
         # session start with no human having to notice a silent condition.
-        if store.transcript_line_count(existing.id) > 0:
+        if existing.has_lines:
             return False
-        return _store_whole(store, owner_id, project, file, report, new=False)
+        return _repair_lines(store, owner_id, existing, report)
     if plan is ReadPlan.REBUILD:
         return _store_whole(store, owner_id, project, file, report, new=False)
     return _append(store, owner_id, existing, path, report)
@@ -639,6 +648,48 @@ def _plan_for(
             }
         )
     return plan
+
+
+def _repair_lines(
+    store: Store, owner_id: UUID, existing: Transcript, report: Report
+) -> bool:
+    """Rebuild the derived lines of an unchanged file. True if any landed.
+
+    Zero lines is also the honest state of a file that HAS none: an empty
+    one, or one where no line is a JSON object. Rebuilding those can never
+    produce a row, and when the repair re-read the file from disk it did so
+    on every refresh - re-reporting the same line failures and spending one
+    of the cap's files each time, forever. So:
+
+    - An empty stored copy is skipped without a read. Nothing to derive.
+    - Otherwise the lines are parsed from the STORED bytes, not the file.
+      SKIP means the sizes match, and the stored copy is the source this
+      table is derived from; reading it also leaves the disk alone.
+    - A parse that yields nothing returns False, spending no budget and
+      reporting nothing. Its failures were named when the file was first
+      stored; naming them again every run is noise, not information.
+
+    What that costs is one read of the stored bytes per run for a file that
+    is wholly unparseable - rare, and bounded by what is on disk. Recording
+    "parsed, and empty" would avoid it, but only by storing something that
+    is not derivable from `content`, which `transcript_lines` must never
+    need.
+    """
+    if existing.bytes == 0:
+        return False
+    content = store.transcript_content(existing.id, owner_id)
+    if content is None:
+        return False
+    lines, failures = parse(content)
+    if not lines:
+        return False
+    store.replace_transcript_lines(existing.id, lines)
+    report.lines_written += len(lines)
+    report.failures.extend(
+        {"path": existing.path, "reason": f.reason} for f in failures
+    )
+    report.files_rebuilt += 1
+    return True
 
 
 def _store_whole(

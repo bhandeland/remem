@@ -316,7 +316,7 @@ def test_a_run_of_failing_files_is_raised_and_the_row_still_finishes(
     def _boom(*args: object, **kwargs: object) -> None:
         raise RuntimeError("simulated failure")
 
-    monkeypatch.setattr(store, "get_transcript", _boom)
+    monkeypatch.setattr(store, "put_transcript", _boom)
 
     with pytest.raises(RuntimeError, match="simulated failure"):
         transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
@@ -347,14 +347,14 @@ def test_one_failing_file_does_not_stop_the_others(
         _write(tmp_path, session_id, [{"type": "user"}])
     transcripts.designate(store, owner.id, "p", tmp_path)
 
-    real = store.get_transcript
+    real = store.put_transcript
 
-    def _flaky(owner_id: Any, harness: str, session_id: str, *, agent_id: Any) -> Any:
-        if session_id.endswith("-bad"):
-            raise RuntimeError(f"cannot read {session_id}")
-        return real(owner_id, harness, session_id, agent_id=agent_id)
+    def _flaky(*args: Any, **kwargs: Any) -> Any:
+        if args[3].endswith("-bad"):
+            raise RuntimeError(f"cannot read {args[3]}")
+        return real(*args, **kwargs)
 
-    monkeypatch.setattr(store, "get_transcript", _flaky)
+    monkeypatch.setattr(store, "put_transcript", _flaky)
 
     report = transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
 
@@ -434,6 +434,63 @@ def test_a_transcript_whose_derived_lines_vanished_is_rebuilt(
 
     assert report.files_rebuilt == 1
     assert store.transcript_line_count(stored.id) == 2
+
+
+@pytest.mark.parametrize(
+    "content", [b"", b"not json\n", b"[1, 2]\n"], ids=["empty", "junk", "non-object"]
+)
+def test_a_file_with_no_lines_to_derive_is_not_repaired_every_run(
+    store: PostgresStore, owner: Principal, tmp_path: Path, content: bytes
+) -> None:
+    """Zero stored lines is the repair's trigger, and some files legitimately
+    have zero lines - an empty file, or one no line of which is a JSON
+    object. Rebuilding those can never produce a row, so the repair fired on
+    every refresh, re-reported the same line failures, and spent one of the
+    cap's files each time. Here it would spend the only one, and `b-new`
+    would never import."""
+    tmp_path.mkdir(exist_ok=True)
+    (tmp_path / "a-inert.jsonl").write_bytes(content)
+    transcripts.designate(store, owner.id, "p", tmp_path)
+    first = transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
+    assert first.files_new == 1
+
+    _write(tmp_path, "b-new", [{"type": "user"}])
+    report = transcripts.run(
+        store, owner.id, "p", trigger=TranscriptTrigger.AUTO, cap=1
+    )
+
+    assert (report.files_new, report.files_rebuilt) == (1, 0)
+    assert report.failures == []
+    assert found(
+        store.get_transcript(owner.id, transcripts.HARNESS, "b-new", agent_id=None)
+    )
+
+
+def test_an_unchanged_file_costs_no_query_of_its_own(
+    store: PostgresStore,
+    owner: Principal,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A refresh runs at every session start over hundreds of unchanged
+    files. It used to fetch each one's row and then count its lines - two
+    queries a file, ~700 a run for one claimed directory. The rows are now
+    read once per run, carrying whether their lines exist."""
+    for session_id in ("s1", "s2"):
+        _write(tmp_path, session_id, [{"type": "user"}])
+    transcripts.designate(store, owner.id, "p", tmp_path)
+    transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
+
+    def _boom(*args: object, **kwargs: object) -> None:
+        raise AssertionError("queried per file")
+
+    monkeypatch.setattr(store, "get_transcript", _boom)
+    monkeypatch.setattr(store, "transcript_line_count", _boom)
+
+    report = transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.AUTO)
+
+    assert report.failures == []
+    assert report.files_seen == 2
 
 
 def test_a_session_recorded_under_another_project_is_an_anomaly_and_is_still_stored(
@@ -812,14 +869,14 @@ def test_a_failing_file_spends_the_refresh_budget(
     for session_id in ("a-bad", "b-good"):
         _write(tmp_path, session_id, [{"type": "user"}])
     transcripts.designate(store, owner.id, "p", tmp_path)
-    real = store.get_transcript
+    real = store.put_transcript
 
-    def _flaky(owner_id: Any, harness: str, session_id: str, *, agent_id: Any) -> Any:
-        if session_id == "a-bad":
+    def _flaky(*args: Any, **kwargs: Any) -> Any:
+        if args[3] == "a-bad":
             raise RuntimeError("cannot read")
-        return real(owner_id, harness, session_id, agent_id=agent_id)
+        return real(*args, **kwargs)
 
-    monkeypatch.setattr(store, "get_transcript", _flaky)
+    monkeypatch.setattr(store, "put_transcript", _flaky)
 
     report = transcripts.run(
         store, owner.id, "p", trigger=TranscriptTrigger.AUTO, cap=1

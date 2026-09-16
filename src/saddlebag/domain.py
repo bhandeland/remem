@@ -507,6 +507,10 @@ class Transcript:
     #: bytes, for the reason `content` is absent. Always False for a
     #: session's own transcript, which has no sidecar.
     has_meta: bool
+    #: Whether any `transcript_lines` row exists. Carried on the row so an
+    #: import can tell a stranded derived half from a healthy one without a
+    #: count query per file - see `services.transcripts._import_one`.
+    has_lines: bool
 
 
 @dataclass(slots=True)

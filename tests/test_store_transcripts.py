@@ -508,3 +508,39 @@ def test_finishing_a_run_records_sidecars_written(
         failures=[],
     )
     assert done.metas_written == 7
+
+
+def test_a_transcript_says_whether_its_lines_exist(
+    store: PostgresStore, owner: Principal
+) -> None:
+    t = store.put_transcript(
+        owner.id, "p", "claude-code", "s1", "/x", b"{}\n", "h", agent_id=None
+    )
+    assert t.has_lines is False
+    lines, _ = parse(b'{"type": "user"}\n')
+    store.replace_transcript_lines(t.id, lines)
+    got = found(store.get_transcript(owner.id, "claude-code", "s1", agent_id=None))
+    assert got.has_lines is True
+
+
+def test_transcripts_for_a_harness_are_the_owners_only(
+    store: PostgresStore, owner: Principal, other: Principal
+) -> None:
+    """One read per refresh replaces one per file, so it must be exactly the
+    rows a per-file lookup could have returned: every project, this owner and
+    this harness only. The other principal's row is what proves the owner
+    filter is there."""
+    mine = store.put_transcript(
+        owner.id, "p", "claude-code", "s1", "/x", b"a\n", "h", agent_id=None
+    )
+    child = store.put_transcript(
+        owner.id, "q", "claude-code", "s1", "/y", b"b\n", "h", agent_id="a1"
+    )
+    store.put_transcript(
+        other.id, "p", "claude-code", "s1", "/x", b"c\n", "h", agent_id=None
+    )
+    store.put_transcript(
+        owner.id, "p", "cursor", "s9", "/z", b"d\n", "h", agent_id=None
+    )
+    got = store.transcripts_for_harness(owner.id, "claude-code")
+    assert {t.id for t in got} == {mine.id, child.id}
