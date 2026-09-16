@@ -552,12 +552,47 @@ signal reference `(transcript_id, seq)` from their own tables, because the
 day one lives on `transcript_lines` itself, rebuilding the parse destroys
 data the "derived lives apart from its source" rule exists to protect.
 
+"Derived and rebuildable" is only true if something rebuilds, so an
+unchanged file with **zero** stored lines is re-read rather than skipped.
+The content and the lines are separate statements under `autocommit=True`,
+so a Ctrl-C mid-backfill - or a line Postgres refuses as `jsonb`, a NUL
+byte inside a string being the realistic one - strands the bytes with an
+empty derived half, which every later run would classify `SKIP` forever.
+The guard is `> 0` and deliberately **not** a comparison against an
+expected count: a torn final line and a `do nothing` seq conflict are
+accepted fidelity warts that leave fewer rows than the file has lines, so
+an exact check would re-parse those files on every run.
+
 A shrunk file is an anomaly, not a signal to follow: the stored copy is more
 complete than what is on disk, and the entire purpose of the source row is
 that a rotating or truncated file does not destroy the session it recorded.
 Two sessions already recorded in `events` have no transcript anywhere on
 disk - permanently, since nothing prunes on a schedule here either - which
 is the rotation risk this design was meant to catch, already realized twice.
+
+A session whose events were recorded under a **different** project than the
+one claiming its directory is the second anomaly, and the file is stored
+anyway. A directory can hold sessions from more than one project if a
+working directory moved, and the bytes are the scarce thing here - a
+session Claude Code has since deleted cannot be fetched again - so refusing
+to store them to protect a label would trade the irreplaceable half for the
+repairable one. The label is made stable instead: `put_transcript` does
+**not** carry `project = excluded.project` through its `on conflict`, so a
+transcript keeps the project it was first filed under. Overwriting it
+re-homed transcripts silently, and every count on both sides
+(`stored_transcripts`, the backlog, `status`) is project-scoped, so one
+project's numbers dropped and the other's rose with nothing recorded
+anywhere. Every entry in `Report.anomalies` therefore names its `reason` -
+a reader must not have to tell the two apart by which keys arrived.
+
+Where Claude Code keeps its transcripts is a fact about the harness, so
+`transcripts.transcript_root()` owns it beside `HARNESS` and resolves
+`CLAUDE_CONFIG_DIR` the way `claude_code.memory` already did. A frontend
+building `~/.claude/projects` by hand is a frontend deciding, and it is
+silently wrong for anyone who sets that variable: `discover` proposes
+nothing with no evidence and no error, and `status` calls every recorded
+session irrecoverable. `discover` and `status` still take `root` as a
+parameter - only the default moved.
 
 The refresh is bounded before it reads; `import` is not. A session start
 must never pay for a backfill, so `bag transcripts refresh` stats first and
