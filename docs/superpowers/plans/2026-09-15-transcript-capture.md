@@ -1277,7 +1277,9 @@ Expected: FAIL - `AttributeError: ... has no attribute 'add_transcript_path'`.
             )
             row = cur.fetchone()
             if row is not None:
-                return None if row[0] == project else str(row[0])
+                # This module's cursor uses `dict_row`, so rows are read by
+                # column name, never by position.
+                return None if row["project"] == project else str(row["project"])
             cur.execute(
                 "insert into transcript_paths (owner_id, project, path)"
                 " values (%s, %s, %s)",
@@ -1334,6 +1336,11 @@ and `failures` are written with `Jsonb(...)` and read back with
 `_row_to_transcript_run`.
 
 ```python
+Note on row access, which Task 3 had to correct in its own code: this
+module's cursor is configured with `dict_row`, so every result row is read by
+**column name**, never by position. Where a query returns a bare aggregate,
+give it an alias (`select count(*) as count ...`) so there is a name to read.
+
     def event_session_ids(self, owner_id: UUID, project: str) -> list[str]:
         """Distinct session ids recorded for a project.
 
@@ -1347,7 +1354,7 @@ and `failures` are written with `Jsonb(...)` and read back with
                 " where owner_id = %s and project = %s",
                 (owner_id, project),
             )
-            return [str(r[0]) for r in cur.fetchall()]
+            return [str(r["session_id"]) for r in cur.fetchall()]
 ```
 
 - [ ] **Step 5: Run the tests to verify they pass**
