@@ -61,6 +61,51 @@ from saddlebag.session import open_session
 QUESTIONS_PATH = Path("eval-questions.json")
 CONTROL_PATH = Path("eval-questions-control.json")
 
+#: The stub `generate` writes when no control file exists, as data rather
+#: than inlined at the write site. Two reasons. It is now the ONLY
+#: description of the hand-written control set's shape - the committed
+#: file holds real questions, not a template - so guidance that lives only
+#: in a printed message is guidance that scrolls away while the file it
+#: describes persists. And every row here must be skipped by `_load` (the
+#: `_comment` row has no gold_id; the examples' ids start with "<"), which
+#: is a property worth being able to load and check rather than assert in
+#: a comment.
+CONTROL_STUB: list[dict[str, str]] = [
+    {
+        "_comment": (
+            "Replace these rows with ~15 of your own, and delete any you do "
+            "not fill in. gold_id must be a real entry id: find one with "
+            "`bag search <term> --json` and copy its id field. Write roughly "
+            "half keyword and half paraphrase - the per-style tier table is "
+            "only meaningful when both regimes are represented, and a "
+            "control set written entirely in one style cannot check the "
+            "generated set's other half."
+        ),
+        "question": "",
+        "gold_id": "",
+        "origin": "",
+        "source_title": "",
+        "style": "paraphrase",
+    },
+    {
+        "question": "<keyword style: two to five words you would really type>",
+        "gold_id": "<paste a real entry id here>",
+        "origin": "human",
+        "source_title": "<optional, for your own reference>",
+        "style": "keyword",
+    },
+    {
+        "question": (
+            "<paraphrase style: one sentence about the problem, avoiding "
+            "the entry's own wording>"
+        ),
+        "gold_id": "<paste a real entry id here>",
+        "origin": "human",
+        "source_title": "<optional, for your own reference>",
+        "style": "paraphrase",
+    },
+]
+
 #: Origins a default search can actually return. Sampling a gold entry from
 #: ARCHIVED or HANDOFF would manufacture a guaranteed miss: `find` filters
 #: them out unless asked, so no retriever could ever score on them and the
@@ -498,43 +543,16 @@ def cmd_generate(args: argparse.Namespace) -> int:
         print(f"rejected {rejected} (unparseable, invented id, or bad length)")
 
     if not CONTROL_PATH.exists():
-        # One example per style, not one row in the abstract. A control set
-        # written entirely in one style cannot check the generated set's
-        # other half, and the per-style tier table - the output that says
-        # whether keyword queries reach the exact tier at all - needs both
-        # regimes represented to mean anything. Every row here is skipped by
-        # `_load` until its placeholder gold_id is replaced.
-        CONTROL_PATH.write_text(
-            json.dumps(
-                [
-                    {
-                        "question": (
-                            "<keyword style: two to five words you would really type>"
-                        ),
-                        "gold_id": "<paste a real entry id here>",
-                        "origin": "human",
-                        "source_title": "<optional, for your own reference>",
-                        "style": "keyword",
-                    },
-                    {
-                        "question": (
-                            "<paraphrase style: one sentence about the "
-                            "problem, avoiding the entry's own wording>"
-                        ),
-                        "gold_id": "<paste a real entry id here>",
-                        "origin": "human",
-                        "source_title": "<optional, for your own reference>",
-                        "style": "paraphrase",
-                    },
-                ],
-                indent=2,
-            )
-            + "\n"
-        )
+        # CONTROL_STUB carries the format and the instructions; this prints
+        # only why the file matters and where to look. Splitting them that
+        # way is deliberate - the two used to say overlapping things, and
+        # the half a user still has in front of them an hour later is the
+        # file, not the terminal.
+        CONTROL_PATH.write_text(json.dumps(CONTROL_STUB, indent=2) + "\n")
         print(
-            f"wrote a stub {CONTROL_PATH} - fill in ~15 by hand, roughly "
-            "half of each style.\nWithout it the run reports generated "
-            "questions only, and cannot tell a good retriever from an easy "
+            f"wrote a stub {CONTROL_PATH} - the file itself explains how to "
+            "fill it in. Without control questions the run reports generated "
+            "ones only, and cannot tell a good retriever from an easy "
             "question set."
         )
     return 0
