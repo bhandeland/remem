@@ -2268,7 +2268,11 @@ sessions are already gone from disk."
 - Test: `tests/test_transcripts_cli.py`
 
 **Interfaces:**
-- Produces: `bag transcripts discover`, `bag transcripts designate <dir>`, `bag transcripts import`, `bag transcripts refresh`, `bag transcripts status [--json]`.
+- Produces: `bag transcripts discover`, `bag transcripts designate <dir>`, `bag transcripts import`, `bag transcripts refresh`.
+
+**`bag transcripts status` is NOT in this task.** Its service function
+(`transcripts.status`) is only written in Task 10, so the command lands there,
+beside what it calls. Do not add a `status` command here.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -2359,20 +2363,9 @@ def test_refresh_survives_a_library_calling_sys_exit(
     assert result.exit_code == 0
 
 
-def test_status_json_has_the_same_keys_when_nothing_is_claimed(cli_env) -> None:
-    """One object, not a list, and never a shorter document.
-
-    A consumer checks a field for null rather than branching on which keys
-    arrived - the same rule `bag memory status --json` follows, and
-    deliberately not `bag reingest status --json`, which sweeps every project
-    and so returns an array.
-    """
-    result = runner.invoke(app, ["transcripts", "status", "--json"])
-    assert result.exit_code == 0
-    got = json.loads(result.stdout)
-    assert set(got) == {"project", "paths", "run", "backlog", "irrecoverable"}
-    assert got["run"] is None
 ```
+
+(The `status --json` test lives in Task 10, with the command.)
 
 `cli_env` is a fixture you write at the top of this file: it points `BAG_DSN`
 at `live_dsn`, creates the owner, stubs all four `hookio.spawn_*` helpers, and
@@ -2394,7 +2387,7 @@ transcripts_app = typer.Typer(help="Raw session transcripts, stored in saddlebag
 app.add_typer(transcripts_app, name="transcripts")
 ```
 
-Then the five commands. `refresh` copies `memory_refresh` exactly, including
+Then the four commands. `refresh` copies `memory_refresh` exactly, including
 the `except BaseException` and the comment explaining that it is NOT there for
 `typer.Exit`:
 
@@ -2431,10 +2424,10 @@ def transcripts_refresh():
 ```
 
 `designate` must echo the backfill command and the directory's file count, so
-that claiming never silently commits someone to a large read. `status` renders
-the latest run in **four distinct spellings** - never, clean, with failures or
-anomalies, did not finish - and names the trigger in every spelling that has a
-run.
+that claiming never silently commits someone to a large read.
+
+(`status` and its four render spellings belong to Task 10, with the service
+function they call.)
 
 - [ ] **Step 4: Run the tests, the gate, and commit**
 
@@ -2442,11 +2435,11 @@ run.
 uv run pytest tests/test_transcripts_cli.py -v
 make check
 git add src/saddlebag/cli.py tests/test_transcripts_cli.py
-git commit -m "Add the bag transcripts commands
+git commit -m "Add the bag transcripts discover, designate, import and refresh
 
-refresh is the spawned, silent, bounded half; import is the typed,
-loud, unbounded one. status --json emits one object with the same keys in
-every state, like bag memory status and unlike bag reingest status."
+refresh is the spawned, silent, bounded half; import is the typed, loud,
+unbounded one. designate echoes the backfill command and its cost, so a
+claim never silently commits someone to a large read."
 ```
 
 ---
@@ -2908,14 +2901,46 @@ rendering field for field.
 Run: `uv run pytest tests/test_transcripts_status.py -v`
 Expected: PASS, 7 tests.
 
-- [ ] **Step 8: Wire the advisories into `bag record status`**
+- [ ] **Step 8: Add the `bag transcripts status` command**
+
+This command lives here rather than in Task 8 because it calls
+`transcripts.status`, which does not exist until this task.
+
+Add to the `transcripts_app` sub-app in `src/saddlebag/cli.py` a `status`
+command taking `--json`. It resolves the project the way the other
+`transcripts` commands do, passes `Path.home() / ".claude" / "projects"` as
+`root`, and renders the latest run in **four distinct spellings** - never,
+clean, with failures or anomalies, did not finish - naming the **trigger** in
+every spelling that has a run. Then the three "state now" lines: each claimed
+directory with present/missing, the backlog, and the irrecoverable count.
+`--json` echoes `status_to_dict` and nothing else.
+
+Add this test to `tests/test_transcripts_cli.py` (created in Task 8):
+
+```python
+def test_status_json_has_the_same_keys_when_nothing_is_claimed(cli_env) -> None:
+    """One object, not a list, and never a shorter document.
+
+    A consumer checks a field for null rather than branching on which keys
+    arrived - the same rule `bag memory status --json` follows, and
+    deliberately not `bag reingest status --json`, which sweeps every project
+    and so returns an array.
+    """
+    result = runner.invoke(app, ["transcripts", "status", "--json"])
+    assert result.exit_code == 0
+    got = json.loads(result.stdout)
+    assert set(got) == {"project", "paths", "run", "backlog", "irrecoverable"}
+    assert got["run"] is None
+```
+
+- [ ] **Step 9: Wire the advisories into `bag record status`**
 
 In `src/saddlebag/cli.py`'s `record status` command, call
 `transcripts.advisories(session.store, session.owner.id)` beside the existing
 ingest, memory and budget advisory calls, and echo each line. Add one test
 asserting a claimed-but-never-imported project produces a line there.
 
-- [ ] **Step 9: Run the gate and commit**
+- [ ] **Step 10: Run the gate and commit**
 
 ```bash
 make check
