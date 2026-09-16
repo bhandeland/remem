@@ -558,11 +558,21 @@ its tool calls under. `agent_id` alone is not an identity; real ones repeat
 across parents. Any question about *sessions* - `irrecoverable`, the
 `backlog` figure, `discover`'s proof - must filter to `agent_id is null`,
 and subagent counts are reported beside session counts rather than folded
-into them. `tool-results/` (hook stdout) and the `agent-<id>.meta.json`
-sidecar beside each subagent transcript (its type, description and
-model - small, and the only record of what that subagent was for) are
-not read. The sidecar is an open decision rather than a rejection:
-storing it needs a column and a migration this amendment did not take.
+into them. `tool-results/` (hook stdout) is not read.
+
+**The `agent-<id>.meta.json` sidecar is stored on its subagent's row**
+(`transcripts.meta`, migration 025) - its type, description and model,
+small, and the only record of what that subagent was for. Raw `bytea`, not
+`jsonb`, because it is source. `transcript_files()` pairs it by name. One
+rule governs reading it: **the file has one and the row has none**, checked
+after the transcript whatever its plan, so the rows imported before 025
+(all `SKIP`) backfill without a special path. It is read once and never
+again - sidecars were measured write-once - never cleared when it vanishes,
+validated as a JSON object before storing (a torn one kept under
+never-overwrite would be kept forever), and spends none of the refresh cap.
+`metas_written` on the run row and `meta_backlog` in `status` are what make
+a sidecar-only backfill visible. If Claude Code starts rewriting sidecars,
+the read-once rule is the one to revisit.
 
 **Claiming a directory is a second, separate opt-in.** The per-project
 record gate governs recording going forward; designating a directory backfills

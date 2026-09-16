@@ -20,7 +20,12 @@ from saddlebag.domain import (
 )
 from saddlebag.services import transcripts
 from tests.conftest import found
-from tests.transcript_tree import write_session, write_subagent, write_tool_result
+from tests.transcript_tree import (
+    write_session,
+    write_subagent,
+    write_subagent_meta,
+    write_tool_result,
+)
 
 pytestmark = pytest.mark.db
 
@@ -561,3 +566,144 @@ def test_a_subagent_of_a_session_recorded_elsewhere_is_an_anomaly_too(
         ("s1", "a2"),
     }
     assert all(a["reason"] == transcripts.PROJECT_CONFLICT for a in report.anomalies)
+
+
+def _subagent_row(store: PostgresStore, owner: Principal, agent_id: str) -> Any:
+    return found(store.get_transcript(owner.id, transcripts.HARNESS, "s1", agent_id))
+
+
+def test_a_new_subagent_stores_its_sidecar_byte_for_byte(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
+    write_session(tmp_path, "s1")
+    write_subagent(tmp_path, "s1", "a1")
+    sidecar = write_subagent_meta(tmp_path, "s1", "a1")
+    transcripts.designate(store, owner.id, "p", tmp_path)
+
+    report = transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
+
+    assert report.metas_written == 1
+    row = _subagent_row(store, owner, "a1")
+    assert store.transcript_meta(row.id, owner.id) == sidecar.read_bytes()
+    run = found(store.latest_transcript_run(owner.id, "p"))
+    assert run.metas_written == 1
+
+
+def test_a_row_imported_before_its_sidecar_picks_it_up_unchanged(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
+    """The backfill. Every row imported before 025 classifies SKIP on its
+    transcript, so a sidecar check living only on the new/append paths
+    would never reach one of them."""
+    write_subagent(tmp_path, "s1", "a1")
+    transcripts.designate(store, owner.id, "p", tmp_path)
+    transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
+    assert _subagent_row(store, owner, "a1").has_meta is False
+
+    sidecar = write_subagent_meta(tmp_path, "s1", "a1")
+    report = transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
+
+    assert (report.files_new, report.files_appended, report.files_rebuilt) == (0, 0, 0)
+    assert report.metas_written == 1
+    row = _subagent_row(store, owner, "a1")
+    assert store.transcript_meta(row.id, owner.id) == sidecar.read_bytes()
+
+
+def test_a_stored_sidecar_is_never_read_again(
+    store: PostgresStore,
+    owner: Principal,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Write-once on disk, so read-once here - and the unchanged-file
+    promise (one stat, no read) still holds for a subagent with a sidecar."""
+    write_subagent(tmp_path, "s1", "a1")
+    original = write_subagent_meta(tmp_path, "s1", "a1").read_bytes()
+    transcripts.designate(store, owner.id, "p", tmp_path)
+    transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
+
+    write_subagent_meta(tmp_path, "s1", "a1", b'{"agentType":"changed"}')
+
+    def _must_not_read(*args: object, **kwargs: object) -> None:
+        raise AssertionError("a stored sidecar must not be read")
+
+    monkeypatch.setattr(Path, "open", _must_not_read)
+    monkeypatch.setattr(Path, "read_bytes", _must_not_read)
+    report = transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
+
+    assert report.metas_written == 0
+    row = _subagent_row(store, owner, "a1")
+    assert store.transcript_meta(row.id, owner.id) == original
+
+
+def test_a_deleted_sidecar_leaves_the_stored_copy(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
+    write_subagent(tmp_path, "s1", "a1")
+    sidecar = write_subagent_meta(tmp_path, "s1", "a1")
+    original = sidecar.read_bytes()
+    transcripts.designate(store, owner.id, "p", tmp_path)
+    transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
+
+    sidecar.unlink()
+    report = transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
+
+    assert report.failures == []
+    row = _subagent_row(store, owner, "a1")
+    assert store.transcript_meta(row.id, owner.id) == original
+
+
+@pytest.mark.parametrize(
+    "content", [b'{"agentType":"impl', b"[1, 2]", b"\xff\xfe"], ids=str
+)
+def test_a_sidecar_that_is_not_a_json_object_is_a_failure_and_not_stored(
+    store: PostgresStore, owner: Principal, tmp_path: Path, content: bytes
+) -> None:
+    """Never-overwrite makes a torn sidecar permanent if it is stored, so it
+    is refused and tried again next run instead."""
+    write_subagent(tmp_path, "s1", "a1")
+    sidecar = write_subagent_meta(tmp_path, "s1", "a1", content)
+    transcripts.designate(store, owner.id, "p", tmp_path)
+
+    report = transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
+
+    assert report.metas_written == 0
+    assert [f["path"] for f in report.failures] == [str(sidecar)]
+    assert _subagent_row(store, owner, "a1").has_meta is False
+
+    write_subagent_meta(tmp_path, "s1", "a1")
+    retried = transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
+    assert retried.metas_written == 1
+    assert retried.failures == []
+
+
+def test_a_capped_run_still_backfills_sidecars_it_passes(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
+    """Sidecars do not spend the cap: a backfill of a few hundred small
+    files must not take a session start per 25 of them."""
+    for agent in ("a1", "a2", "a3"):
+        write_subagent(tmp_path, "s1", agent)
+    transcripts.designate(store, owner.id, "p", tmp_path)
+    transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
+    for agent in ("a1", "a2", "a3"):
+        write_subagent_meta(tmp_path, "s1", agent)
+
+    report = transcripts.run(
+        store, owner.id, "p", trigger=TranscriptTrigger.AUTO, cap=1
+    )
+
+    assert report.metas_written == 3
+
+
+def test_a_session_file_never_gets_a_sidecar(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
+    write_session(tmp_path, "s1")
+    transcripts.designate(store, owner.id, "p", tmp_path)
+    report = transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
+    assert report.metas_written == 0
+    assert (
+        found(store.get_transcript(owner.id, transcripts.HARNESS, "s1")).has_meta
+        is False
+    )

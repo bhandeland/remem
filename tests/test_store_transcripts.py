@@ -215,6 +215,7 @@ def test_finishing_a_run_records_its_counts(
         files_rebuilt=0,
         lines_written=500,
         bytes_written=4096,
+        metas_written=0,
         anomalies=[{"path": "/tmp/x", "stored": 10, "on_disk": 4}],
         failures=[],
     )
@@ -409,3 +410,50 @@ def test_stored_transcripts_carry_the_agent(
     )
     got = {(t.session_id, t.agent_id) for t in store.stored_transcripts(owner.id, "p")}
     assert got == {("s1", None), ("s1", "a1")}
+
+
+def test_a_sidecar_round_trips_on_its_row(
+    store: PostgresStore, owner: Principal, other: Principal
+) -> None:
+    row = store.put_transcript(
+        owner.id, "p", "claude-code", "s1", "/x", b"{}\n", "h", agent_id="a1"
+    )
+    assert row.has_meta is False
+    assert store.transcript_meta(row.id, owner.id) is None
+
+    meta = b'{"agentType":"implementer"}'
+    assert store.set_transcript_meta(row.id, other.id, meta) is False
+    assert store.set_transcript_meta(row.id, owner.id, meta) is True
+
+    assert store.transcript_meta(row.id, owner.id) == meta
+    assert store.transcript_meta(row.id, other.id) is None
+    assert (
+        found(store.get_transcript(owner.id, "claude-code", "s1", "a1")).has_meta
+        is True
+    )
+    # Re-storing the transcript leaves the sidecar alone.
+    again = store.put_transcript(
+        owner.id, "p", "claude-code", "s1", "/x", b"{}\n{}\n", "h2", agent_id="a1"
+    )
+    assert again.has_meta is True
+
+
+def test_finishing_a_run_records_sidecars_written(
+    store: PostgresStore, owner: Principal
+) -> None:
+    run = store.start_transcript_run(owner.id, "p", TranscriptTrigger.AUTO)
+    assert run.metas_written == 0
+    done = store.finish_transcript_run(
+        run.id,
+        owner.id,
+        files_seen=1,
+        files_new=0,
+        files_appended=0,
+        files_rebuilt=0,
+        lines_written=0,
+        bytes_written=0,
+        metas_written=7,
+        anomalies=[],
+        failures=[],
+    )
+    assert done.metas_written == 7

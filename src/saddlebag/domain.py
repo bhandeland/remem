@@ -503,6 +503,10 @@ class Transcript:
     sha256: str
     first_seen: datetime
     last_read: datetime
+    #: Whether the subagent's `agent-<id>.meta.json` is stored - never the
+    #: bytes, for the reason `content` is absent. Always False for a
+    #: session's own transcript, which has no sidecar.
+    has_meta: bool
 
 
 @dataclass(slots=True)
@@ -542,6 +546,10 @@ class TranscriptRun:
     files_rebuilt: int
     lines_written: int
     bytes_written: int
+    #: Subagent sidecars stored. Counted apart from the file counters, which
+    #: describe transcript I/O - a backfill run moves sidecars and nothing
+    #: else, and must not read as a run that did nothing.
+    metas_written: int
     anomalies: list[dict[str, Any]]
     failures: list[dict[str, Any]]
 

@@ -340,7 +340,11 @@ def transcript_columns(alias: str = "t") -> str:
         "first_seen",
         "last_read",
     )
-    return ", ".join(f"{alias}.{c}" for c in cols)
+    # `has_meta` is computed, not a column: the sidecar's bytes stay out of
+    # every listing for the same reason `content` does.
+    return ", ".join(f"{alias}.{c}" for c in cols) + (
+        f", {alias}.meta is not null as has_meta"
+    )
 
 
 def _row_to_transcript(row: dict[str, Any]) -> Transcript:
@@ -356,6 +360,7 @@ def _row_to_transcript(row: dict[str, Any]) -> Transcript:
         sha256=row["sha256"],
         first_seen=row["first_seen"],
         last_read=row["last_read"],
+        has_meta=row["has_meta"],
     )
 
 
@@ -381,6 +386,7 @@ TRANSCRIPT_RUN_FIELDS = [
     "files_rebuilt",
     "lines_written",
     "bytes_written",
+    "metas_written",
     "anomalies",
     "failures",
 ]
@@ -405,6 +411,7 @@ def _row_to_transcript_run(row: dict[str, Any]) -> TranscriptRun:
         files_rebuilt=row["files_rebuilt"],
         lines_written=row["lines_written"],
         bytes_written=row["bytes_written"],
+        metas_written=row["metas_written"],
         anomalies=list(row["anomalies"]),
         failures=list(row["failures"]),
     )
@@ -1151,6 +1158,25 @@ class PostgresStore:
             row = cur.fetchone()
             return bytes(row["content"]) if row else None
 
+    def transcript_meta(self, transcript_id: UUID, owner_id: UUID) -> bytes | None:
+        with self._cur() as cur:
+            cur.execute(
+                "select meta from transcripts where id = %s and owner_id = %s",
+                (transcript_id, owner_id),
+            )
+            row = cur.fetchone()
+            return bytes(row["meta"]) if row and row["meta"] is not None else None
+
+    def set_transcript_meta(
+        self, transcript_id: UUID, owner_id: UUID, meta: bytes
+    ) -> bool:
+        with self._cur() as cur:
+            cur.execute(
+                "update transcripts set meta = %s where id = %s and owner_id = %s",
+                (meta, transcript_id, owner_id),
+            )
+            return cur.rowcount == 1
+
     def append_transcript(
         self, transcript_id: UUID, owner_id: UUID, tail: bytes, sha256: str
     ) -> bool:
@@ -1337,6 +1363,7 @@ class PostgresStore:
         files_rebuilt: int,
         lines_written: int,
         bytes_written: int,
+        metas_written: int,
         anomalies: list[dict[str, Any]],
         failures: list[dict[str, Any]],
     ) -> TranscriptRun:
@@ -1347,7 +1374,8 @@ class PostgresStore:
                    set finished_at = clock_timestamp(),
                        files_seen = %s, files_new = %s, files_appended = %s,
                        files_rebuilt = %s, lines_written = %s,
-                       bytes_written = %s, anomalies = %s, failures = %s
+                       bytes_written = %s, metas_written = %s,
+                       anomalies = %s, failures = %s
                  where id = %s and owner_id = %s
                 returning {transcript_run_columns()}
                 """),
@@ -1358,6 +1386,7 @@ class PostgresStore:
                     files_rebuilt,
                     lines_written,
                     bytes_written,
+                    metas_written,
                     Jsonb(anomalies),
                     Jsonb(failures),
                     run_id,

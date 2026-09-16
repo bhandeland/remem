@@ -318,6 +318,7 @@ def test_status_json_has_the_same_keys_when_nothing_is_claimed(cli_env: None) ->
         "run",
         "backlog",
         "subagent_backlog",
+        "meta_backlog",
         "irrecoverable",
     }
     assert got["run"] is None
@@ -334,3 +335,22 @@ def test_status_prints_subagent_figures_beside_session_ones(
     assert result.exit_code == 0
     assert "3 sessions, 1 subagent files" in result.stdout
     assert "backlog: 3 sessions, 1 subagent files" in result.stdout
+
+
+def test_import_and_status_print_the_sidecar_figures(
+    cli_env: None, tmp_path: Path
+) -> None:
+    directory = tmp_path / ".claude" / "projects" / "-old-dirname"
+    (directory / "sess-1" / "subagents" / "agent-a1.meta.json").write_bytes(
+        b'{"agentType":"implementer"}'
+    )
+    assert (
+        runner.invoke(app, ["transcripts", "designate", str(directory)]).exit_code == 0
+    )
+    before = runner.invoke(app, ["transcripts", "status"])
+    # Not stored yet: the subagent is backlog, so its sidecar is not counted.
+    assert "backlog: 3 sessions, 1 subagent files, 0 sidecars" in before.stdout
+
+    result = runner.invoke(app, ["transcripts", "import"])
+    assert result.exit_code == 0
+    assert "1 sidecars" in result.stdout

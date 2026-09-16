@@ -251,7 +251,8 @@ model, then the merge decision.
   sidecars. The sidecars are the stronger candidate - small, irreplaceable,
   and descriptive of the subagent - and are an open decision: storing them
   needs a nullable column on the subagent's row (migration 025) and a
-  re-read rule for rows imported before it.
+  re-read rule for rows imported before it. Decided the same day: see
+  [Capturing subagent sidecars](2026-09-16-subagent-sidecars-design.md).
 - No parent linkage beyond the shared `session_id`, and no rendering of a
   subagent conversation inline into its parent's.
 - No change to discovery's proof, the claim model, redaction, or the

@@ -152,6 +152,14 @@ class Store(Protocol):
     def add_transcript_lines(
         self, transcript_id: UUID, lines: list[TranscriptLine]
     ) -> int: ...
+    #: The subagent's sidecar, fetched deliberately like `content`. None
+    #: when nothing is stored or the row is not this owner's.
+    def transcript_meta(self, transcript_id: UUID, owner_id: UUID) -> bytes | None: ...
+    #: False when the ownership guard matched nothing - the same contract as
+    #: `append_transcript`. Overwrites; whether to is the service's call.
+    def set_transcript_meta(
+        self, transcript_id: UUID, owner_id: UUID, meta: bytes
+    ) -> bool: ...
     def transcript_line_count(self, transcript_id: UUID) -> int: ...
     def stored_transcripts(self, owner_id: UUID, project: str) -> list[Transcript]: ...
 
@@ -194,6 +202,7 @@ class Store(Protocol):
         files_rebuilt: int,
         lines_written: int,
         bytes_written: int,
+        metas_written: int,
         anomalies: list[dict[str, Any]],
         failures: list[dict[str, Any]],
     ) -> TranscriptRun: ...

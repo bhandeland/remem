@@ -2609,7 +2609,8 @@ def transcripts_status(
         )
         typer.echo(f"  {p.path}: {state}")
     typer.echo(
-        f"  backlog: {got.backlog} sessions, {got.subagent_backlog} subagent files"
+        f"  backlog: {got.backlog} sessions, {got.subagent_backlog} subagent files, "
+        f"{got.meta_backlog} sidecars"
     )
     typer.echo(f"  irrecoverable: {got.irrecoverable}")
 
@@ -2637,7 +2638,8 @@ def transcripts_import(
     typer.echo(
         f"{report.files_seen} seen, {report.files_new} new, "
         f"{report.files_appended} appended, {report.files_rebuilt} rebuilt, "
-        f"{report.lines_written} lines, {report.bytes_written} bytes"
+        f"{report.lines_written} lines, {report.bytes_written} bytes, "
+        f"{report.metas_written} sidecars"
     )
     for a in report.anomalies:
         # Two shapes now, told apart by `reason` rather than by which keys

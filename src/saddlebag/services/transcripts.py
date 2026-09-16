@@ -7,6 +7,7 @@ much a spawned refresh may do - are ones every frontend gets for free.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -79,6 +80,7 @@ def transcript_root() -> Path:
 #: NOT import these, and spell the layout literally instead.
 SUBAGENT_DIR = "subagents"
 SUBAGENT_PREFIX = "agent-"
+META_SUFFIX = ".meta.json"
 
 
 @dataclass(frozen=True)
@@ -98,6 +100,9 @@ class TranscriptFile:
     session_id: str
     #: None for a session's own transcript; the `agentId` for a subagent's.
     agent_id: str | None
+    #: The subagent's `agent-<id>.meta.json`, when one sits beside it. Always
+    #: None for a session's own transcript.
+    meta: Path | None = None
 
 
 def transcript_files(directory: Path) -> list[TranscriptFile]:
@@ -113,18 +118,26 @@ def transcript_files(directory: Path) -> list[TranscriptFile]:
     `tool-results/` sits beside `subagents/` and is hook stdout, not a
     transcript, so the subagent pattern is anchored on its directory name
     rather than recursing. `agent-<id>.meta.json` sits beside each subagent
-    transcript and is not matched - capturing it is an open decision, not a
-    rejection.
+    transcript and rides on that transcript's entry as `meta`, paired by
+    name from one glob per directory, so this still stats nothing. A
+    sidecar with no transcript is not returned: none existed when this was
+    written (2026-09-16, 432 sidecars), and the row it would attach to is
+    the transcript's.
 
     Sorted on identity, not on the Path: `Path` ordering compares parts, so
     `s1` sorts before `s1.jsonl` and every subagent would come ahead of its
     own parent. Nothing here stats a file - a bounded refresh counts those.
     """
     found = [TranscriptFile(p, p.stem, None) for p in directory.glob("*.jsonl")]
+    sidecars = set(directory.glob(f"*/{SUBAGENT_DIR}/{SUBAGENT_PREFIX}*{META_SUFFIX}"))
     for p in directory.glob(f"*/{SUBAGENT_DIR}/{SUBAGENT_PREFIX}*.jsonl"):
+        meta = p.with_name(p.stem + META_SUFFIX)
         found.append(
             TranscriptFile(
-                p, p.parent.parent.name, p.stem.removeprefix(SUBAGENT_PREFIX)
+                p,
+                p.parent.parent.name,
+                p.stem.removeprefix(SUBAGENT_PREFIX),
+                meta if meta in sidecars else None,
             )
         )
     found.sort(key=lambda f: (f.session_id, f.agent_id is not None, f.agent_id or ""))  # type: ignore[implicit-any-lambda]
@@ -257,6 +270,7 @@ class Report:
     files_rebuilt: int = 0
     lines_written: int = 0
     bytes_written: int = 0
+    metas_written: int = 0
     anomalies: list[dict[str, Any]] = field(default_factory=list)
     failures: list[dict[str, Any]] = field(default_factory=list)
 
@@ -319,6 +333,7 @@ def run(
             files_rebuilt=report.files_rebuilt,
             lines_written=report.lines_written,
             bytes_written=report.bytes_written,
+            metas_written=report.metas_written,
             anomalies=report.anomalies,
             failures=report.failures,
         )
@@ -358,9 +373,17 @@ def _run_body(
             if budget is not None and budget <= 0:
                 return
             report.files_seen += 1
-            did_work = _import_one(store, owner_id, project, file, report, recorded)
+            existing = store.get_transcript(
+                owner_id, HARNESS, file.session_id, file.agent_id
+            )
+            did_work = _import_one(
+                store, owner_id, project, file, existing, report, recorded
+            )
             if did_work and budget is not None:
                 budget -= 1
+            # After the transcript, whatever its plan - and outside the
+            # budget. See `_import_meta`.
+            _import_meta(store, owner_id, file, existing, report)
 
 
 def _import_one(
@@ -368,6 +391,7 @@ def _import_one(
     owner_id: UUID,
     project: str,
     file: TranscriptFile,
+    existing: Transcript | None,
     report: Report,
     recorded: dict[str, set[str]],
 ) -> bool:
@@ -383,7 +407,6 @@ def _import_one(
     have gone wrong without raising.
     """
     path = file.path
-    existing = store.get_transcript(owner_id, HARNESS, file.session_id, file.agent_id)
 
     try:
         disk_size = path.stat().st_size
@@ -428,6 +451,70 @@ def _import_one(
     if plan is ReadPlan.REBUILD:
         return _store_whole(store, owner_id, project, file, report, new=False)
     return _append(store, owner_id, existing, path, report)
+
+
+def _import_meta(
+    store: Store,
+    owner_id: UUID,
+    file: TranscriptFile,
+    existing: Transcript | None,
+    report: Report,
+) -> None:
+    """Store a subagent's sidecar when the file has one and the row has none.
+
+    That one condition is both the backfill and the steady state. It runs
+    after the transcript whatever its plan - SKIP and SHRUNK included -
+    because every row imported before migration 025 classifies SKIP, and a
+    check living on the new/append paths would never reach one of them.
+
+    Read once, never again. Measured 2026-09-16, no sidecar on the machine
+    was modified more than a second after it was created, so there is
+    nothing to detect and no change detection. If Claude Code starts
+    rewriting them, this is the rule to revisit. A sidecar that vanishes
+    leaves the stored copy alone, the same as a shrunk transcript.
+
+    Validated as a JSON object and then stored RAW. Because nothing
+    overwrites, a sidecar caught mid-write would otherwise be kept torn
+    forever; refused, it is a failure this run and is tried again next run.
+
+    It spends none of the refresh cap. The cap bounds transcript I/O and a
+    sidecar is a few hundred bytes - spending it would take ten session
+    starts to backfill 70KB.
+    """
+    if file.meta is None or (existing is not None and existing.has_meta):
+        return
+    # A row stored this run is fetched again for its id. A new subagent is
+    # the only case that reaches here, which is rare after the first import.
+    row = existing or store.get_transcript(
+        owner_id, HARNESS, file.session_id, file.agent_id
+    )
+    if row is None:
+        # The transcript's own read failed and is already reported. Its
+        # sidecar waits for the run that stores it.
+        return
+    try:
+        meta = file.meta.read_bytes()
+    except OSError as exc:
+        report.failures.append({"path": str(file.meta), "reason": str(exc)})
+        return
+    try:
+        parsed = json.loads(meta)
+    except ValueError as exc:
+        report.failures.append(
+            {"path": str(file.meta), "reason": f"sidecar is not JSON: {exc}"}
+        )
+        return
+    if not isinstance(parsed, dict):
+        report.failures.append(
+            {"path": str(file.meta), "reason": "sidecar is not a JSON object"}
+        )
+        return
+    if not store.set_transcript_meta(row.id, owner_id, meta):
+        report.failures.append(
+            {"path": str(file.meta), "reason": "sidecar refused - not this owner"}
+        )
+        return
+    report.metas_written += 1
 
 
 #: Why an entry is in `Report.anomalies`. The list carries more than one
@@ -629,6 +716,10 @@ class TranscriptStatus:
     run: TranscriptRun | None
     backlog: int
     subagent_backlog: int
+    #: Stored subagent rows with a sidecar on disk and none stored. An
+    #: unstored subagent is already in `subagent_backlog` and is not
+    #: counted twice.
+    meta_backlog: int
     irrecoverable: int
 
 
@@ -637,11 +728,13 @@ def status(store: Store, owner_id: UUID, project: str, root: Path) -> Transcript
     claims = store.transcript_paths(owner_id, project)
     paths: list[PathStatus] = []
     on_disk: set[tuple[str, str | None]] = set()
+    with_meta: set[tuple[str, str | None]] = set()
     for claim in claims:
         directory = Path(claim.path)
         present = directory.is_dir()
         files: list[TranscriptFile] = transcript_files(directory) if present else []
         on_disk.update((f.session_id, f.agent_id) for f in files)
+        with_meta.update((f.session_id, f.agent_id) for f in files if f.meta)
         subagents = sum(1 for f in files if f.agent_id is not None)
         paths.append(
             PathStatus(
@@ -652,9 +745,9 @@ def status(store: Store, owner_id: UUID, project: str, root: Path) -> Transcript
             )
         )
 
-    stored = {
-        (t.session_id, t.agent_id) for t in store.stored_transcripts(owner_id, project)
-    }
+    rows = store.stored_transcripts(owner_id, project)
+    stored = {(t.session_id, t.agent_id) for t in rows}
+    meta_stored = {(t.session_id, t.agent_id) for t in rows if t.has_meta}
     # Sessions whose OWN transcript is stored. A stored subagent does not
     # make its lost parent recoverable, and `recorded` is a set of sessions.
     stored_sessions = {session for session, agent in stored if agent is None}
@@ -673,6 +766,7 @@ def status(store: Store, owner_id: UUID, project: str, root: Path) -> Transcript
         run=store.latest_transcript_run(owner_id, project),
         backlog=sum(1 for _, agent in missing if agent is None),
         subagent_backlog=sum(1 for _, agent in missing if agent is not None),
+        meta_backlog=len((with_meta & stored) - meta_stored),
         irrecoverable=len(recorded - stored_sessions - everywhere),
     )
 
@@ -699,6 +793,7 @@ def status_to_dict(got: TranscriptStatus) -> dict[str, Any]:
         "run": None if got.run is None else _run_to_dict(got.run),
         "backlog": got.backlog,
         "subagent_backlog": got.subagent_backlog,
+        "meta_backlog": got.meta_backlog,
         "irrecoverable": got.irrecoverable,
     }
 
@@ -719,6 +814,7 @@ def _run_to_dict(run: TranscriptRun) -> dict[str, Any]:
         "files_rebuilt": run.files_rebuilt,
         "lines_written": run.lines_written,
         "bytes_written": run.bytes_written,
+        "metas_written": run.metas_written,
         "anomalies": list(run.anomalies),
         "failures": list(run.failures),
     }

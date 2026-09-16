@@ -85,3 +85,22 @@ def test_a_subagent_sidecar_is_not_a_transcript(tmp_path: Path) -> None:
     assert _ids(tmp_path) == [("s1", None), ("s1", "a1")]
     assert sidecar not in [f.path for f in files]
     assert files[1].path == path
+
+
+def test_a_subagent_carries_its_sidecar_path(tmp_path: Path) -> None:
+    """The sidecar rides on its transcript's entry, paired by name."""
+    write_session(tmp_path, "s1")
+    write_subagent(tmp_path, "s1", "a1")
+    sidecar = write_subagent_meta(tmp_path, "s1", "a1")
+    write_subagent(tmp_path, "s1", "a2")
+
+    files = transcripts.transcript_files(tmp_path)
+
+    assert [f.meta for f in files] == [None, sidecar, None]
+
+
+def test_a_sidecar_with_no_transcript_is_not_a_file(tmp_path: Path) -> None:
+    """Its identity would have to come from a row that was never stored."""
+    write_session(tmp_path, "s1")
+    write_subagent_meta(tmp_path, "s1", "a1")
+    assert _ids(tmp_path) == [("s1", None)]

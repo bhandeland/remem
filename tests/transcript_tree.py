@@ -72,21 +72,26 @@ def write_tool_result(directory: Path, session_id: str) -> Path:
     return target
 
 
-def write_subagent_meta(directory: Path, session_id: str, agent_id: str) -> Path:
+def write_subagent_meta(
+    directory: Path, session_id: str, agent_id: str, content: bytes | None = None
+) -> Path:
     """`<directory>/<session_id>/subagents/agent-<agent_id>.meta.json`.
 
     Claude Code writes one beside every subagent transcript; it describes
-    the subagent; it is not a transcript.
+    the subagent; it is not a transcript. `content` overrides the bytes, for
+    tests that need a torn or a changed sidecar - the default is compact
+    JSON with no trailing newline, which is what real ones are.
     """
     target = directory / session_id / "subagents" / f"agent-{agent_id}.meta.json"
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(
-        json.dumps(
+    if content is None:
+        content = json.dumps(
             {
                 "agentType": "implementer",
                 "description": "Implement Task 1",
                 "spawnDepth": 0,
-            }
-        )
-    )
+            },
+            separators=(",", ":"),
+        ).encode()
+    target.write_bytes(content)
     return target

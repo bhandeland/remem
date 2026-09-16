@@ -11,7 +11,7 @@ from saddlebag.backends.postgres.migrate import migrate
 from saddlebag.backends.postgres.store import PostgresStore
 from saddlebag.domain import Event, EventKind, Principal, TranscriptTrigger, new_id
 from saddlebag.services import transcripts
-from tests.transcript_tree import write_session, write_subagent
+from tests.transcript_tree import write_session, write_subagent, write_subagent_meta
 
 pytestmark = pytest.mark.db
 
@@ -64,6 +64,7 @@ def test_status_of_an_unclaimed_project_is_a_full_document(
         "run",
         "backlog",
         "subagent_backlog",
+        "meta_backlog",
         "irrecoverable",
     }
     assert got["run"] is None
@@ -191,3 +192,28 @@ def test_a_stored_subagent_does_not_make_its_lost_session_recoverable(
     got = transcripts.status(store, owner.id, "p", tmp_path)
 
     assert got.irrecoverable == 1
+
+
+def test_status_counts_stored_subagents_missing_their_sidecar(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
+    """Only rows that are stored and lack one. An unstored subagent is
+    already in `subagent_backlog`, and one with no sidecar on disk has
+    nothing to fetch."""
+    claimed = tmp_path / "claimed"
+    write_subagent(claimed, "s1", "stored-late")
+    write_subagent(claimed, "s1", "never-had-one")
+    transcripts.designate(store, owner.id, "p", claimed)
+    transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
+    write_subagent_meta(claimed, "s1", "stored-late")
+    write_subagent(claimed, "s1", "not-stored")
+    write_subagent_meta(claimed, "s1", "not-stored")
+
+    before = transcripts.status(store, owner.id, "p", tmp_path)
+    assert (before.subagent_backlog, before.meta_backlog) == (1, 1)
+    assert transcripts.status_to_dict(before)["meta_backlog"] == 1
+
+    transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
+
+    after = transcripts.status(store, owner.id, "p", tmp_path)
+    assert (after.subagent_backlog, after.meta_backlog) == (0, 0)
