@@ -707,3 +707,21 @@ def test_a_session_file_never_gets_a_sidecar(
         found(store.get_transcript(owner.id, transcripts.HARNESS, "s1")).has_meta
         is False
     )
+
+
+def test_a_line_jsonb_refuses_does_not_stop_the_import(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
+    """One such line once aborted every run for its project, forever."""
+    target = tmp_path / "s1.jsonl"
+    target.write_bytes(b'{"type": "user"}\n{"type": "user", "text": "\\u0000"}\n')
+    write_session(tmp_path, "s2")
+    transcripts.designate(store, owner.id, "p", tmp_path)
+
+    report = transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
+
+    assert report.files_new == 2
+    assert [f["path"] for f in report.failures] == [str(target)]
+    stored = found(store.get_transcript(owner.id, transcripts.HARNESS, "s1"))
+    assert store.transcript_content(stored.id, owner.id) == target.read_bytes()
+    assert store.transcript_line_count(stored.id) == 1

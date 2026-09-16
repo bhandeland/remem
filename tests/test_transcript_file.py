@@ -123,3 +123,25 @@ def test_parse_is_idempotent() -> None:
     assert [(line.seq, line.raw) for line in first] == [
         (line.seq, line.raw) for line in second
     ]
+
+
+def test_parse_names_a_line_postgres_cannot_hold_as_jsonb() -> None:
+    """`\\u0000` is valid JSON and decodes to U+0000, which `jsonb` refuses.
+
+    Found by a real import: the refused batch raised out of the whole run,
+    and the zero-lines repair re-parsed that file on every later run, so
+    one line stopped the project's imports for good. Its bytes are in the
+    stored source either way; the derived row is what cannot exist. A NUL
+    in a KEY is refused just the same, and so is one nested in a list.
+    """
+    content = (
+        b'{"type": "user"}\n'
+        b'{"type": "user", "text": "a\\u0000b"}\n'
+        b'{"type": "user", "a\\u0000": 1}\n'
+        b'{"type": "user", "list": [{"deep": ["\\u0000"]}]}\n'
+        b'{"type": "user", "text": "a\\\\u0000b"}\n'
+    )
+    lines, failures = parse(content)
+    assert [line.seq for line in lines] == [0, 4]
+    assert [f.seq for f in failures] == [1, 2, 3]
+    assert all("U+0000" in f.reason for f in failures)

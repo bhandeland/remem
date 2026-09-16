@@ -122,6 +122,20 @@ def parse(
                 LineFailure(seq=seq, reason=f"line {seq}: not a JSON object")
             )
             continue
+        if _holds_nul(payload):
+            # Valid JSON that `jsonb` refuses: `\u0000` decodes to U+0000,
+            # which Postgres text cannot hold. Found by a real import, where
+            # the refused batch raised out of the whole run - and because
+            # the content had already committed with zero lines, the
+            # zero-lines repair re-parsed the file on every later run and
+            # stopped the project's imports for good. Same outcome as
+            # invalid JSON: no row, a named failure, bytes kept in source.
+            failures.append(
+                LineFailure(
+                    seq=seq, reason=f"line {seq}: holds U+0000, which jsonb refuses"
+                )
+            )
+            continue
         lines.append(
             TranscriptLine(
                 seq=seq,
@@ -133,6 +147,17 @@ def parse(
         )
 
     return lines, failures
+
+
+def _holds_nul(value: Any) -> bool:
+    """Whether any key or string anywhere in a parsed line holds U+0000."""
+    if isinstance(value, str):
+        return "\x00" in value
+    if isinstance(value, dict):
+        return any(_holds_nul(k) or _holds_nul(v) for k, v in value.items())
+    if isinstance(value, list):
+        return any(_holds_nul(v) for v in value)
+    return False
 
 
 def _text(value: Any) -> str | None:
