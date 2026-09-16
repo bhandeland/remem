@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 import psycopg
@@ -9,7 +10,7 @@ import pytest
 
 from saddlebag.backends.postgres.migrate import migrate
 from saddlebag.backends.postgres.store import PostgresStore
-from saddlebag.domain import Principal
+from saddlebag.domain import Event, EventKind, Principal, TranscriptTrigger, new_id
 from saddlebag.transcript_file import parse, sha256_hex
 
 pytestmark = pytest.mark.db
@@ -29,6 +30,31 @@ def owner(store: PostgresStore) -> Principal:
 @pytest.fixture
 def other(store: PostgresStore) -> Principal:
     return store.ensure_principal("someone-else")
+
+
+def record_event_for(
+    store: PostgresStore, owner: Principal, *, project: str, session_id: str
+) -> None:
+    """One recorded event for a session, which is all discovery needs.
+
+    Discovery proves a directory belongs to a project by intersecting
+    recorded session ids with transcript filenames, so the only field that
+    matters here is `session_id`. Everything else is the shape `Event`
+    requires.
+    """
+    store.put_event(
+        Event(
+            id=new_id(),
+            owner_id=owner.id,
+            project=project,
+            harness="claude-code",
+            session_id=session_id,
+            kind=EventKind.TOOL_CALL,
+            tool="Bash",
+            payload={"command": "ls"},
+            occurred_at=datetime(2026, 9, 15, tzinfo=UTC),
+        )
+    )
 
 
 def test_put_transcript_round_trips_content_byte_for_byte(store, owner) -> None:
@@ -120,3 +146,67 @@ def test_stored_transcripts_lists_without_content(store, owner) -> None:
     got = store.stored_transcripts(owner.id, "p")
     assert len(got) == 1
     assert not hasattr(got[0], "content")
+
+
+def test_add_transcript_path_names_the_project_already_holding_it(store, owner) -> None:
+    """A directory belongs to at most one project, and the refusal says whose.
+
+    Without the name, a user is told "taken" and has no way to find out by
+    what - and the real failure only surfaces much later, as a session
+    filed under the wrong project.
+    """
+    assert store.add_transcript_path(owner.id, "alpha", "/tmp/dir") is None
+    assert store.add_transcript_path(owner.id, "beta", "/tmp/dir") == "alpha"
+
+
+def test_add_transcript_path_is_idempotent_for_the_same_project(store, owner) -> None:
+    assert store.add_transcript_path(owner.id, "alpha", "/tmp/dir") is None
+    assert store.add_transcript_path(owner.id, "alpha", "/tmp/dir") is None
+    assert len(store.transcript_paths(owner.id, "alpha")) == 1
+
+
+def test_transcript_paths_with_no_project_sweeps_every_claim(store, owner) -> None:
+    store.add_transcript_path(owner.id, "alpha", "/tmp/a")
+    store.add_transcript_path(owner.id, "beta", "/tmp/b")
+    assert len(store.transcript_paths(owner.id)) == 2
+
+
+def test_a_started_run_has_no_finished_at(store, owner) -> None:
+    """The started row is what makes 'crashed' distinguishable from 'never
+    ran', and it only works if it commits before any file is read."""
+    run = store.start_transcript_run(owner.id, "p", TranscriptTrigger.AUTO)
+    assert run.finished_at is None
+    assert store.latest_transcript_run(owner.id, "p").finished_at is None
+
+
+def test_finishing_a_run_records_its_counts(store, owner) -> None:
+    run = store.start_transcript_run(owner.id, "p", TranscriptTrigger.MANUAL)
+    done = store.finish_transcript_run(
+        run.id,
+        owner.id,
+        files_seen=3,
+        files_new=2,
+        files_appended=1,
+        files_rebuilt=0,
+        lines_written=500,
+        bytes_written=4096,
+        anomalies=[{"path": "/tmp/x", "stored": 10, "on_disk": 4}],
+        failures=[],
+    )
+    assert done.finished_at is not None
+    assert done.files_new == 2
+    assert done.anomalies[0]["on_disk"] == 4
+    assert done.trigger is TranscriptTrigger.MANUAL
+
+
+def test_event_session_ids_are_what_prove_a_directory_belongs_to_a_project(
+    store, owner
+) -> None:
+    """Discovery intersects these with filenames on disk.
+
+    This is the whole answer to the rename problem: a transcript filename IS
+    a session id, and events already record which project a session belongs
+    to, so ownership is proven rather than guessed from a directory slug.
+    """
+    record_event_for(store, owner, project="p", session_id="session-1")
+    assert "session-1" in store.event_session_ids(owner.id, "p")

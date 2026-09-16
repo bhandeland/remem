@@ -30,6 +30,9 @@ from saddlebag.domain import (
     SessionRef,
     Transcript,
     TranscriptLine,
+    TranscriptPath,
+    TranscriptRun,
+    TranscriptTrigger,
 )
 
 
@@ -145,6 +148,58 @@ class Store(Protocol):
     ) -> int: ...
     def transcript_line_count(self, transcript_id: UUID) -> int: ...
     def stored_transcripts(self, owner_id: UUID, project: str) -> list[Transcript]: ...
+
+    # transcript path claims
+    #: Claim a directory for a project. Returns None on success and the
+    #: conflicting project's name on refusal, rather than a bare bool: told
+    #: only "taken", a user has no way to find out by what, and the real
+    #: failure would surface much later as a session filed under the wrong
+    #: project.
+    def add_transcript_path(
+        self, owner_id: UUID, project: str, path: str
+    ) -> str | None: ...
+    def remove_transcript_path(
+        self, owner_id: UUID, project: str, path: str
+    ) -> bool: ...
+    #: Claims for one project, or every claim when project is None - the
+    #: sweep `bag record status` needs to report on every claimed project.
+    def transcript_paths(
+        self, owner_id: UUID, project: str | None = None
+    ) -> list[TranscriptPath]: ...
+
+    # transcript runs
+    #: Opens a row and returns it. Called before any file is read, so that a
+    #: process which dies mid-run leaves a started, unfinished row behind -
+    #: the same contract `start_ingest_run` and `start_memory_run` keep.
+    def start_transcript_run(
+        self, owner_id: UUID, project: str, trigger: TranscriptTrigger
+    ) -> TranscriptRun: ...
+    #: Records the outcome and returns the finished row. Raises NotOwner for
+    #: a row that is not the caller's - ownership is enforced here, not by
+    #: callers.
+    def finish_transcript_run(
+        self,
+        run_id: UUID,
+        owner_id: UUID,
+        *,
+        files_seen: int,
+        files_new: int,
+        files_appended: int,
+        files_rebuilt: int,
+        lines_written: int,
+        bytes_written: int,
+        anomalies: list[dict[str, Any]],
+        failures: list[dict[str, Any]],
+    ) -> TranscriptRun: ...
+    #: The newest-started row for one project, finished or not.
+    def latest_transcript_run(
+        self, owner_id: UUID, project: str
+    ) -> TranscriptRun | None: ...
+    #: Distinct session ids recorded for a project. Read-only, and used only
+    #: by `discover`, which intersects these with transcript filenames on
+    #: disk to prove which directory belongs to which project - a
+    #: transcript filename IS a session id.
+    def event_session_ids(self, owner_id: UUID, project: str) -> list[str]: ...
 
     # recording
     def set_record_enabled(

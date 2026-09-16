@@ -42,6 +42,9 @@ from saddlebag.domain import (
     SessionRef,
     Transcript,
     TranscriptLine,
+    TranscriptPath,
+    TranscriptRun,
+    TranscriptTrigger,
     new_id,
 )
 from saddlebag.store import NotOwner
@@ -351,6 +354,57 @@ def _row_to_transcript(row: dict[str, Any]) -> Transcript:
         sha256=row["sha256"],
         first_seen=row["first_seen"],
         last_read=row["last_read"],
+    )
+
+
+def _row_to_transcript_path(row: dict[str, Any]) -> TranscriptPath:
+    return TranscriptPath(
+        owner_id=row["owner_id"],
+        project=row["project"],
+        path=row["path"],
+        added_at=row["added_at"],
+    )
+
+
+TRANSCRIPT_RUN_FIELDS = [
+    "id",
+    "owner_id",
+    "project",
+    "trigger",
+    "started_at",
+    "finished_at",
+    "files_seen",
+    "files_new",
+    "files_appended",
+    "files_rebuilt",
+    "lines_written",
+    "bytes_written",
+    "anomalies",
+    "failures",
+]
+
+
+def transcript_run_columns(alias: str = "") -> str:
+    prefix = f"{alias}." if alias else ""
+    return ", ".join(f"{prefix}{f}" for f in TRANSCRIPT_RUN_FIELDS)
+
+
+def _row_to_transcript_run(row: dict[str, Any]) -> TranscriptRun:
+    return TranscriptRun(
+        id=row["id"],
+        owner_id=row["owner_id"],
+        project=row["project"],
+        trigger=TranscriptTrigger(row["trigger"]),
+        started_at=row["started_at"],
+        finished_at=row["finished_at"],
+        files_seen=row["files_seen"],
+        files_new=row["files_new"],
+        files_appended=row["files_appended"],
+        files_rebuilt=row["files_rebuilt"],
+        lines_written=row["lines_written"],
+        bytes_written=row["bytes_written"],
+        anomalies=list(row["anomalies"]),
+        failures=list(row["failures"]),
     )
 
 
@@ -1152,6 +1206,161 @@ class PostgresStore:
                 (owner_id, project),
             )
             return [_row_to_transcript(r) for r in cur.fetchall()]
+
+    # ---------------- transcript path claims ----------------
+
+    def add_transcript_path(
+        self, owner_id: UUID, project: str, path: str
+    ) -> str | None:
+        """Claim a directory, or name the project that already holds it.
+
+        Returns None on success and the conflicting project's name on
+        refusal, rather than a bare bool: told only "taken", a user has no
+        way to find out by what, and the real failure would surface much
+        later as a session filed under the wrong project.
+        """
+        with self._cur() as cur:
+            cur.execute(
+                "select project from transcript_paths"
+                " where owner_id = %s and path = %s",
+                (owner_id, path),
+            )
+            row = cur.fetchone()
+            if row is not None:
+                # This module's cursor uses `dict_row`, so rows are read by
+                # column name, never by position.
+                return None if row["project"] == project else str(row["project"])
+            cur.execute(
+                "insert into transcript_paths (owner_id, project, path)"
+                " values (%s, %s, %s)",
+                (owner_id, project, path),
+            )
+            return None
+
+    def remove_transcript_path(self, owner_id: UUID, project: str, path: str) -> bool:
+        with self._cur() as cur:
+            cur.execute(
+                "delete from transcript_paths"
+                " where owner_id = %s and project = %s and path = %s",
+                (owner_id, project, path),
+            )
+            return cur.rowcount == 1
+
+    def transcript_paths(
+        self, owner_id: UUID, project: str | None = None
+    ) -> list[TranscriptPath]:
+        """Claims for one project, or every claim when project is None.
+
+        The sweep is what `bag record status` needs: it reports one advisory
+        line per unhealthy claimed project, and unlike ingest's status it can
+        answer for every project because the claim stores an absolute path
+        and needs no recorded working directory to resolve.
+        """
+        where = "owner_id = %s" + ("" if project is None else " and project = %s")
+        params: tuple[Any, ...] = (
+            (owner_id,) if project is None else (owner_id, project)
+        )
+        with self._cur() as cur:
+            cur.execute(
+                as_sql(f"""
+                select owner_id, project, path, added_at from transcript_paths
+                 where {where}
+                 order by project, path
+                """),
+                params,
+            )
+            return [_row_to_transcript_path(r) for r in cur.fetchall()]
+
+    # ---------------- transcript runs ----------------
+
+    def start_transcript_run(
+        self, owner_id: UUID, project: str, trigger: TranscriptTrigger
+    ) -> TranscriptRun:
+        run_id = new_id()
+        with self._cur() as cur:
+            cur.execute(
+                as_sql(f"""
+                insert into transcript_runs (id, owner_id, project, trigger)
+                values (%s, %s, %s, %s)
+                returning {transcript_run_columns()}
+                """),
+                (run_id, owner_id, project, str(trigger)),
+            )
+            return _row_to_transcript_run(_one(cur))
+
+    def finish_transcript_run(
+        self,
+        run_id: UUID,
+        owner_id: UUID,
+        *,
+        files_seen: int,
+        files_new: int,
+        files_appended: int,
+        files_rebuilt: int,
+        lines_written: int,
+        bytes_written: int,
+        anomalies: list[dict[str, Any]],
+        failures: list[dict[str, Any]],
+    ) -> TranscriptRun:
+        with self._cur() as cur:
+            cur.execute(
+                as_sql(f"""
+                update transcript_runs
+                   set finished_at = clock_timestamp(),
+                       files_seen = %s, files_new = %s, files_appended = %s,
+                       files_rebuilt = %s, lines_written = %s,
+                       bytes_written = %s, anomalies = %s, failures = %s
+                 where id = %s and owner_id = %s
+                returning {transcript_run_columns()}
+                """),
+                (
+                    files_seen,
+                    files_new,
+                    files_appended,
+                    files_rebuilt,
+                    lines_written,
+                    bytes_written,
+                    Jsonb(anomalies),
+                    Jsonb(failures),
+                    run_id,
+                    owner_id,
+                ),
+            )
+            row = cur.fetchone()
+            if row is None:
+                raise NotOwner(f"transcript run {run_id} is not owned by {owner_id}")
+            return _row_to_transcript_run(row)
+
+    def latest_transcript_run(
+        self, owner_id: UUID, project: str
+    ) -> TranscriptRun | None:
+        with self._cur() as cur:
+            cur.execute(
+                as_sql(f"""
+                select {transcript_run_columns()} from transcript_runs
+                 where owner_id = %s and project = %s
+                 order by started_at desc
+                 limit 1
+                """),
+                (owner_id, project),
+            )
+            row = cur.fetchone()
+        return _row_to_transcript_run(row) if row else None
+
+    def event_session_ids(self, owner_id: UUID, project: str) -> list[str]:
+        """Distinct session ids recorded for a project.
+
+        Read-only and used only by `discover`, which intersects these with
+        transcript filenames to prove which directory belongs to which
+        project.
+        """
+        with self._cur() as cur:
+            cur.execute(
+                "select distinct session_id from events"
+                " where owner_id = %s and project = %s",
+                (owner_id, project),
+            )
+            return [str(r["session_id"]) for r in cur.fetchall()]
 
     # ---------------- recording ----------------
 
