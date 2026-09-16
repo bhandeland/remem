@@ -11,6 +11,7 @@ from saddlebag.backends.postgres.migrate import migrate
 from saddlebag.backends.postgres.store import PostgresStore
 from saddlebag.domain import Event, EventKind, Principal, TranscriptTrigger, new_id
 from saddlebag.services import transcripts
+from tests.transcript_tree import write_session, write_subagent
 
 pytestmark = pytest.mark.db
 
@@ -125,3 +126,21 @@ def test_advisories_sweep_every_claimed_project(
         directory.rmdir()
     lines = transcripts.advisories(store, owner.id)
     assert len(lines) == 2
+
+
+def test_advisories_count_a_conflicting_session_once(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
+    """One session with many subagents is one thing to go and look at.
+    Per-file entries stay in the run row; the line counts sessions."""
+    record_event_for(store, owner, project="B", session_id="s1")
+    write_session(tmp_path, "s1")
+    for agent in ("a1", "a2", "a3"):
+        write_subagent(tmp_path, "s1", agent)
+    transcripts.designate(store, owner.id, "A", tmp_path)
+    transcripts.run(store, owner.id, "A", trigger=TranscriptTrigger.MANUAL)
+
+    lines = transcripts.advisories(store, owner.id)
+
+    assert len(lines) == 1
+    assert "1 session(s) recorded under another project" in lines[0]

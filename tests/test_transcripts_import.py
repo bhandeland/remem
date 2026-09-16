@@ -20,6 +20,7 @@ from saddlebag.domain import (
 )
 from saddlebag.services import transcripts
 from tests.conftest import found
+from tests.transcript_tree import write_session, write_subagent, write_tool_result
 
 pytestmark = pytest.mark.db
 
@@ -424,3 +425,139 @@ def test_a_session_recorded_under_the_claiming_project_is_not_an_anomaly(
 
     assert report.anomalies == []
     assert report.files_new == 2
+
+
+def test_an_import_stores_every_subagent_file_byte_exact(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
+    """The gap this amendment closes: 392 files and 131MB on the machine it
+    was measured on, and the only copy of those conversations."""
+    write_session(tmp_path, "s1")
+    a1 = write_subagent(tmp_path, "s1", "a1", [{"type": "user"}, {"type": "assistant"}])
+    write_subagent(tmp_path, "s1", "a2")
+    transcripts.designate(store, owner.id, "p", tmp_path)
+
+    report = transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
+
+    assert report.files_new == 3
+    parent = found(store.get_transcript(owner.id, transcripts.HARNESS, "s1"))
+    child = found(store.get_transcript(owner.id, transcripts.HARNESS, "s1", "a1"))
+    assert parent.id != child.id
+    assert store.transcript_content(child.id, owner.id) == a1.read_bytes()
+    # designate stores the resolved claim path, and macOS tmp paths may
+    # differ in spelling (/tmp vs /private/tmp) - compare as resolved Paths
+    # rather than strings.
+    assert Path(child.path) == a1.resolve()
+    assert store.transcript_line_count(child.id) == 2
+    # Identity came from the path's directories, never from its stem.
+    assert store.get_transcript(owner.id, transcripts.HARNESS, "agent-a1") is None
+
+
+def test_one_agent_id_under_two_sessions_is_stored_twice(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
+    write_subagent(tmp_path, "s1", "a1", [{"type": "user"}])
+    write_subagent(tmp_path, "s2", "a1", [{"type": "assistant"}, {"type": "user"}])
+    transcripts.designate(store, owner.id, "p", tmp_path)
+
+    report = transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
+
+    assert report.files_new == 2
+    one = found(store.get_transcript(owner.id, transcripts.HARNESS, "s1", "a1"))
+    two = found(store.get_transcript(owner.id, transcripts.HARNESS, "s2", "a1"))
+    assert store.transcript_line_count(one.id) == 1
+    assert store.transcript_line_count(two.id) == 2
+
+
+def test_a_subagent_whose_parent_file_is_missing_is_still_stored(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
+    """Not an anomaly: nothing about the file is suspect. The missing parent
+    is what `irrecoverable` reports."""
+    write_subagent(tmp_path, "gone", "a1")
+    transcripts.designate(store, owner.id, "p", tmp_path)
+
+    report = transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
+
+    assert report.files_new == 1
+    assert report.anomalies == []
+    assert store.get_transcript(owner.id, transcripts.HARNESS, "gone", "a1")
+
+
+def test_an_unchanged_subagent_file_is_not_read_again(
+    store: PostgresStore,
+    owner: Principal,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A lookup that ignored the agent would find the PARENT's row, see a
+    different size, and read the file - so disabling reads is what proves
+    each file is matched to its own row."""
+    write_session(tmp_path, "s1", [{"type": "user"}, {"type": "assistant"}])
+    write_subagent(tmp_path, "s1", "a1")
+    transcripts.designate(store, owner.id, "p", tmp_path)
+    transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
+
+    def _must_not_read(*args: object, **kwargs: object) -> None:
+        raise AssertionError("an unchanged file must not be read")
+
+    monkeypatch.setattr(Path, "open", _must_not_read)
+    monkeypatch.setattr(Path, "read_bytes", _must_not_read)
+
+    report = transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
+
+    assert report.files_seen == 2
+    assert report.files_new == 0
+    assert report.files_appended == 0
+    assert report.files_rebuilt == 0
+
+
+def test_an_appended_subagent_file_adds_only_its_new_lines(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
+    path = write_subagent(tmp_path, "s1", "a1", [{"type": "user"}])
+    transcripts.designate(store, owner.id, "p", tmp_path)
+    transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
+
+    with path.open("ab") as fh:
+        fh.write(json.dumps({"type": "assistant"}).encode() + b"\n")
+    report = transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
+
+    assert report.files_appended == 1
+    assert report.lines_written == 1
+    child = found(store.get_transcript(owner.id, transcripts.HARNESS, "s1", "a1"))
+    assert store.transcript_content(child.id, owner.id) == path.read_bytes()
+
+
+def test_tool_results_are_not_imported(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
+    write_session(tmp_path, "s1")
+    write_tool_result(tmp_path, "s1")
+    transcripts.designate(store, owner.id, "p", tmp_path)
+
+    report = transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
+
+    assert report.files_seen == 1
+
+
+def test_a_subagent_of_a_session_recorded_elsewhere_is_an_anomaly_too(
+    store: PostgresStore, owner: Principal, tmp_path: Path
+) -> None:
+    """Looking the session up by the file's stem would find `agent-a1` in
+    no recorded project and skip the check for every subagent, silently."""
+    _record(store, owner, "B", "s1")
+    write_session(tmp_path, "s1")
+    write_subagent(tmp_path, "s1", "a1")
+    write_subagent(tmp_path, "s1", "a2")
+    transcripts.designate(store, owner.id, "A", tmp_path)
+
+    report = transcripts.run(store, owner.id, "A", trigger=TranscriptTrigger.MANUAL)
+
+    assert report.files_new == 3
+    assert {(a["session_id"], a["agent_id"]) for a in report.anomalies} == {
+        ("s1", None),
+        ("s1", "a1"),
+        ("s1", "a2"),
+    }
+    assert all(a["reason"] == transcripts.PROJECT_CONFLICT for a in report.anomalies)

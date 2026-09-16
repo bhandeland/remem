@@ -264,7 +264,11 @@ def test_import_records_a_crashed_run_rather_than_losing_it(
     conn.close()
 
     def boom(
-        self: PostgresStore, owner_id: object, harness: object, session_id: object
+        self: PostgresStore,
+        owner_id: object,
+        harness: object,
+        session_id: object,
+        agent_id: object = None,
     ) -> None:
         with self._conn.cursor() as cur:
             cur.execute("select this_column_does_not_exist")

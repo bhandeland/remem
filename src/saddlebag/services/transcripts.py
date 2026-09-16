@@ -345,11 +345,11 @@ def _run_body(
                 {"path": claim.path, "reason": "claimed directory does not exist"}
             )
             continue
-        for path in sorted(directory.glob("*.jsonl")):
+        for file in transcript_files(directory):
             if budget is not None and budget <= 0:
                 return
             report.files_seen += 1
-            did_work = _import_one(store, owner_id, project, path, report, recorded)
+            did_work = _import_one(store, owner_id, project, file, report, recorded)
             if did_work and budget is not None:
                 budget -= 1
 
@@ -358,7 +358,7 @@ def _import_one(
     store: Store,
     owner_id: UUID,
     project: str,
-    path: Path,
+    file: TranscriptFile,
     report: Report,
     recorded: dict[str, set[str]],
 ) -> bool:
@@ -367,9 +367,14 @@ def _import_one(
     The budget is spent only on files that were actually read, so a refresh
     over a directory of unchanged transcripts costs one stat each and skips
     nothing it could have done.
+
+    Identity arrives on `file` and is never re-derived from `path.stem`:
+    for a subagent the stem is `agent-<id>`, which is neither the session
+    nor, alone, the agent - and both places that once read the stem would
+    have gone wrong without raising.
     """
-    session_id = path.stem
-    existing = store.get_transcript(owner_id, HARNESS, session_id)
+    path = file.path
+    existing = store.get_transcript(owner_id, HARNESS, file.session_id, file.agent_id)
 
     try:
         disk_size = path.stat().st_size
@@ -377,10 +382,10 @@ def _import_one(
         report.failures.append({"path": str(path), "reason": str(exc)})
         return False
 
-    _check_project_agreement(project, path, report, recorded)
+    _check_project_agreement(project, file, report, recorded)
 
     if existing is None:
-        return _store_whole(store, owner_id, project, path, report, new=True)
+        return _store_whole(store, owner_id, project, file, report, new=True)
 
     plan = _plan_for(existing, path, disk_size, report)
     if plan is ReadPlan.SHRUNK:
@@ -410,9 +415,9 @@ def _import_one(
         # session start with no human having to notice a silent condition.
         if store.transcript_line_count(existing.id) > 0:
             return False
-        return _store_whole(store, owner_id, project, path, report, new=False)
+        return _store_whole(store, owner_id, project, file, report, new=False)
     if plan is ReadPlan.REBUILD:
-        return _store_whole(store, owner_id, project, path, report, new=False)
+        return _store_whole(store, owner_id, project, file, report, new=False)
     return _append(store, owner_id, existing, path, report)
 
 
@@ -425,7 +430,7 @@ PROJECT_CONFLICT = "project-conflict"
 
 def _check_project_agreement(
     project: str,
-    path: Path,
+    file: TranscriptFile,
     report: Report,
     recorded: dict[str, set[str]],
 ) -> None:
@@ -451,14 +456,22 @@ def _check_project_agreement(
     recorded project that DISAGREES is an anomaly. Multiple recorded
     projects for one session are reported as they are found rather than
     resolved: picking one would be the guess.
+
+    Subagent files are checked against their PARENT's session id, which is
+    what `events` records their tool calls under, and each gets its own
+    entry - each really is a file stored under a disputed label. The entry
+    names the session and agent so `advisories` can count sessions rather
+    than files.
     """
-    known = recorded.get(path.stem)
+    known = recorded.get(file.session_id)
     if not known or project in known:
         return
     report.anomalies.append(
         {
             "reason": PROJECT_CONFLICT,
-            "path": str(path),
+            "path": str(file.path),
+            "session_id": file.session_id,
+            "agent_id": file.agent_id,
             "claiming": project,
             "recorded": sorted(known),
         }
@@ -498,11 +511,12 @@ def _store_whole(
     store: Store,
     owner_id: UUID,
     project: str,
-    path: Path,
+    file: TranscriptFile,
     report: Report,
     *,
     new: bool,
 ) -> bool:
+    path = file.path
     try:
         content = path.read_bytes()
     except OSError as exc:
@@ -513,10 +527,11 @@ def _store_whole(
         owner_id,
         project,
         HARNESS,
-        path.stem,
+        file.session_id,
         str(path),
         content,
         sha256_hex(content),
+        agent_id=file.agent_id,
     )
     lines, failures = parse(content)
     store.replace_transcript_lines(stored.id, lines)
@@ -730,15 +745,22 @@ def advisories(store: Store, owner_id: UUID) -> list[str]:
             # before anomalies carried a `reason` falls into `other` and is
             # counted rather than dropped.
             shrank = sum(1 for a in run.anomalies if a.get("reason") == SHRANK)
-            conflicts = sum(
-                1 for a in run.anomalies if a.get("reason") == PROJECT_CONFLICT
+            conflict_entries = [
+                a for a in run.anomalies if a.get("reason") == PROJECT_CONFLICT
+            ]
+            # Sessions, not files: one session with 57 subagent files is one
+            # thing to go and look at. An entry written before anomalies
+            # named their session falls back to its path, so it is still
+            # counted rather than collapsed into a phantom None session.
+            conflicts = len(
+                {a.get("session_id") or a.get("path") for a in conflict_entries}
             )
             parts = []
             if shrank:
                 parts.append(f"{shrank} transcript(s) shrank on disk")
             if conflicts:
-                parts.append(f"{conflicts} recorded under another project")
-            other = len(run.anomalies) - shrank - conflicts
+                parts.append(f"{conflicts} session(s) recorded under another project")
+            other = len(run.anomalies) - shrank - len(conflict_entries)
             if other:
                 parts.append(f"{other} anomaly(ies)")
             lines.append(
