@@ -2445,7 +2445,11 @@ def transcripts_discover(
     designate` is the one write, and a human decides.
     """
     resolved = _require_project(_resolve_project(project, False))
-    root = Path.home() / ".claude" / "projects"
+    # The service owns where this harness keeps its transcripts, honouring
+    # CLAUDE_CONFIG_DIR - a frontend that builds the path itself is a
+    # frontend deciding, and the hand-built copy that used to sit here found
+    # nothing at all for anyone who moves that directory.
+    root = transcripts_service.transcript_root()
     with _session() as s:
         found = transcripts_service.discover(s.store, s.owner.id, resolved, root)
     if not found:
@@ -2502,12 +2506,13 @@ def transcripts_status(
 
     `run` answers what last HAPPENED; the claimed-directory, backlog and
     irrecoverable lines answer the state NOW - a reader must not have to
-    infer one from the other. `root` is the same
-    `~/.claude/projects` every other transcript command resolves against,
-    so status sees exactly what `discover` and `import` would.
+    infer one from the other. `root` comes from
+    `transcripts.transcript_root()`, the one place that resolves this
+    harness's transcript directory, so status sees exactly what `discover`
+    and `import` would - including when CLAUDE_CONFIG_DIR has moved it.
     """
     resolved = _require_project(_resolve_project(project, False))
-    root = Path.home() / ".claude" / "projects"
+    root = transcripts_service.transcript_root()
     with _session() as s:
         got = transcripts_service.status(s.store, s.owner.id, resolved, root)
     if as_json:

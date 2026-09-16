@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+from saddlebag.agents.claude_code.memory import projects_dir
 from saddlebag.domain import (
     Transcript,
     TranscriptPath,
@@ -33,6 +34,7 @@ __all__ = [
     "designate",
     "status",
     "status_to_dict",
+    "transcript_root",
     "undesignate",
     "run",
 ]
@@ -42,6 +44,32 @@ __all__ = [
 #: generalisation before a second harness exists would be guessing at its
 #: shape - the `harness` COLUMN is the part that costs nothing to have early.
 HARNESS = "claude-code"
+
+
+def transcript_root() -> Path:
+    """Where this harness keeps its transcripts, honouring CLAUDE_CONFIG_DIR.
+
+    Here rather than in `cli.py` for the reason `HARNESS` is: which
+    directory holds Claude Code's transcripts is a fact about the harness,
+    not about a command, and a frontend that builds it by hand is a
+    frontend deciding. Two copies of `~/.claude/projects` had already grown
+    in `cli.py`, and both were silently wrong for anyone who sets
+    `CLAUDE_CONFIG_DIR` - `discover` proposed nothing with no evidence and
+    no error, and `status` called every recorded session irrecoverable,
+    which is precisely the number that exists to argue for importing
+    sooner.
+
+    The resolution itself is delegated to the adapter module that already
+    owns it (`agents/claude_code/memory.projects_dir`, which `memory_dir`
+    also resolves through) rather than re-spelled here: a third copy of the
+    variable name is how the next override lands in one answer and not the
+    other.
+
+    `discover` and `status` still TAKE `root` as a parameter - what moved
+    is the default, not the seam, so a test can still point them at a
+    `tmp_path`.
+    """
+    return projects_dir()
 
 
 @dataclass

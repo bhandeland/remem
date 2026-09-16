@@ -43,11 +43,14 @@ def cli_env(live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> N
     """Points BAG_DSN at the scratch database, mints the owner, and seeds a
     transcript directory discovery can find under a redirected `Path.home()`.
 
-    `discover` (and, later, `status`) default their `root` to
-    `Path.home() / ".claude" / "projects"`, exactly how Claude Code lays
-    transcripts out for real - so `Path.home` is patched, the way
-    `tests/test_cli.py`'s install test already does, rather than passing a
-    root the CLI cannot see any other way.
+    `discover` (and `status`) default their `root` to
+    `transcripts.transcript_root()`, which is `~/.claude/projects` unless
+    `CLAUDE_CONFIG_DIR` moves it - exactly how Claude Code lays transcripts
+    out for real. So `Path.home` is patched, the way `tests/test_cli.py`'s
+    install test already does, rather than passing a root the CLI cannot
+    see any other way, and `CLAUDE_CONFIG_DIR` is cleared: it is a real
+    variable a developer may have set, and leaving it would point these
+    tests at that machine's directory instead of `tmp_path`.
 
     Three files are seeded, two of whose session ids have a recorded event
     for `PROJECT` - the third is what keeps `matched` and `total` from being
@@ -58,6 +61,7 @@ def cli_env(live_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> N
     monkeypatch.setenv("BAG_DSN", live_dsn)
     monkeypatch.setenv("BAG_USER_ID", "brandon")
     monkeypatch.setenv("BAG_CONFIG", str(tmp_path / "none.toml"))
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
 
     def _home(cls: type[pathlib.Path]) -> pathlib.Path:
         return tmp_path
@@ -103,6 +107,34 @@ def test_discover_prints_its_evidence_and_writes_nothing(
     result = runner.invoke(app, ["transcripts", "discover"])
     assert result.exit_code == 0
     assert "2 of 3" in result.stdout
+
+
+def test_discover_looks_under_claude_config_dir_when_it_is_set(
+    cli_env: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """CLAUDE_CONFIG_DIR moves the whole tree, transcripts included.
+
+    Every other place this repo touches that tree honours the override, and
+    the two hand-built `~/.claude/projects` paths in `cli.py` did not: for
+    anyone who sets it, `discover` proposed nothing with no evidence and no
+    error, and `status` called every recorded session irrecoverable.
+
+    The fixture's own directory under the patched home is deliberately left
+    in place and NOT what is asserted on. Asserting only "something was
+    found" would pass on the hardcoded path too - it is finding the
+    directory that exists ONLY under the override that tells the two
+    implementations apart.
+    """
+    elsewhere = tmp_path / "xdg-ish" / "claude-config"
+    directory = elsewhere / "projects" / "-moved-config"
+    directory.mkdir(parents=True)
+    (directory / "sess-1.jsonl").write_bytes(json.dumps({"type": "user"}).encode())
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(elsewhere))
+
+    result = runner.invoke(app, ["transcripts", "discover"])
+
+    assert result.exit_code == 0
+    assert str(directory) in result.stdout
 
 
 def test_designate_echoes_the_backfill_command_and_its_cost(

@@ -24,6 +24,25 @@ def slug_for(cwd: Path) -> str:
     return str(Path(cwd).resolve()).replace(os.sep, "-")
 
 
+def projects_dir(
+    home: Path | None = None,
+    env: Mapping[str, str] | None = None,
+) -> Path:
+    """Claude Code's per-working-directory tree: memory, and transcripts.
+
+    Factored out of `memory_dir` because a second caller appeared -
+    transcript capture reads `<config>/projects/<slug>/*.jsonl` out of the
+    same tree. `CLAUDE_CONFIG_DIR` moves the whole thing, so a caller that
+    builds `~/.claude/projects` by hand is silently wrong for anyone who
+    sets it: discovery proposes nothing and finds no evidence to say why.
+    One resolution, here, is what stops the two answers drifting.
+    """
+    env = os.environ if env is None else env
+    configured = env.get("CLAUDE_CONFIG_DIR")
+    root = Path(configured) if configured else (home or Path.home()) / ".claude"
+    return root / "projects"
+
+
 def memory_dir(
     cwd: Path,
     home: Path | None = None,
@@ -39,7 +58,4 @@ def memory_dir(
     get one through `env` alone, and would silently get the real HOME
     instead. Taking `home` removes that trap rather than documenting it.
     """
-    env = os.environ if env is None else env
-    configured = env.get("CLAUDE_CONFIG_DIR")
-    root = Path(configured) if configured else (home or Path.home()) / ".claude"
-    return root / "projects" / slug_for(cwd) / "memory"
+    return projects_dir(home, env) / slug_for(cwd) / "memory"

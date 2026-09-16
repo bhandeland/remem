@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+from saddlebag.services.transcripts import transcript_root
 from saddlebag.transcript_file import parse
 
 FIXTURE = Path(__file__).parent / "fixtures" / "transcript-sample.jsonl"
@@ -54,7 +55,11 @@ def test_a_real_transcript_still_parses(tmp_path: Path) -> None:
     mid-branch. When it does, the fix is to add the new type to KNOWN_TYPES
     and to the fixture - not to make the parser stricter.
     """
-    root = Path.home() / ".claude" / "projects"
+    # The same resolution the commands use, so this skips only when there
+    # really is no transcript - a hand-built `~/.claude/projects` skipped
+    # unconditionally for anyone who sets CLAUDE_CONFIG_DIR, which is the
+    # freshness check quietly never running.
+    root = transcript_root()
     found: list[Path] = sorted(root.glob("*/*.jsonl")) if root.is_dir() else []
     if not found:
         pytest.skip(f"no transcript under {root}")
