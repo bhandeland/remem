@@ -384,6 +384,19 @@ document supersedes every one of its chunks on the next ingest; comparing
 bodies alone would leave the old titles standing until each section's prose
 happened to change.
 
+Retrieval quality for ingested content is measured at the **document**, not the
+chunk. A 165-question eval on 2026-09-15 scored ingested chunks at 43.6% hit@1
+against the exact gold section and 69.1% against the right document - the same
+as hand-written entries (69.0%). Almost all of the apparent deficit is
+right-document/wrong-section: 28 of 31 misses lost to another ingested chunk,
+14 of those to a sibling section of the same file. The tempting explanation -
+that a `Doc § Section` title dilutes the highest-weighted tsvector field - was
+tested and rejected: 12 of the 15 chunks that never surfaced rank first when
+queried with their own title verbatim. Do not retune titles or field weights on
+the strength of the chunk-level number. What dominates those misses is a
+paraphrase penalty that is corpus-wide (+30 to +50 points against keyword
+queries in **every** origin), not an ingest trait.
+
 Two origins, because `search.DEFAULT_ORIGINS` is an allowlist and an
 exclude filter was deliberately declined: `INGESTED` (specs, notes,
 decisions) is in that list, `ARCHIVED` (plans, written with `--archive`) is
