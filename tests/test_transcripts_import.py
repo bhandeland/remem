@@ -209,10 +209,32 @@ def test_the_cap_bounds_a_refresh_before_it_reads(
 
 
 def test_an_unclaimed_project_does_nothing(store, owner, tmp_path: Path) -> None:
-    """The common case, and the entire opt-in."""
+    """The common case, and the entire opt-in.
+
+    Asserting `files_seen == 0` alone is satisfied just as well by a version
+    that still writes an empty run row - and `bag transcripts refresh` is
+    spawned at every session start for every project, so that version would
+    leave a `transcript_runs` row per session per unclaimed project, forever.
+    Asserting no row exists is what would have caught it.
+    """
     _write(tmp_path, "s1", [{"type": "user"}])
     report = transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.AUTO)
     assert report.files_seen == 0
+    assert store.latest_transcript_run(owner.id, "p") is None
+
+
+def test_a_claimed_project_records_a_run_even_with_nothing_to_import(
+    store, owner, tmp_path: Path
+) -> None:
+    """Opting in means your runs are visible, even the empty ones.
+
+    The early return is for projects that never claimed a directory. A
+    project that claimed one and simply has no new files is a different
+    thing, and a reader needs to see that it ran.
+    """
+    transcripts.designate(store, owner.id, "p", tmp_path)
+    transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)
+    assert store.latest_transcript_run(owner.id, "p") is not None
 
 
 def test_a_missing_claimed_directory_is_a_failure_not_a_crash(
@@ -245,12 +267,17 @@ def test_a_body_exception_records_the_failure_and_finishes_the_row(
     failed statement, and that contract is established end to end by the
     CLI's own test, not by this one.
     """
+    _write(tmp_path, "s1", [{"type": "user"}])
     transcripts.designate(store, owner.id, "p", tmp_path)
 
-    def _boom(*args: object, **kwargs: object) -> list[object]:
+    def _boom(*args: object, **kwargs: object) -> None:
         raise RuntimeError("simulated failure")
 
-    monkeypatch.setattr(store, "transcript_paths", _boom)
+    # get_transcript is called from inside _import_one, which _run_body only
+    # reaches once a claimed directory exists with a file to look at - unlike
+    # transcript_paths, which run() now consults once up front (to decide
+    # whether to write a row at all) and never calls again.
+    monkeypatch.setattr(store, "get_transcript", _boom)
 
     with pytest.raises(RuntimeError, match="simulated failure"):
         transcripts.run(store, owner.id, "p", trigger=TranscriptTrigger.MANUAL)

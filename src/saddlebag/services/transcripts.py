@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
-from saddlebag.domain import Transcript, TranscriptTrigger
+from saddlebag.domain import Transcript, TranscriptPath, TranscriptTrigger
 from saddlebag.store import Store
 from saddlebag.transcript_file import ReadPlan, classify, parse, sha256_hex
 
@@ -181,11 +181,27 @@ def run(
     `InFailedSqlTransaction` instead of running, silently replacing the real
     exception and recording nothing. Stated here so it is inherited rather
     than rediscovered by every future caller.
+
+    A project with no claimed directory writes nothing at all - not even a
+    run row. `bag transcripts refresh` is spawned at every session start,
+    for whatever project the session is in, and most projects will never
+    claim a transcript directory: without this, every one of those sessions
+    would leave a `transcript_runs` row recording that nothing happened,
+    forever. That is the same contract `bag memory refresh` already holds
+    for an undesignated project - the common case must cost nothing and
+    record nothing. A project that HAS claimed a directory still gets a row
+    on every run, even one where the directory has since been deleted: that
+    project opted in, and a reader needs to see its state, including that
+    the claim has gone missing.
     """
+    claims = store.transcript_paths(owner_id, project)
+    if not claims:
+        return Report()
+
     report = Report()
     started = store.start_transcript_run(owner_id, project, trigger)
     try:
-        _run_body(store, owner_id, project, cap, report)
+        _run_body(store, owner_id, project, cap, claims, report)
     except Exception as exc:
         report.failures.append({"path": "*", "reason": f"{type(exc).__name__}: {exc}"})
         raise
@@ -210,10 +226,11 @@ def _run_body(
     owner_id: UUID,
     project: str,
     cap: int | None,
+    claims: list[TranscriptPath],
     report: Report,
 ) -> None:
     budget = cap
-    for claim in store.transcript_paths(owner_id, project):
+    for claim in claims:
         directory = Path(claim.path)
         if not directory.is_dir():
             # A claimed directory that has gone is reported on every run,
