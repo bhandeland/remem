@@ -333,6 +333,7 @@ def transcript_columns(alias: str = "t") -> str:
         "project",
         "harness",
         "session_id",
+        "agent_id",
         "path",
         "bytes",
         "sha256",
@@ -349,6 +350,7 @@ def _row_to_transcript(row: dict[str, Any]) -> Transcript:
         project=row["project"],
         harness=row["harness"],
         session_id=row["session_id"],
+        agent_id=row["agent_id"],
         path=row["path"],
         bytes=row["bytes"],
         sha256=row["sha256"],
@@ -1072,15 +1074,19 @@ class PostgresStore:
         path: str,
         content: bytes,
         sha256: str,
+        agent_id: str | None = None,
     ) -> Transcript:
         with self._cur() as cur:
             cur.execute(
                 as_sql(f"""
                 insert into transcripts
-                  (id, owner_id, project, harness, session_id, path,
+                  (id, owner_id, project, harness, session_id, agent_id, path,
                    content, bytes, sha256)
-                values (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                on conflict (owner_id, harness, session_id) do update
+                values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                -- By constraint name, not by column list: the target has a
+                -- nullable column, and naming the constraint says exactly
+                -- which uniqueness rule this upsert rides on.
+                on conflict on constraint transcripts_identity do update
                   set content = excluded.content,
                       bytes = excluded.bytes,
                       sha256 = excluded.sha256,
@@ -1106,6 +1112,7 @@ class PostgresStore:
                     project,
                     harness,
                     session_id,
+                    agent_id,
                     path,
                     content,
                     len(content),
@@ -1115,15 +1122,22 @@ class PostgresStore:
             return _row_to_transcript(_one(cur))
 
     def get_transcript(
-        self, owner_id: UUID, harness: str, session_id: str
+        self,
+        owner_id: UUID,
+        harness: str,
+        session_id: str,
+        agent_id: str | None = None,
     ) -> Transcript | None:
         with self._cur() as cur:
             cur.execute(
                 as_sql(f"""
                 select {transcript_columns("t")} from transcripts t
                  where t.owner_id = %s and t.harness = %s and t.session_id = %s
+                   -- `=` never matches NULL, and NULL is how a session's own
+                   -- transcript is spelled.
+                   and t.agent_id is not distinct from %s
                 """),
-                (owner_id, harness, session_id),
+                (owner_id, harness, session_id, agent_id),
             )
             row = cur.fetchone()
             return _row_to_transcript(row) if row else None

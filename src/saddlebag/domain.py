@@ -494,6 +494,10 @@ class Transcript:
     project: str
     harness: str
     session_id: str
+    #: None for a session's own transcript; the subagent's `agentId` for a
+    #: `<session>/subagents/agent-<id>.jsonl`. `session_id` is the parent's
+    #: in both cases.
+    agent_id: str | None
     path: str
     bytes: int
     sha256: str

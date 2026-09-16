@@ -113,8 +113,9 @@ class Store(Protocol):
     def pinned_entries(self, collection_id: UUID, owner_id: UUID) -> list[Entry]: ...
 
     # transcripts
-    #: Upsert by (owner, harness, session). Re-importing a session updates it
-    #: rather than creating a twin - session id is identity, not path.
+    #: Upsert by (owner, harness, session, agent). Re-importing a file updates
+    #: it rather than creating a twin - identity is the session and agent, not
+    #: the path. `agent_id` None is the session's own transcript.
     def put_transcript(
         self,
         owner_id: UUID,
@@ -124,9 +125,14 @@ class Store(Protocol):
         path: str,
         content: bytes,
         sha256: str,
+        agent_id: str | None = None,
     ) -> Transcript: ...
     def get_transcript(
-        self, owner_id: UUID, harness: str, session_id: str
+        self,
+        owner_id: UUID,
+        harness: str,
+        session_id: str,
+        agent_id: str | None = None,
     ) -> Transcript | None: ...
     #: The bytes, fetched deliberately and separately. `Transcript` does not
     #: carry them: listing is common and a transcript is megabytes.

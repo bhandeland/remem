@@ -281,3 +281,131 @@ def test_a_second_put_under_a_different_project_does_not_re_home_a_transcript(
     assert second.project == "alpha"
     assert second.path == "/b/s1.jsonl"
     assert second.bytes == len(grown)
+
+
+def test_a_session_and_its_subagent_are_two_rows(
+    store: PostgresStore, owner: Principal
+) -> None:
+    """A subagent file carries its parent's session id. Without `agent_id`
+    in the identity, storing it would overwrite the parent's bytes."""
+    parent = store.put_transcript(
+        owner.id,
+        "p",
+        "claude-code",
+        "s1",
+        "/x/s1.jsonl",
+        b"parent\n",
+        sha256_hex(b"parent\n"),
+    )
+    child = store.put_transcript(
+        owner.id,
+        "p",
+        "claude-code",
+        "s1",
+        "/x/s1/subagents/agent-a1.jsonl",
+        b"child\n",
+        sha256_hex(b"child\n"),
+        agent_id="a1",
+    )
+    assert parent.id != child.id
+    assert parent.agent_id is None
+    assert child.agent_id == "a1"
+    assert found(store.get_transcript(owner.id, "claude-code", "s1")).id == parent.id
+    assert (
+        found(store.get_transcript(owner.id, "claude-code", "s1", "a1")).id == child.id
+    )
+    assert store.transcript_content(parent.id, owner.id) == b"parent\n"
+
+
+def test_a_subagent_put_twice_is_one_row(
+    store: PostgresStore, owner: Principal
+) -> None:
+    first = store.put_transcript(
+        owner.id,
+        "p",
+        "claude-code",
+        "s1",
+        "/x",
+        b"a\n",
+        sha256_hex(b"a\n"),
+        agent_id="a1",
+    )
+    second = store.put_transcript(
+        owner.id,
+        "p",
+        "claude-code",
+        "s1",
+        "/x",
+        b"a\nb\n",
+        sha256_hex(b"a\nb\n"),
+        agent_id="a1",
+    )
+    assert first.id == second.id
+    assert second.bytes == 4
+
+
+def test_one_agent_id_under_two_sessions_is_two_rows(
+    store: PostgresStore, owner: Principal
+) -> None:
+    """Real: four agent ids on this machine repeat across parents."""
+    one = store.put_transcript(
+        owner.id,
+        "p",
+        "claude-code",
+        "s1",
+        "/x",
+        b"a\n",
+        sha256_hex(b"a\n"),
+        agent_id="a1",
+    )
+    two = store.put_transcript(
+        owner.id,
+        "p",
+        "claude-code",
+        "s2",
+        "/y",
+        b"b\n",
+        sha256_hex(b"b\n"),
+        agent_id="a1",
+    )
+    assert one.id != two.id
+
+
+def test_a_second_session_row_with_no_agent_is_refused(
+    store: PostgresStore, owner: Principal, conn: psycopg.Connection[Any]
+) -> None:
+    """`nulls not distinct` is load-bearing. Without it, two NULL-agent rows
+    for one session are both admitted and the session's own transcript
+    silently loses its uniqueness. Raw SQL, because `put_transcript` would
+    upsert and never show the constraint at all."""
+    store.put_transcript(
+        owner.id, "p", "claude-code", "s1", "/x", b"a\n", sha256_hex(b"a\n")
+    )
+    with pytest.raises(psycopg.errors.UniqueViolation):
+        conn.execute(
+            "insert into transcripts"
+            " (id, owner_id, project, harness, session_id, path,"
+            "  content, bytes, sha256)"
+            " values (%s, %s, 'p', 'claude-code', 's1', '/x', %s, 1, 'h')",
+            (new_id(), owner.id, b"b"),
+        )
+
+
+def test_stored_transcripts_carry_the_agent(
+    store: PostgresStore, owner: Principal
+) -> None:
+    store.put_transcript(
+        owner.id, "p", "claude-code", "s1", "/x", b"a\n", sha256_hex(b"a\n")
+    )
+    store.put_transcript(
+        owner.id,
+        "p",
+        "claude-code",
+        "s1",
+        "/y",
+        b"b\n",
+        sha256_hex(b"b\n"),
+        agent_id="a1",
+    )
+    got = {(t.session_id, t.agent_id) for t in store.stored_transcripts(owner.id, "p")}
+    assert got == {("s1", None), ("s1", "a1")}
